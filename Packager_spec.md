@@ -7,17 +7,6 @@ Packet schemas with these two sizes will be included to support at least these
 two modules. If necessary, additional schemas will be made to support modules
 with even smaller data size.
 
-## Status/Roadmap
-
-- [x] Packet schemas and serialization code
-- [ ] Packet sequencer system
-- [ ] Packager system
-- [ ] ESP-NOW plugin
-- [ ] VOUTE-based routing
-- [ ] RYLR-998 plugin
-- [ ] Bluetooth plugin
-- [ ] Custom WLAN plugin (reverse engineer ESP-NOW or equivalent)
-
 
 # Packager Operations
 
@@ -74,6 +63,7 @@ The maximum size for a package will be 13 MiB or 12.75 MiB, corresponding to
 `blob` sizes of 13,631,456 and 13,369,312 bytes, depending on whether it is
 packaged for ESP-NOW or RYLR-998 LoRa (determined by passing an array of
 acceptable schema IDs to the packager API).
+
 
 # Packet Fields
 
@@ -161,6 +151,7 @@ peer for ESP-NOW and network ID + address for LoRa).
 The `from_addr` field will be 16 bytes representing the spanning tree address of
 the packet origination node. Transmission errors will propagate back to this
 node.
+
 
 # Packet Formats
 
@@ -419,6 +410,7 @@ RYLR-998; 65536 max sequence size; 12.0625 MiB max Package size.
 - 16 `from_addr`
 - 193 `body`
 
+
 # Interface
 
 An Interface provides an API to an underlying transmission module that handles
@@ -428,6 +420,7 @@ frame encapsulation and returns datagrams. It includes the following methods:
 - receive: returns a received datagram bytes if there are any or None
 - send: takes a datagram bytes and address bytes and transmits a datagram
 - broadcast: takes a datagram bytes and broadcasts a datagram
+
 
 # Packet Protocol
 
