@@ -418,9 +418,27 @@ def get_schemas(ids: list[int]) -> list[Schema]:
     """Get a list of Schema definitions with the given ids."""
     return [get_schema(i) for i in ids]
 
-def get_all_schema_ids() -> list[int]:
-    """Get a list of ids for all supported Schemas."""
-    return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+def schema_supports_sequence(schema: Schema) -> bool:
+    """Determine if a Schema supports sequencing."""
+    return len([True for field in schema.fields if field.name == 'packet_id']) == 1 \
+        and len([True for field in schema.fields if field.name == 'seq_id'])  == 1 \
+        and len([True for field in schema.fields if field.name == 'seq_size'])  == 1 \
+        and len([True for field in schema.fields if field.name == 'body'])  == 1
+
+def schema_supports_routing(schema: Schema) -> bool:
+    """Determine if a Schema supports routing."""
+    return len([True for f in schema.fields if f.name == 'ttl']) == 1
+
+
+SCHEMA_IDS: list[int] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+SCHEMA_IDS_SUPPORT_SEQUENCE: list[int] = [
+    i for i in SCHEMA_IDS
+    if len([True for f in get_schema(i).fields if f.name == 'seq_size'])
+]
+SCHEMA_IDS_SUPPORT_ROUTING: list[int] = [
+    i for i in SCHEMA_IDS
+    if len([True for f in get_schema(i).fields if f.name == 'ttl'])
+]
 
 
 class Packet:
@@ -460,6 +478,10 @@ class Packet:
     def body(self, data: bytes|bytearray):
         self.fields['body'] = data
 
+    def __repr__(self) -> str:
+        return f'Packet(schema.id={self.schema.id}, id={self.id}, ' + \
+            f'flags={self.flags}, body={self.body.hex()})'
+
 
 class Sequence:
     schema: Schema
@@ -471,35 +493,44 @@ class Sequence:
     fields: dict[str, int|bytes|bytearray|Flags]
     packets: set[int]
 
-    def __init__(self, schema: Schema, id: int, data_size: int|None) -> None:
-        assert 0 <= id < 256, 'sequence id cannot be negative'
+    def __init__(self, schema: Schema, id: int, data_size: int = None,
+                 seq_size: int = None) -> None:
+        """Initialize the Sequence. Raises AssertionError for data_size
+            or seq_size that cannot be supported by the Schema, or if
+            the Schema does not support sequencing.
+        """
+        assert schema_supports_sequence(schema), \
+            'schema must include packet_id, seq_id, seq_size, and body to make a Sequence'
+        assert 0 <= id < 256, 'sequence id must be between 0 and 255'
         assert data_size is None or 0 <= data_size, 'data_size cannot be negative'
-        assert data_size is None or data_size < (256 if [
+        self.max_body = [f for f in schema.fields if f.name == 'body'][0].max_length
+        assert data_size is None or data_size < (2**[
             field for field in schema.fields
             if field.name == 'seq_size'
-        ][0].length == 1 else 65536), f'data_size too large for schema(id={schema.id})'
-        assert len([True for field in schema.fields if field.name == 'packet_id']), \
-            'schema must include packet_id, seq_id, seq_size, and body to make a Sequence'
-        assert len([True for field in schema.fields if field.name == 'seq_id']), \
-            'schema must include packet_id, seq_id, seq_size, and body to make a Sequence'
-        assert len([True for field in schema.fields if field.name == 'seq_size']), \
-            'schema must include packet_id, seq_id, seq_size, and body to make a Sequence'
-        assert len([True for field in schema.fields if field.name == 'body']), \
-            'schema must include packet_id, seq_id, seq_size, and body to make a Sequence'
+        ][0].length)*self.max_body, f'data_size too large for schema(id={schema.id})'
+        assert seq_size is None or seq_size < 2**[
+            field for field in schema.fields
+            if field.name == 'seq_size'
+        ][0].length, f'seq_size too large for schema(id={schema.id})'
         self.schema = schema
         self.id = id
         self.data_size = data_size
         self.data = bytearray(data_size) if data_size else bytearray()
         self.packets = set()
-        self.max_body = [f for f in self.schema.fields if f.name == 'body'][0].max_length
-        self.seq_size = ceil(data_size/self.max_body) if data_size else 0
+        self.seq_size = ceil(data_size/self.max_body) if data_size else seq_size or 0
         self.fields = {}
 
     def set_data(self, data: bytes) -> None:
-        """Sets the data for the sequence, verifying it can fit."""
+        """Sets the data for the sequence. Raises AssertionError if it
+            is too large to be supported by the Schema.
+        """
         size = len(data)
-        seq_size = 2**([f for f in self.schema.fields if f.name == 'seq_size'][0].length*8)
-        assert size <= seq_size * self.max_body, f'data is too large to fit into sequence of schema(id={self.schema.id})'
+        max_seq_size = 2**([
+            f for f in self.schema.fields
+            if f.name == 'seq_size'
+        ][0].length*8)
+        assert size <= max_seq_size * self.max_body, \
+            f'data is too large to fit into sequence of schema(id={self.schema.id})'
         if size != len(self.data):
             # copy the data into a fresh buffer
             self.data = bytearray(data)
@@ -507,6 +538,7 @@ class Sequence:
             # overwrite current buffer
             self.data[:] = data[:]
         self.seq_size = ceil(size/self.max_body)
+        self.packets = set([i for i in range(self.seq_size)])
 
     def get_packet(self, id: int, flags: Flags, fields: dict[str, int|bytes|Flags]) -> Packet|None:
         """Get the packet with the id (index within the sequence). Uses
@@ -537,13 +569,13 @@ class Sequence:
         offset = packet.id * self.max_body
         bs = len(packet.body)
         self.data[offset:offset+bs] = packet.body
-        return len(self.packets) == self.data_size
+        return len(self.packets) == self.seq_size
 
     def get_missing(self) -> set[int]:
         """Returns a set of IDs of missing packets. Sequence size must
             be set for this to work.
         """
-        return set() if self.data_size is None else set([i for i in range(self.data_size)]).difference(self.packets)
+        return set() if self.seq_size is None else set([i for i in range(self.seq_size)]).difference(self.packets)
 
 
 class Package:
