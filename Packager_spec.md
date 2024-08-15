@@ -7,6 +7,14 @@ Packet schemas with these two sizes will be included to support at least these
 two modules. If necessary, additional schemas will be made to support modules
 with even smaller data size.
 
+## Encapsulation Model
+
+|-- Packet/sequence of packets --|
+|  |-- Package ---------------|  |
+|  |  Application message     |  |
+|  |--------------------------|  |
+|--------------------------------|
+
 
 # Packager Operations
 
@@ -59,8 +67,8 @@ Each package will have the following format:
 
 The `app_id` is a 16 byte unique identifier for the application that created the
 package. The `half_sha256` is the first half of the sha256 digest of the blob.
-The maximum size for a package will be 13 MiB or 12.75 MiB, corresponding to
-`blob` sizes of 13,631,456 and 13,369,312 bytes, depending on whether it is
+The maximum size for a package will be 12.9375 MiB or 12.3125 MiB, corresponding
+to `blob` sizes of 13,565,952 and 12,910,592 bytes, depending on whether it is
 packaged for ESP-NOW or RYLR-998 LoRa (determined by passing an array of
 acceptable schema IDs to the packager API).
 
@@ -153,7 +161,7 @@ the packet origination node. Transmission errors will propagate back to this
 node.
 
 
-# Packet Formats
+# Packet Format (Schemas)
 
 All packets will start with the following fields:
 
