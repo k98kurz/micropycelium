@@ -1,5 +1,6 @@
 from __future__ import annotations
 from collections import namedtuple
+from hashlib import sha256
 from math import ceil
 from struct import pack, unpack
 
@@ -116,11 +117,14 @@ class Flags:
             f'ask={self.ask}, ack={self.ack}, rtx={self.rtx}, ' +\
             f'reserved1={self.reserved1}, reserved2={self.reserved2}, mode={self.mode})'
 
+    def __eq__(self, other: Flags) -> bool:
+        return self.state == other.state
+
 
 class Schema:
     """Describes a packet schema."""
     version: int
-    reserved: int
+    reserved: int = 0
     id: int
     fields: list[Field]
 
@@ -134,7 +138,7 @@ class Schema:
     def unpack(self, packet: bytes) -> dict[str, int|bytes|Flags]:
         """Parses the packet into its fields."""
         # uniform header elements
-        version, reserved, id, flags, packet = unpack(f'!BBBB{len(packet)-4}s')
+        version, reserved, id, flags, packet = unpack(f'!BBBB{len(packet)-4}s', packet)
         flags = Flags(flags)
 
         # varying header elements and body
@@ -168,7 +172,10 @@ class Schema:
         for field in self.fields:
             val = fields[field.name]
             if type(val) is bytes:
-                assert len(val) == field.length
+                if field.max_length:
+                    assert len(val) <= field.max_length
+                else:
+                    assert len(val) == field.length
             if type(val) is int:
                 val = val.to_bytes(field.length, 'big')
             parts.append(val)
@@ -176,8 +183,11 @@ class Schema:
             if field.length == 1:
                 format_str += 'c'
             else:
-                format_str += f'{field.length}s'
-        return pack(format_str, parts)
+                if field.max_length:
+                    format_str += f'{len(val)}s'
+                else:
+                    format_str += f'{field.length}s'
+        return pack(format_str, *parts)
 
 
 def get_schema(id: int) -> Schema:
@@ -195,7 +205,7 @@ def get_schema(id: int) -> Schema:
                 Field('packet_id', 1, int),
                 Field('checksum', 4, bytes),
                 Field('body', 0, bytes, 241),
-            ]),
+            ])
         case 2:
             # ESP-NOW; 256 max sequence size; 60.75 KiB max Package size
             return Schema(0, 2, [
@@ -418,31 +428,29 @@ class Packet:
     id: int
     flags: Flags
     body: bytes|bytearray
-    fields: dict[str, int|bytes|bytearray|Flags]
+    fields: dict[str, int|bytes|bytearray]
 
-    def __init__(self, schema: Schema, fields: dict[str, int|bytes|bytearray|Flags]) -> None:
+    def __init__(self, schema: Schema, flags: Flags,
+                 fields: dict[str, int|bytes|bytearray]) -> None:
         self.schema = schema
+        self.flags = flags
         self.fields = fields
 
     @classmethod
     def unpack(cls, schema: Schema, data: bytes|bytearray) -> Packet:
         fields = schema.unpack(data)
-        return cls(schema, fields)
+        return cls(schema, fields['flags'], fields)
 
     def pack(self) -> bytes|bytearray:
-        return self.schema.pack(self.fields)
+        return self.schema.pack(self.flags, self.fields)
 
     @property
-    def id(self) -> bytes|bytearray:
-        return self.fields['id']
+    def id(self) -> int:
+        return self.fields['packet_id']
 
-    @property
-    def flags(self) -> Flags:
-        return self.fields['flags']
-
-    @flags.setter
-    def flags(self, flags: int):
-        self.fields['flags'] = flags
+    @id.setter
+    def id(self, data: int):
+        self.fields['packet_id'] = data
 
     @property
     def body(self) -> bytes|bytearray:
@@ -460,6 +468,7 @@ class Sequence:
     data_size: int|None
     seq_size: int # equal to actual seq_size-1; i.e. seq_size=0 means 1 packet
     max_body: int
+    fields: dict[str, int|bytes|bytearray|Flags]
     packets: set[int]
 
     def __init__(self, schema: Schema, id: int, data_size: int|None) -> None:
@@ -484,6 +493,7 @@ class Sequence:
         self.packets = set()
         self.max_body = [f for f in self.schema.fields if f.name == 'body'][0].max_length
         self.seq_size = ceil(data_size/self.max_body) if data_size else 0
+        self.fields = {}
 
     def set_data(self, data: bytes) -> None:
         """Sets the data for the sequence, verifying it can fit."""
@@ -498,7 +508,7 @@ class Sequence:
             self.data[:] = data[:]
         self.seq_size = ceil(size/self.max_body)
 
-    def get_packet(self, id: int, fields: dict[str, int|bytes|Flags]) -> Packet|None:
+    def get_packet(self, id: int, flags: Flags, fields: dict[str, int|bytes|Flags]) -> Packet|None:
         """Get the packet with the id (index within the sequence). Uses
             and modifies the fields dict memory in-place. If the packet
             has not been seen, return None. If the packet has been seen,
@@ -514,7 +524,9 @@ class Sequence:
         fields['packet_id'] = id
         fields['seq_id'] = self.id
         fields['seq_size'] = self.seq_size - 1
-        return Packet(self.schema, fields)
+        if id in (0, self.seq_size-1, self.seq_size/2):
+            flags.ask = True
+        return Packet(self.schema, flags, fields)
 
     def add_packet(self, packet: Packet) -> bool:
         """Adds a packet, writing its body into the data buffer. Returns
@@ -535,9 +547,34 @@ class Sequence:
 
 
 class Package:
-    app_id: bytes
-    half_sha256: bytes
-    blob: bytes
+    app_id: bytes|bytearray|memoryview
+    half_sha256: bytes|bytearray|memoryview
+    blob: bytes|bytearray|memoryview|None
+
+    def __init__(self, app_id: bytes|bytearray|memoryview, half_sha256: bytes|bytearray,
+                 blob: bytes|bytearray|None) -> None:
+        assert type(app_id) in (bytes, bytearray, memoryview) and len(app_id) == 16
+        assert type(half_sha256) in (bytes, bytearray, memoryview) and len(half_sha256) == 16
+        assert type(blob) in (bytes, bytearray, memoryview) or blob is None
+        self.app_id = app_id
+        self.half_sha256 = half_sha256
+        self.blob = blob
+
+    def verify(self) -> bool:
+        return sha256(self.blob).digest()[:16] == self.half_sha256
+
+    @classmethod
+    def from_blob(cls, app_id: bytes|bytearray, blob: bytes|bytearray) -> Package:
+        half_sha256 = sha256(blob).digest()[:16]
+        return cls(app_id, half_sha256, blob)
+
+    @classmethod
+    def from_sequence(cls, seq: Sequence) -> Package:
+        assert len(seq.get_missing()) == 0
+        app_id = seq.data[:16]
+        half_sha256 = seq.data[16:32]
+        blob = seq.data[32:]
+        return cls(app_id, half_sha256, blob)
 
 
 class Packager:
