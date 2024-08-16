@@ -91,11 +91,9 @@ class TestPacket(unittest.TestCase):
 
 
 def xor(b1: bytes, b2: bytes) -> bytes:
-    if len(b2) > len(b1):
-        b3 = b1
-        b1 = b2
-        b2 = b3
-    b3 = bytearray(b1)
+    while len(b2) > len(b1):
+        b1 += b'\x00'
+    b3 = bytearray(len(b1))
     for i in range(len(b2)):
         b3[i] = b1[i] ^ b2[i]
     return b3
@@ -105,13 +103,13 @@ def xor_diff(b1: bytes, b2: bytes) -> tuple[str, str]:
     b4 = xor(b1, b2)
     for i in range(len(b3)):
         if b3[i] != 0:
-            b3[i] = b1[i] if i < len(b1) else 0
-            b4[i] = b2[i] if i < len(b2) else 0
+            b3[i] = b1[i] if i < len(b1) else 255
+            b4[i] = b2[i] if i < len(b2) else 255
     return (b3.hex(), b4.hex())
 
 
 class TestSequence(unittest.TestCase):
-    def test_e2e(self):
+    def test_set_data_and_get_packet(self):
         with self.assertRaises(AssertionError) as e:
             Packager.Sequence(Packager.get_schema(0), 1)
         assert 'schema must include' in str(e.exception)
@@ -121,10 +119,26 @@ class TestSequence(unittest.TestCase):
         flags = Packager.Flags(0)
         sequence = Packager.Sequence(schema, 0, len(data))
         sequence.set_data(data)
+        assert sequence.data == data
+        assert len(sequence.get_missing()) == 0, sequence.get_missing()
+        assert data == b''.join([
+            sequence.get_packet(i, flags, {}).body
+            for i in range(sequence.seq_size)
+        ])
+
+    def test_e2e(self):
+        with self.assertRaises(AssertionError) as e:
+            Packager.Sequence(Packager.get_schema(0), 1)
+        assert 'schema must include' in str(e.exception)
+
+        schema = Packager.get_schema(Packager.SCHEMA_IDS_SUPPORT_SEQUENCE[0])
+        data = b''.join([(i%256).to_bytes(1, 'big') for i in range(1221)])
+        flags = Packager.Flags(0)
+        sequence = Packager.Sequence(schema, 0, len(data))
+        sequence.set_data(data)
         seq2 = Packager.Sequence(schema, 0, seq_size=sequence.seq_size)
         assert len(sequence.get_missing()) == 0, sequence.get_missing()
         assert len(seq2.get_missing()) > 0
-        print([sequence.get_packet(i, flags, {}) for i in range(sequence.seq_size)])
 
         for i in range(sequence.seq_size):
             packet = sequence.get_packet(i, flags, {})
@@ -137,7 +151,6 @@ class TestSequence(unittest.TestCase):
             seq2.add_packet(sequence.get_packet(id, flags, {}))
 
         assert len(seq2.get_missing()) == 0
-        print()
         assert seq2.data == data, \
             (len(seq2.data), len(data), sequence.seq_size, seq2.seq_size,
              xor_diff(seq2.data, data))

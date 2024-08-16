@@ -486,11 +486,11 @@ class Packet:
 class Sequence:
     schema: Schema
     id: int
-    data: bytearray
+    data: bytearray|memoryview
     data_size: int|None
     seq_size: int # equal to actual seq_size-1; i.e. seq_size=0 means 1 packet
     max_body: int
-    fields: dict[str, int|bytes|bytearray|Flags]
+    fields: dict[str, int|bytes|bytearray|memoryview|Flags]
     packets: set[int]
 
     def __init__(self, schema: Schema, id: int, data_size: int = None,
@@ -504,18 +504,18 @@ class Sequence:
         assert 0 <= id < 256, 'sequence id must be between 0 and 255'
         assert data_size is None or 0 <= data_size, 'data_size cannot be negative'
         self.max_body = [f for f in schema.fields if f.name == 'body'][0].max_length
-        assert data_size is None or data_size < (2**[
+        assert data_size is None or data_size < 2**([
             field for field in schema.fields
             if field.name == 'seq_size'
-        ][0].length)*self.max_body, f'data_size too large for schema(id={schema.id})'
-        assert seq_size is None or seq_size < 2**[
+        ][0].length*8)*self.max_body, f'data_size {data_size} too large for schema(id={schema.id})'
+        assert seq_size is None or seq_size < 2**([
             field for field in schema.fields
             if field.name == 'seq_size'
-        ][0].length, f'seq_size too large for schema(id={schema.id})'
+        ][0].length*8), f'seq_size too large for schema(id={schema.id})'
         self.schema = schema
         self.id = id
         self.data_size = data_size
-        self.data = bytearray(data_size) if data_size else bytearray()
+        self.data = bytearray(data_size) if data_size else bytearray(seq_size * self.max_body)
         self.packets = set()
         self.seq_size = ceil(data_size/self.max_body) if data_size else seq_size or 0
         self.fields = {}
@@ -569,6 +569,9 @@ class Sequence:
         offset = packet.id * self.max_body
         bs = len(packet.body)
         self.data[offset:offset+bs] = packet.body
+        if packet.id == self.seq_size - 1:
+            trim = self.max_body - len(packet.body)
+            self.data = self.data[:-trim]
         return len(self.packets) == self.seq_size
 
     def get_missing(self) -> set[int]:
