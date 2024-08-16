@@ -1,4 +1,5 @@
 from __future__ import annotations
+from binascii import crc32
 from collections import namedtuple
 from hashlib import sha256
 from math import ceil
@@ -439,6 +440,10 @@ SCHEMA_IDS_SUPPORT_ROUTING: list[int] = [
     i for i in SCHEMA_IDS
     if len([True for f in get_schema(i).fields if f.name == 'ttl'])
 ]
+SCHEMA_IDS_SUPPORT_CHECKSUM: list[int] = [
+    i for i in SCHEMA_IDS
+    if len([True for f in get_schema(i).fields if f.name == 'checksum'])
+]
 
 
 class Packet:
@@ -477,6 +482,14 @@ class Packet:
     @body.setter
     def body(self, data: bytes|bytearray):
         self.fields['body'] = data
+
+    def set_checksum(self):
+        """Set the checksum field to the crc32 of the body. Raises
+            AssertionError if the Schema supports checksums.
+        """
+        assert len([True for f in self.schema.fields if f.name == 'checksum']), \
+            f'Schema(id={self.schema.id}) does not support setting the checksum'
+        self.fields['checksum'] = crc32(self.body).to_bytes(4, 'big')
 
     def __repr__(self) -> str:
         return f'Packet(schema.id={self.schema.id}, id={self.id}, ' + \

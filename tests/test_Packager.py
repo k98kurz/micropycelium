@@ -1,3 +1,4 @@
+from binascii import crc32
 from context import Packager
 import unittest
 
@@ -88,6 +89,22 @@ class TestPacket(unittest.TestCase):
         assert unpacked.body == packet.body
         assert unpacked.schema == packet.schema
         assert unpacked.flags == packet.flags, (unpacked.flags, packet.flags)
+
+    def test_set_checksum(self):
+        schema = Packager.get_schema(Packager.SCHEMA_IDS_SUPPORT_CHECKSUM[0])
+        data = b'doo doodoo bitcoin something doodoo doo'
+        packet = Packager.Packet(
+            schema,
+            Packager.Flags(0),
+            {
+                'packet_id': 0,
+                'body': data
+            }
+        )
+        assert 'checksum' not in packet.fields
+        packet.set_checksum()
+        assert 'checksum' in packet.fields
+        assert packet.fields['checksum'] == crc32(packet.body).to_bytes(4, 'big')
 
 
 def xor(b1: bytes, b2: bytes) -> bytes:
