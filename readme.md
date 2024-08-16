@@ -20,11 +20,16 @@ discover each other
 
 - [-] Specification (mostly done)
 - [x] Packet schemas and serialization code
-- [ ] Packet sequencer system
+- [x] Packet sequencer system
 - [ ] Packager system
 - [ ] ESP-NOW plugin
-- [ ] VOUTE-based routing
+- [ ] VOUTE-based routing: tree state construction and updating
+- [ ] VOUTE-based routing: tree distance routing (flags.mode=0)
+- [ ] VOUTE-based routing: common prefix length routing (flags.mode=1)
 - [ ] RYLR-998 plugin
 - [ ] UDP/IP
 - [ ] Bluetooth plugin
+- [ ] VOUTE-based routing: leased addresses (fill bits after first null nibble)
+- [ ] VOUTE-based routing: trace route discovery
+- [ ] VOUTE-based routing: beacon routing or proxying (leased addresses)
 - [ ] Custom WLAN plugin (reverse engineer ESP-NOW or equivalent)
