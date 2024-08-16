@@ -1,14 +1,21 @@
 from __future__ import annotations
 from binascii import crc32
-from collections import namedtuple
+from collections import namedtuple, deque
 from hashlib import sha256
 from math import ceil
+from micropython import native
 from struct import pack, unpack
+
+try:
+    from typing import Callable
+except ImportError:
+    ...
 
 
 Field = namedtuple("Field", ["name", "length", "type", "max_length"], defaults=(0,))
 
 
+@native
 class Flags:
     error: bool
     throttle: bool
@@ -122,12 +129,15 @@ class Flags:
         return self.state == other.state
 
 
+@native
 class Schema:
     """Describes a packet schema."""
     version: int
     reserved: int = 0
     id: int
     fields: list[Field]
+    max_body: int
+    max_seq: int
 
     def __init__(self, version: int, id: int, fields: list[Field]) -> None:
         self.version = version
@@ -135,6 +145,9 @@ class Schema:
         # variable length field can only be last
         assert all([field.length > 0 for field in fields[:-1]])
         self.fields = fields
+        self.max_body = [f.max_length for f in self.fields if f.name == 'body'][0]
+        max_seq = [f.length for f in self.fields if f.name == 'seq_size']
+        self.max_seq = 2**(max_seq[0]*8) if max_seq else 1
 
     def unpack(self, packet: bytes) -> dict[str, int|bytes|Flags]:
         """Parses the packet into its fields."""
@@ -190,7 +203,11 @@ class Schema:
                     format_str += f'{field.length}s'
         return pack(format_str, *parts)
 
+    def max_blob(self) -> int:
+        """Returns the max blob size the Schema can support transmitting."""
+        return self.max_seq * self.max_body
 
+@native
 def get_schema(id: int) -> Schema:
     """Get the Schema definition with the given id."""
     match id:
@@ -415,10 +432,12 @@ def get_schema(id: int) -> Schema:
                 Field('body', 0, bytes, 193),
             ])
 
+@native
 def get_schemas(ids: list[int]) -> list[Schema]:
     """Get a list of Schema definitions with the given ids."""
     return [get_schema(i) for i in ids]
 
+@native
 def schema_supports_sequence(schema: Schema) -> bool:
     """Determine if a Schema supports sequencing."""
     return len([True for field in schema.fields if field.name == 'packet_id']) == 1 \
@@ -426,6 +445,7 @@ def schema_supports_sequence(schema: Schema) -> bool:
         and len([True for field in schema.fields if field.name == 'seq_size'])  == 1 \
         and len([True for field in schema.fields if field.name == 'body'])  == 1
 
+@native
 def schema_supports_routing(schema: Schema) -> bool:
     """Determine if a Schema supports routing."""
     return len([True for f in schema.fields if f.name == 'ttl']) == 1
@@ -446,6 +466,7 @@ SCHEMA_IDS_SUPPORT_CHECKSUM: list[int] = [
 ]
 
 
+@native
 class Packet:
     schema: Schema
     id: int
@@ -496,6 +517,7 @@ class Packet:
             f'flags={self.flags}, body={self.body.hex()})'
 
 
+@native
 class Sequence:
     schema: Schema
     id: int
@@ -594,6 +616,7 @@ class Sequence:
         return set() if self.seq_size is None else set([i for i in range(self.seq_size)]).difference(self.packets)
 
 
+@native
 class Package:
     app_id: bytes|bytearray|memoryview
     half_sha256: bytes|bytearray|memoryview
@@ -613,18 +636,267 @@ class Package:
 
     @classmethod
     def from_blob(cls, app_id: bytes|bytearray, blob: bytes|bytearray) -> Package:
+        """Generate a Package using an app_id and a blob."""
         half_sha256 = sha256(blob).digest()[:16]
         return cls(app_id, half_sha256, blob)
 
     @classmethod
     def from_sequence(cls, seq: Sequence) -> Package:
+        """Generate a Package using a completed sequence. Raises
+            AssertionError if the sequence is missing packets.
+        """
         assert len(seq.get_missing()) == 0
         app_id = seq.data[:16]
         half_sha256 = seq.data[16:32]
         blob = seq.data[32:]
         return cls(app_id, half_sha256, blob)
 
+    def pack(self) -> bytes:
+        """Serialize a Package into bytes."""
+        return pack(f'!16s16s{len(self.blob)}s', self.app_id, self.half_sha256, self.blob)
+
+    @classmethod
+    def unpack(cls, data: bytes) -> Package:
+        """Deserialize a Package from bytes."""
+        app_id, half_sha256, blob = unpack(f'!16s16s{len(data)-32}s', data)
+        return cls(app_id, half_sha256, blob)
+
+
+Datagram = namedtuple('Datagram', ['data', 'addr'], defaults=(None,))
+
+@native
+class Interface:
+    name: str
+    supported_schemas: list[int]
+    inbox: deque[Datagram]
+    outbox: deque[Datagram]
+    castbox: deque[Datagram]
+    receive_func: Callable|None
+    receive_func_async: Callable|None
+    send_func: Callable|None
+    send_func_async: Callable|None
+    broadcast_func: Callable|None
+    broadcast_func_async: Callable|None
+
+    def __init__(self, name: str, configure: Callable,
+                 supported_schemas: list[int], receive_func: Callable = None,
+                 send_func: Callable = None, broadcast_func: Callable = None,
+                 receive_func_async: Callable = None,
+                 send_func_async: Callable = None,
+                 broadcast_func_async: Callable = None) -> None:
+        self.inbox = deque()
+        self.outbox = deque()
+        self.castbox = deque()
+        self.name = name
+        self._configure = configure
+        self.supported_schemas = supported_schemas
+        self.receive_func = receive_func
+        self.send_func = send_func
+        self.broadcast_func = broadcast_func
+        self.receive_func_async = receive_func_async
+        self.send_func_async = send_func_async
+        self.broadcast_func_async = broadcast_func_async
+
+    def configure(self, data: dict) -> None:
+        """Call the configure callback, passing self and data."""
+        self._configure(self, data)
+
+    def receive(self) -> Datagram|None:
+        """Returns a datagram if there is one or None."""
+        return self.inbox.popleft() if self.inbox.count() else None
+
+    def send(self, datagram: Datagram) -> None:
+        """Puts a datagram into the outbox."""
+        self.outbox.append(datagram)
+
+    def broadcast(self, datagram: Datagram) -> None:
+        """Puts a datagram into the castbox."""
+        self.castbox.append(datagram)
+
+    async def process(self):
+        """Process Interface actions."""
+        if self.outbox.count():
+            if self.send_func:
+                self.send_func(self.outbox.popleft())
+            elif self.send_func_async:
+                await self.send_func_async(self.outbox.popleft())
+
+        if self.castbox.count():
+            if self.broadcast_func:
+                self.broadcast_func(self.castbox.popleft())
+            elif self.broadcast_func_async:
+                await self.broadcast_func_async(self.castbox.popleft())
+
+        if self.receive_func:
+            datagram = self.receive_func()
+            if datagram:
+                self.inbox.append(datagram)
+        elif self.receive_func_async:
+            datagram = await self.receive_func_async()
+            if datagram:
+                self.inbox.append(datagram)
+
+    def validate(self) -> bool:
+        """Returns False if the interface does not have all required methods
+            and attributes, or if they are not the proper types. Otherwise
+            returns True.
+        """
+        if not hasattr(self, 'supported_schemas') or \
+            type(self.supported_schemas) is not list or \
+            not all([type(i) is int for i in self.supported_schemas]):
+            return False
+        if not callable(self._configure):
+            return False
+        if not callable(self.send_func) and not callable(self.send_func_async):
+            return False
+        if not callable(self.receive_func) and not callable(self.receive_func_async):
+            return False
+        if not callable(self.broadcast_func) and not callable(self.broadcast_func_async):
+            return False
+        return True
+
+
+@native
+class Peer:
+    """Class for tracking local peer connectivity info. Peer id should
+        be a public key, and interfaces must be a dict mapping MAC
+        address bytes to associated Interface.
+    """
+    id: bytes
+    interfaces: dict[bytes, Interface]
+
+    def __init__(self, id: bytes, interfaces: dict[bytes, Interface]) -> None:
+        self.id = id
+        self.interfaces = interfaces
+
+Address = namedtuple('Address', ['tree_state', 'address'])
 
 class Packager:
-    def broadcast(self, blob: bytes):
+    interfaces: list[Interface] = []
+    seq_id: int = 0
+    seq_cache: dict = {} # to-do
+    apps: dict[bytes, object] = {}
+    in_seqs: dict[int, Sequence] = {}
+    peers: dict[bytes, Peer] = {}
+    routes: dict[bytes, deque[Address,]] = {}
+
+    @classmethod
+    def add_interface(cls, interface: Interface):
+        """Adds an interface. Raises AssertionError if it does not meet
+            the requirements for a network interface.
+        """
+        assert interface.validate()
+        cls.interfaces.append(interface)
+
+    @classmethod
+    def remove_interface(cls, interface: Interface):
+        """Removes a network interface."""
+        cls.interfaces.remove(interface)
+
+    @classmethod
+    def add_peer(cls, peer_id: bytes, interfaces: dict[bytes, Interface]):
+        """Adds a peer to the local peer list. Packager will be able to
+            send Packages to all such peers.
+        """
+        cls.peers[peer_id] = Peer(peer_id, interfaces)
+
+    @classmethod
+    def remove_peer(cls, peer_id: bytes):
+        """Removes a peer from the local peer list. Packager will be
+            unable to send Packages to this peer.
+        """
+        if peer_id in cls.peers:
+            cls.peers.pop(peer_id)
+        if peer_id in cls.routes:
+            cls.routes.pop(peer_id)
+
+    @classmethod
+    def add_route(cls, peer_id: bytes, address: Address):
+        """Adds an address for a peer. Will also store the previous
+            Address for the peer to maintain routability during tree
+            state transitions.
+        """
+        if peer_id not in cls.routes:
+            cls.routes[peer_id] = deque()
+        addrs = cls.routes[peer_id]
+        while addrs.count() > 1:
+            addrs.popleft()
+        addrs.append(address)
+
+    @classmethod
+    def remove_route(cls, peer_id: bytes):
+        """Removes the route to the peer with the given peer_id."""
+        if peer_id in cls.routes:
+            cls.routes.pop(peer_id)
+
+    @classmethod
+    def broadcast(cls, app_id: bytes, blob: bytes, interface: object = None) -> bool:
+        """Create a Package from the blob and broadcast it on all
+            interfaces that support broadcast. Uses the schema supported
+            by all interfaces. Returns False if no schemas could be
+            found that are supported by all interfaces.
+        """
+        if interface:
+            schemas = list(filter(lambda s: s.max_blob >= len(blob) + 32, interface.supported_schemas))
+            schema = schemas.sort(key=lambda s: s.max_body, reverse=True)[0]
+            chosen_intrfcs = [interface]
+        else:
+            # use only a schema supported by all interfaces
+            schemas = set(cls.interfaces[0].supported_schemas)
+            for interface in cls.interfaces:
+                schemas.intersection_update(set(interface.supported_schemas))
+            schemas = [s for s in get_schemas(list(schemas)) if s.max_blob >= len(blob) + 32]
+            if len(schemas) == 0:
+                return False
+            # choose the schema with the largest body size
+            schemas.sort(key=lambda s: s.max_body, reverse=True)
+            schema = schema[0]
+            chosen_intrfcs = cls.interfaces
+
+        p = Package.from_blob(app_id, blob).pack()
+        p1 = Packet(schema, fl, {'body':p})
+        fl = Flags(0)
+        # try to send as a single packet if possible
+        if len(p1.pack()) <= schema.max_body:
+            packets = [p1]
+        else:
+            s = Sequence(schema, cls.seq_id, len(p))
+            packets = [s.get_packet(i, fl) for i in range(s.seq_size)]
+
+        for intrfc in chosen_intrfcs:
+            br = intrfc.broadcast
+            for p in packets:
+                br(Datagram(p.pack()))
+        return True
+
+    @classmethod
+    def send(cls, app_id: bytes, blob: bytes, node_id: bytes) -> bool:
+        """Attempts to send a Package containing the app_id and blob to
+            the specified node. Returns True if it can be sent and False
+            if it cannot (i.e. if it is a known peer or there is a known
+            route to the node).
+        """
+        islocal = node_id in cls.peers
+        if not islocal and node_id not in cls.routes:
+            return False
+
+        p = Package.from_blob(app_id, blob).pack()
+        schemas: dict[int, list[Schema]] = {}
+        if islocal:
+            peer = cls.peers[node_id]
+            intrfcs = peer.interfaces
+            for mac, ntrfc in peer.interfaces.items():
+                ...
+        else:
+            # to-do: routing
+            ...
+        use_seq = len(p) > get_schema()
+        schemas = SCHEMA_IDS_SUPPORT_SEQUENCE
+
+    @classmethod
+    def receive(cls, p: Packet) -> None:
+        ...
+
+    @classmethod
+    def deliver(cls, p: Package) -> bool:
         ...
