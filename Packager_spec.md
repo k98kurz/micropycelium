@@ -20,20 +20,24 @@ with even smaller data size.
 
 ## Broadcast
 
-Takes a blob, puts it into a Package, and then transmits it. Unless an interface
-is specified, the Package will be transmit on all available interfaces. If the
-Package is too large to fit in a single packet for a given interface, it will be
-broken into a sequence of packets. Unless an interface was specified, a sequence
-will use a schema that works for all interfaces, which reduces performance of
-ESP-NOW for the benefit of reduced caching requirements.
+Takes an app ID and a blob, makes a Package, and then transmits it. Unless an
+interface is specified, the Package will be transmitted on all available network
+interfaces. If the Package is too large to fit in a single packet for a given
+interface, it will be broken into a sequence of packets. Unless an interface
+was specified, it will use a schema that works for all interfaces, which reduces
+performance of ESP-NOW for the benefit of reduced caching requirements and
+RYLR-998 compatibility.
 
 ## Send
 
-Takes a node ID and a blob. If the node is in the peer list, the Send method
-puts the blob into a Package, and then transmits it to the peer using the
+Takes an app ID, blob, and node ID. If the node is in the peer list, the Send
+method puts the blob into a Package, and then transmits it to the peer using the
 interface with the higher throughput/bit rate. If the node's address is known
 
 ## Receive
+
+Receives a Packet and determines what to do with it. Once routing is enabled, if
+the Packet is routable, it will attempt to forward the packet.
 
 When a node receives a Package in a single packet, it will check the application
 ID and drop the Package if the application has not registered to accept Packages.
@@ -47,7 +51,7 @@ packet (which contains the application ID) and verifies that the Package will be
 deliverable. If the Package is deliverable, the node will attempt to collect the
 whole Package sequence and deliver the Package to the appropriate application.
 
-This is handled automatically and is not invoked through the Packager API.
+This will be called by an asynchronous task that monitors network interfaces.
 
 ## Deliver
 
@@ -422,12 +426,31 @@ RYLR-998; 65536 max sequence size; 12.0625 MiB max Package size.
 # Interface
 
 An Interface provides an API to an underlying transmission module that handles
-frame encapsulation and returns datagrams. It includes the following methods:
+frame encapsulation and datagrams. It includes the following methods:
 
 - configure: takes a dict of configuration values and configures the interface
-- receive: returns a received datagram bytes if there are any or None
-- send: takes a datagram bytes and address bytes and transmits a datagram
-- broadcast: takes a datagram bytes and broadcasts a datagram
+- receive: returns a received datagram if there is one or None
+- send: takes a datagram (with data and address) and transmits it
+- broadcast: takes a datagram (without address) and broadcasts it
+- process: processes the queued datagrams to be sent/broadcast and queues
+datagrams in the inbox; async method that calls callbacks passed to `__init__`
+
+The send and broadcast methods queue the data for asynchronous processing, and
+the receive method reads from a queue that is populated by an async task.
+
+An Interface also has the following attributes:
+
+- supported_schemas: list of schema IDs supported by the interface
+
+The `Interface` class provides a logical framework for this. Initializing it
+requires passing `name: str`, `configure: function`,
+`supported_schemas: list[int]`, and several synchronous and/or async callbacks.
+Must provide one of each pair: (`send_func`, `send_func_async`); (`receive_func`,
+`receive_func_async`); (`broadcast_func`, `broadcast_func_async`). When the
+async `process` method is called, it first tries to send a datagram queued for
+sending using one of the `send_` callbacks; it then tries to broadcast a
+datagram queued for broadcast using one of the `broadcast_` callbacks; it then
+tries to queue a datagram from calling one of the `receive_` callbacks.
 
 
 # Packet Protocol
