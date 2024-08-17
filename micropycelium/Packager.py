@@ -6,6 +6,7 @@ from math import ceil
 from micropython import native
 from random import randint
 from struct import pack, unpack
+import asyncio
 
 try:
     from typing import Callable
@@ -882,12 +883,12 @@ class Packager:
                 return False
             # choose the schema with the largest body size
             schemas.sort(key=lambda s: s.max_body, reverse=True)
-            schema = schema[0]
+            schema = schemas[0]
             chosen_intrfcs = cls.interfaces
 
         p = Package.from_blob(app_id, blob).pack()
-        p1 = Packet(schema, fl, {'body':p})
         fl = Flags(0)
+        p1 = Packet(schema, fl, {'body':p, 'packet_id': 0})
         # try to send as a single packet if possible
         if len(p1.pack()) <= schema.max_body:
             packets = [p1]
@@ -965,3 +966,13 @@ class Packager:
     @classmethod
     def deliver(cls, p: Package) -> bool:
         ...
+
+    @classmethod
+    async def process(cls):
+        """Process interface actions, then process Packager actions."""
+        tasks = []
+        for intrfc in cls.interfaces:
+            tasks.append(intrfc.process())
+        await asyncio.gather(*tasks)
+
+        # to-do: Packager actions

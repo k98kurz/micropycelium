@@ -320,6 +320,14 @@ class TestPackager(unittest.TestCase):
         # cleanup
         Packager.Packager.node_addrs.clear()
 
+    def test_broadcast_simple(self):
+        Packager.Packager.add_interface(mock_interface1)
+        assert len(castbox) == 0
+        Packager.Packager.broadcast(b'app 9659b56ae1d8', b'test')
+        asyncio.run(Packager.Packager.process())
+        assert len(castbox) == 1
+        castbox.clear()
+
 
 if __name__ == '__main__':
     unittest.main()
