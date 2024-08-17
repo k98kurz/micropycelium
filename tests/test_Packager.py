@@ -295,6 +295,7 @@ class TestPackager(unittest.TestCase):
         Packager.Packager.interfaces.clear()
         Packager.Packager.node_addrs.clear()
         Packager.Packager.peers.clear()
+        Packager.Packager.routes.clear()
         return super().setUp()
 
     def test_add_interface_remove_interface_e2e(self):
@@ -366,6 +367,15 @@ class TestPackager(unittest.TestCase):
         package = Packager.Package.from_sequence(sequence)
         assert package.app_id == app_id, (app_id, package.app_id)
         assert package.blob == blob
+
+    def test_send_local_small(self):
+        Packager.Packager.add_interface(mock_interface1)
+        assert len(Packager.Packager.interfaces) == 1
+        assert len(outbox) == 0
+        Packager.Packager.add_peer(b'123', {b'macpeer0': mock_interface1})
+        Packager.Packager.send(b'app 9659b56ae1d8', b'test', b'123')
+        asyncio.run(Packager.Packager.process())
+        assert len(outbox) == 1, outbox
 
 
 if __name__ == '__main__':

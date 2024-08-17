@@ -796,6 +796,7 @@ class Peer:
 class Packager:
     interfaces: list[Interface] = []
     seq_id: int = 0
+    packet_id: int = 0
     seq_cache: dict[int, Sequence] = {} # to-do
     apps: dict[bytes, object] = {}
     in_seqs: dict[int, Sequence] = {}
@@ -892,7 +893,7 @@ class Packager:
 
         p = Package.from_blob(app_id, blob).pack()
         fl = Flags(0)
-        fields = {'body':p, 'packet_id': 0, 'seq_id': cls.seq_id, 'seq_size': 1}
+        fields = {'body':p, 'packet_id': cls.packet_id, 'seq_id': cls.seq_id, 'seq_size': 1}
         p1 = Packet(schema, fl, fields)
         # try to send as a single packet if possible
         try:
@@ -925,30 +926,28 @@ class Packager:
             return False
 
         p = Package.from_blob(app_id, blob).pack()
-        # schemas: dict[int, list[Schema]] = {}
         schema: Schema = None
         if islocal:
             peer = cls.peers[node_id]
         else:
             # to-do: routing
             # for now, pick one at random
-            node_ids = list(cls.routes.keys())
-            node_ids.sort(key=lambda n: randint(0, 255))
-            nid = node_ids[0]
-            peer = cls.peers[nid]
-            addr = cls.routes[nid][-1]
+            addrs = list(cls.routes.keys())
+            addrs.sort(key=lambda _: randint(0, 255))
+            addr = addrs[-1]
 
         intrfcs = peer.interfaces
-        sids = set(intrfcs[intrfcs.keys()[0]].supported_schemas)
+        sids = set(intrfcs[list(intrfcs.keys())[0]].supported_schemas)
         for _, ntrfc in intrfcs.items():
             sids.intersection_update(set(ntrfc.supported_schemas))
         sids = get_schemas(list(sids))
         sids = [s for s in sids if s.max_blob >= len(p)]
-        schema = sids.sort(key=lambda s: s.max_body, reverse=True)[0]
+        sids.sort(key=lambda s: s.max_body, reverse=True)
+        schema = sids[0]
         intrfcs = [(intrfcs[i], i) for i in intrfcs]
         intrfcs.sort(key=lambda mi: mi[0].bitrate, reverse=True)
         intrfc = intrfcs[0]
-        fields = {}
+        fields = {'body':p, 'packet_id': cls.packet_id, 'seq_id': cls.seq_id, 'seq_size': 1}
         if not islocal:
             fields = {
                 'to_addr': addr.address,
@@ -969,6 +968,7 @@ class Packager:
                 Packet(schema, Flags(0), fields).pack(),
                 intrfc[1]
             ))
+            cls.packet_id = (cls.packet_id + 1) % 256
 
     @classmethod
     def receive(cls, p: Packet) -> None:
