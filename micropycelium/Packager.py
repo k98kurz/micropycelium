@@ -3,7 +3,7 @@ from binascii import crc32
 from collections import namedtuple, deque
 from hashlib import sha256
 from math import ceil
-from micropython import native
+from micropython import native, _const
 from random import randint
 from struct import pack, unpack
 import asyncio
@@ -12,6 +12,9 @@ try:
     from typing import Callable
 except ImportError:
     ...
+
+
+VERSION = _const(0)
 
 
 Field = namedtuple("Field", ["name", "length", "type", "max_length"], defaults=(0,))
@@ -189,12 +192,12 @@ class Schema:
             val = fields[field.name]
             if type(val) is bytes:
                 if field.max_length:
-                    assert len(val) <= field.max_length
+                    assert len(val) <= field.max_length, f'{field.name}: {val} too large'
                 else:
-                    assert len(val) == field.length
+                    assert len(val) == field.length, f'{field.name}: {val} invalid length'
             if type(val) is int:
                 val = val.to_bytes(field.length, 'big')
-            parts.append(val)
+            parts.append(bytes(val))
 
             if field.length == 1:
                 format_str += 'c'
@@ -484,9 +487,12 @@ class Packet:
         self.fields = fields
 
     @classmethod
-    def unpack(cls, schema: Schema, data: bytes|bytearray) -> Packet:
+    def unpack(cls, data: bytes|bytearray) -> Packet:
+        version, reserved, schema_id, flags, _ = unpack(f'!BBBB{len(data)-4}s', data)
+        assert version <= VERSION, 'unsupported version encountered'
+        schema = get_schema(schema_id)
         fields = schema.unpack(data)
-        return cls(schema, fields['flags'], fields)
+        return cls(schema, Flags(flags), fields)
 
     def pack(self) -> bytes|bytearray:
         return self.schema.pack(self.flags, self.fields)
@@ -581,9 +587,9 @@ class Sequence:
         self.packets = set([i for i in range(self.seq_size)])
 
     def get_packet(self, id: int, flags: Flags, fields: dict[str, int|bytes|Flags]) -> Packet|None:
-        """Get the packet with the id (index within the sequence). Uses
-            and modifies the fields dict memory in-place. If the packet
-            has not been seen, return None. If the packet has been seen,
+        """Get the packet with the id (index within the sequence).
+            Copies the field dict before modifying. If the packet has
+            not been seen, return None. If the packet has been seen,
             return the Packet. Packet body will be a memoryview to
             conserve memory, but it is not readonly because micropython
             does not yet support readonly memoryview.
@@ -594,11 +600,12 @@ class Sequence:
         offset = id * self.max_body
         size = len(self.data)
         bs = self.max_body if offset + self.max_body <= len(self.data) else size - offset
+        fields = {**fields}
         fields['body'] = memoryview(self.data)[offset:offset+bs]
         fields['packet_id'] = id
         fields['seq_id'] = self.id
         fields['seq_size'] = self.seq_size - 1
-        if id in (0, self.seq_size-1, self.seq_size/2):
+        if id in (0, self.seq_size-1, self.seq_size//2):
             flags.ask = True
         return Packet(self.schema, flags, fields)
 
@@ -653,10 +660,7 @@ class Package:
             AssertionError if the sequence is missing packets.
         """
         assert len(seq.get_missing()) == 0
-        app_id = seq.data[:16]
-        half_sha256 = seq.data[16:32]
-        blob = seq.data[32:]
-        return cls(app_id, half_sha256, blob)
+        return cls.unpack(seq.data)
 
     def pack(self) -> bytes:
         """Serialize a Package into bytes."""
@@ -792,7 +796,7 @@ class Peer:
 class Packager:
     interfaces: list[Interface] = []
     seq_id: int = 0
-    seq_cache: dict = {} # to-do
+    seq_cache: dict[int, Sequence] = {} # to-do
     apps: dict[bytes, object] = {}
     in_seqs: dict[int, Sequence] = {}
     peers: dict[bytes, Peer] = {}
@@ -888,13 +892,20 @@ class Packager:
 
         p = Package.from_blob(app_id, blob).pack()
         fl = Flags(0)
-        p1 = Packet(schema, fl, {'body':p, 'packet_id': 0})
+        fields = {'body':p, 'packet_id': 0, 'seq_id': cls.seq_id, 'seq_size': 1}
+        p1 = Packet(schema, fl, fields)
         # try to send as a single packet if possible
-        if len(p1.pack()) <= schema.max_body:
-            packets = [p1]
-        else:
+        try:
+            if len(p1.pack()) <= schema.max_body:
+                packets = [p1]
+            else:
+                raise ValueError()
+        except:
             s = Sequence(schema, cls.seq_id, len(p))
-            packets = [s.get_packet(i, fl) for i in range(s.seq_size)]
+            s.set_data(p)
+            packets = [s.get_packet(i, fl, fields) for i in range(s.seq_size)]
+            cls.seq_cache[cls.seq_id] = s
+            cls.seq_id = (cls.seq_id + 1) % 256
 
         for intrfc in chosen_intrfcs:
             br = intrfc.broadcast

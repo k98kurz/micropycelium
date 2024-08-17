@@ -86,10 +86,10 @@ class TestPacket(unittest.TestCase):
 
         packed = packet.pack()
         assert type(packed) is bytes
-        unpacked = Packager.Packet.unpack(schema, packed)
+        unpacked = Packager.Packet.unpack(packed)
         assert isinstance(unpacked, Packager.Packet)
         assert unpacked.body == packet.body
-        assert unpacked.schema == packet.schema
+        assert unpacked.schema.id == packet.schema.id
         assert unpacked.flags == packet.flags, (unpacked.flags, packet.flags)
 
     def test_set_checksum(self):
@@ -175,9 +175,9 @@ class TestSequence(unittest.TestCase):
              xor_diff(seq2.data, data))
 
 
-outbox = deque()
-inbox = deque()
-castbox = deque()
+outbox: deque[Packager.Datagram] = deque()
+inbox: deque[Packager.Datagram] = deque()
+castbox: deque[Packager.Datagram] = deque()
 config = {}
 
 def configure(_: Packager.Interface, data: dict):
@@ -185,9 +185,15 @@ def configure(_: Packager.Interface, data: dict):
         config[key] = value
 
 def receive1():
+    return inbox.popleft() if len(inbox) else None
+
+def receive12():
     return inbox.popleft() if len(inbox) else castbox.popleft() if len(castbox) else None
 
 def receive2():
+    return outbox.popleft() if len(outbox) else None
+
+def receive22():
     return outbox.popleft() if len(outbox) else castbox.popleft() if len(castbox) else None
 
 def send1(datagram: Packager.Datagram):
@@ -279,6 +285,18 @@ class TestPeer(unittest.TestCase):
 
 
 class TestPackager(unittest.TestCase):
+    def setUp(self) -> None:
+        inbox.clear()
+        outbox.clear()
+        castbox.clear()
+        mock_interface1.inbox.clear()
+        mock_interface1.outbox.clear()
+        mock_interface1.castbox.clear()
+        Packager.Packager.interfaces.clear()
+        Packager.Packager.node_addrs.clear()
+        Packager.Packager.peers.clear()
+        return super().setUp()
+
     def test_add_interface_remove_interface_e2e(self):
         assert len(Packager.Packager.interfaces) == 0
         Packager.Packager.add_interface(mock_interface1)
@@ -304,8 +322,6 @@ class TestPackager(unittest.TestCase):
         assert len(Packager.Packager.routes.keys()) == 1
         Packager.Packager.remove_route(addr)
         assert len(Packager.Packager.routes.keys()) == 0
-        # cleanup
-        Packager.Packager.remove_peer(b'peer0')
 
     def test_set_addr(self):
         assert len(Packager.Packager.node_addrs) == 0
@@ -317,16 +333,39 @@ class TestPackager(unittest.TestCase):
         assert len(Packager.Packager.node_addrs) == 2
         assert Packager.Packager.node_addrs[0].tree_state == b'\x01'
         assert Packager.Packager.node_addrs[1].tree_state == b'\x02'
-        # cleanup
-        Packager.Packager.node_addrs.clear()
 
-    def test_broadcast_simple(self):
+    def test_broadcast_small(self):
         Packager.Packager.add_interface(mock_interface1)
+        assert len(Packager.Packager.interfaces) == 1
         assert len(castbox) == 0
         Packager.Packager.broadcast(b'app 9659b56ae1d8', b'test')
         asyncio.run(Packager.Packager.process())
-        assert len(castbox) == 1
-        castbox.clear()
+        assert len(castbox) == 1, castbox
+
+    def test_broadcast_large(self):
+        Packager.Packager.add_interface(mock_interface1)
+        assert len(castbox) == 0
+        app_id = b'app 9659b56ae1d8'
+        blob = b''.join([(i%256).to_bytes(1, 'big') for i in range(300)])
+        Packager.Packager.broadcast(app_id, blob)
+        asyncio.run(Packager.Packager.process())
+        asyncio.run(Packager.Packager.process())
+        asyncio.run(Packager.Packager.process())
+        assert len(castbox) == 2, (len(castbox), len(castbox[0].data))
+        packet = Packager.Packet.unpack(castbox.popleft().data)
+        sequence = Packager.Sequence(
+            packet.schema,
+            packet.fields['seq_id'],
+            seq_size=packet.fields['seq_size']+1
+        )
+        sequence.add_packet(packet)
+        while len(castbox):
+            packet = Packager.Packet.unpack(castbox.popleft().data)
+            sequence.add_packet(packet)
+        assert len(sequence.get_missing()) == 0, sequence.get_missing()
+        package = Packager.Package.from_sequence(sequence)
+        assert package.app_id == app_id, (app_id, package.app_id)
+        assert package.blob == blob
 
 
 if __name__ == '__main__':
