@@ -30,9 +30,14 @@ RYLR-998 compatibility.
 
 ## Send
 
-Takes an app ID, blob, and node ID. If the node is in the peer list, the Send
-method puts the blob into a Package, and then transmits it to the peer using the
-interface with the higher throughput/bit rate. If the node's address is known
+Takes an app ID, blob, node ID, and optionally a schema ID. If the node is in
+the peer list, the Send method puts the blob into a Package and then transmits
+it to the peer using the interface with the highest bit rate. If the node is not
+a peer but the node's address is known, the Send method puts the blob into a
+Package and then attempts to route it. Transmission will attempt to use the
+specified schema if its ID was supplied, otherwise it will use a schema that can
+accommodate the Package size and is supported by all interfaces (to prevent
+resequencing in case of transmission failure via one interface).
 
 ## Receive
 
