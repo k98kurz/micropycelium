@@ -4,6 +4,7 @@ from collections import namedtuple, deque
 from hashlib import sha256
 from math import ceil
 from micropython import native
+from random import randint
 from struct import pack, unpack
 
 try:
@@ -203,6 +204,7 @@ class Schema:
                     format_str += f'{field.length}s'
         return pack(format_str, *parts)
 
+    @property
     def max_blob(self) -> int:
         """Returns the max blob size the Schema can support transmitting."""
         return self.max_seq * self.max_body
@@ -471,7 +473,7 @@ class Packet:
     schema: Schema
     id: int
     flags: Flags
-    body: bytes|bytearray
+    body: bytes|bytearray|memoryview
     fields: dict[str, int|bytes|bytearray]
 
     def __init__(self, schema: Schema, flags: Flags,
@@ -497,11 +499,11 @@ class Packet:
         self.fields['packet_id'] = data
 
     @property
-    def body(self) -> bytes|bytearray:
+    def body(self) -> bytes|bytearray|memoryview:
         return self.fields.get('body', b'')
 
     @body.setter
-    def body(self, data: bytes|bytearray):
+    def body(self, data: bytes|bytearray|memoryview):
         self.fields['body'] = data
 
     def set_checksum(self):
@@ -527,6 +529,7 @@ class Sequence:
     max_body: int
     fields: dict[str, int|bytes|bytearray|memoryview|Flags]
     packets: set[int]
+    tx_intrfcs_tried: set[str]
 
     def __init__(self, schema: Schema, id: int, data_size: int = None,
                  seq_size: int = None) -> None:
@@ -554,8 +557,9 @@ class Sequence:
         self.packets = set()
         self.seq_size = ceil(data_size/self.max_body) if data_size else seq_size or 0
         self.fields = {}
+        self.tx_intrfcs_tried = set()
 
-    def set_data(self, data: bytes) -> None:
+    def set_data(self, data: bytes|bytearray|memoryview) -> None:
         """Sets the data for the sequence. Raises AssertionError if it
             is too large to be supported by the Schema.
         """
@@ -579,7 +583,9 @@ class Sequence:
         """Get the packet with the id (index within the sequence). Uses
             and modifies the fields dict memory in-place. If the packet
             has not been seen, return None. If the packet has been seen,
-            return the Packet.
+            return the Packet. Packet body will be a memoryview to
+            conserve memory, but it is not readonly because micropython
+            does not yet support readonly memoryview.
         """
         if id not in self.packets:
             return None
@@ -587,7 +593,7 @@ class Sequence:
         offset = id * self.max_body
         size = len(self.data)
         bs = self.max_body if offset + self.max_body <= len(self.data) else size - offset
-        fields['body'] = self.data[offset:offset+bs]
+        fields['body'] = memoryview(self.data)[offset:offset+bs]
         fields['packet_id'] = id
         fields['seq_id'] = self.id
         fields['seq_size'] = self.seq_size - 1
@@ -668,6 +674,7 @@ Datagram = namedtuple('Datagram', ['data', 'addr'], defaults=(None,))
 class Interface:
     name: str
     supported_schemas: list[int]
+    bitrate: int
     inbox: deque[Datagram]
     outbox: deque[Datagram]
     castbox: deque[Datagram]
@@ -678,7 +685,7 @@ class Interface:
     broadcast_func: Callable|None
     broadcast_func_async: Callable|None
 
-    def __init__(self, name: str, configure: Callable,
+    def __init__(self, name: str, bitrate: int, configure: Callable,
                  supported_schemas: list[int], receive_func: Callable = None,
                  send_func: Callable = None, broadcast_func: Callable = None,
                  receive_func_async: Callable = None,
@@ -689,6 +696,7 @@ class Interface:
         self.castbox = deque()
         self.name = name
         self._configure = configure
+        self.bitrate = bitrate
         self.supported_schemas = supported_schemas
         self.receive_func = receive_func
         self.send_func = send_func
@@ -703,7 +711,7 @@ class Interface:
 
     def receive(self) -> Datagram|None:
         """Returns a datagram if there is one or None."""
-        return self.inbox.popleft() if self.inbox.count() else None
+        return self.inbox.popleft() if len(self.inbox) else None
 
     def send(self, datagram: Datagram) -> None:
         """Puts a datagram into the outbox."""
@@ -715,13 +723,13 @@ class Interface:
 
     async def process(self):
         """Process Interface actions."""
-        if self.outbox.count():
+        if len(self.outbox):
             if self.send_func:
                 self.send_func(self.outbox.popleft())
             elif self.send_func_async:
                 await self.send_func_async(self.outbox.popleft())
 
-        if self.castbox.count():
+        if len(self.castbox):
             if self.broadcast_func:
                 self.broadcast_func(self.castbox.popleft())
             elif self.broadcast_func_async:
@@ -764,13 +772,21 @@ class Peer:
     """
     id: bytes
     interfaces: dict[bytes, Interface]
+    addrs: deque[Address]
 
     def __init__(self, id: bytes, interfaces: dict[bytes, Interface]) -> None:
         self.id = id
         self.interfaces = interfaces
+        self.addrs = deque()
+
+    def set_addr(self, addr: Address):
+        self.addrs.append(addr)
+        while len(self.addrs) > 2:
+            self.addrs.popleft()
 
 Address = namedtuple('Address', ['tree_state', 'address'])
 
+@native
 class Packager:
     interfaces: list[Interface] = []
     seq_id: int = 0
@@ -778,7 +794,9 @@ class Packager:
     apps: dict[bytes, object] = {}
     in_seqs: dict[int, Sequence] = {}
     peers: dict[bytes, Peer] = {}
-    routes: dict[bytes, deque[Address,]] = {}
+    routes: dict[Address, bytes] = {}
+    node_id: bytes = b''
+    node_addrs: deque[Address] = deque()
 
     @classmethod
     def add_interface(cls, interface: Interface):
@@ -806,9 +824,10 @@ class Packager:
             unable to send Packages to this peer.
         """
         if peer_id in cls.peers:
-            cls.peers.pop(peer_id)
-        if peer_id in cls.routes:
-            cls.routes.pop(peer_id)
+            peer = cls.peers.pop(peer_id)
+            for addr in peer.addr:
+                if addr in cls.routes:
+                    cls.routes.pop(addr)
 
     @classmethod
     def add_route(cls, peer_id: bytes, address: Address):
@@ -816,28 +835,40 @@ class Packager:
             Address for the peer to maintain routability during tree
             state transitions.
         """
-        if peer_id not in cls.routes:
-            cls.routes[peer_id] = deque()
-        addrs = cls.routes[peer_id]
-        while addrs.count() > 1:
-            addrs.popleft()
-        addrs.append(address)
+        assert peer_id in cls.peers
+        addrs = cls.peers[peer_id].addrs
+        if len(addrs) > 1 and address not in addrs:
+            cls.routes.pop(addrs[0])
+        if address not in addrs:
+            cls.peers[peer_id].set_addr(address)
+        cls.routes[address] = peer_id
 
     @classmethod
-    def remove_route(cls, peer_id: bytes):
-        """Removes the route to the peer with the given peer_id."""
-        if peer_id in cls.routes:
-            cls.routes.pop(peer_id)
+    def remove_route(cls, address: Address):
+        """Removes the route to the peer with the given address."""
+        if address in cls.routes:
+            cls.routes.pop(address)
 
     @classmethod
-    def broadcast(cls, app_id: bytes, blob: bytes, interface: object = None) -> bool:
+    def set_addr(cls, addr: Address):
+        cls.node_addrs.append(addr)
+        while len(cls.node_addrs) > 2:
+            cls.node_addrs.popleft()
+
+    @classmethod
+    def broadcast(cls, app_id: bytes, blob: bytes, interface: Interface|None = None) -> bool:
         """Create a Package from the blob and broadcast it on all
             interfaces that support broadcast. Uses the schema supported
             by all interfaces. Returns False if no schemas could be
             found that are supported by all interfaces.
         """
+        schema: Schema
+        chosen_intrfcs: list[Interface]
         if interface:
-            schemas = list(filter(lambda s: s.max_blob >= len(blob) + 32, interface.supported_schemas))
+            schemas = [
+                s for s in get_schemas(interface.supported_schemas)
+                if s.max_blob >= len(blob) + 32
+            ]
             schema = schemas.sort(key=lambda s: s.max_body, reverse=True)[0]
             chosen_intrfcs = [interface]
         else:
@@ -870,7 +901,7 @@ class Packager:
         return True
 
     @classmethod
-    def send(cls, app_id: bytes, blob: bytes, node_id: bytes) -> bool:
+    def send(cls, app_id: bytes, blob: bytes, node_id: bytes, schema: int = None) -> bool:
         """Attempts to send a Package containing the app_id and blob to
             the specified node. Returns True if it can be sent and False
             if it cannot (i.e. if it is a known peer or there is a known
@@ -881,17 +912,50 @@ class Packager:
             return False
 
         p = Package.from_blob(app_id, blob).pack()
-        schemas: dict[int, list[Schema]] = {}
+        # schemas: dict[int, list[Schema]] = {}
+        schema: Schema = None
         if islocal:
             peer = cls.peers[node_id]
-            intrfcs = peer.interfaces
-            for mac, ntrfc in peer.interfaces.items():
-                ...
         else:
             # to-do: routing
-            ...
-        use_seq = len(p) > get_schema()
-        schemas = SCHEMA_IDS_SUPPORT_SEQUENCE
+            # for now, pick one at random
+            node_ids = list(cls.routes.keys())
+            node_ids.sort(key=lambda n: randint(0, 255))
+            nid = node_ids[0]
+            peer = cls.peers[nid]
+            addr = cls.routes[nid][-1]
+
+        intrfcs = peer.interfaces
+        sids = set(intrfcs[intrfcs.keys()[0]].supported_schemas)
+        for _, ntrfc in intrfcs.items():
+            sids.intersection_update(set(ntrfc.supported_schemas))
+        sids = get_schemas(list(sids))
+        sids = [s for s in sids if s.max_blob >= len(p)]
+        schema = sids.sort(key=lambda s: s.max_body, reverse=True)[0]
+        intrfcs = [(intrfcs[i], i) for i in intrfcs]
+        intrfcs.sort(key=lambda mi: mi[0].bitrate, reverse=True)
+        intrfc = intrfcs[0]
+        fields = {}
+        if not islocal:
+            fields = {
+                'to_addr': addr.address,
+                'from_addr': cls.node_addrs[-1].address,
+                'tree_state': addr.tree_state,
+            }
+        if schema.max_blob > schema.max_body:
+            seq = Sequence(schema, cls.seq_id, len(p))
+            seq.set_data(p)
+            for i in range(seq.seq_size):
+                intrfc[0].send(Datagram(
+                    seq.get_packet(i, Flags(0), fields).pack(),
+                    intrfc[1]
+                ))
+        else:
+            fields['body'] = p
+            intrfc[0].send(Datagram(
+                Packet(schema, Flags(0), fields).pack(),
+                intrfc[1]
+            ))
 
     @classmethod
     def receive(cls, p: Packet) -> None:
