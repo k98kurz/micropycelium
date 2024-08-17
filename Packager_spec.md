@@ -9,11 +9,15 @@ with even smaller data size.
 
 ## Encapsulation Model
 
-|-- Packet/sequence of packets --|
-|  |-- Package ---------------|  |
-|  |  Application message     |  |
-|  |--------------------------|  |
-|--------------------------------|
+|-- Packet/sequence of packets --------|
+|  |-- Package ---------------------|  |
+|  |      app_id: 16                |  |
+|  |      half_sha256: 16           |  |
+|  |  |-- blob: variable --------|  |  |
+|  |  |   Application Message    |  |  |
+|  |  |--------------------------|  |  |
+|  |------------------------------- |  |
+|--------------------------------------|
 
 
 # Packager Operations
