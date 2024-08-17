@@ -184,81 +184,141 @@ def configure(_: Packager.Interface, data: dict):
     for key, value in data.items():
         config[key] = value
 
-def receive():
-    return inbox.popleft() if len(inbox) else None
+def receive1():
+    return inbox.popleft() if len(inbox) else castbox.popleft() if len(castbox) else None
 
-def send(datagram: Packager.Datagram):
+def receive2():
+    return outbox.popleft() if len(outbox) else castbox.popleft() if len(castbox) else None
+
+def send1(datagram: Packager.Datagram):
     outbox.append(datagram)
+
+def send2(datagram: Packager.Datagram):
+    inbox.append(datagram)
 
 def broadcast(datagram: Packager.Datagram):
     castbox.append(datagram)
 
+mock_interface1 = Packager.Interface(
+    'mock1',
+    1200,
+    configure,
+    Packager.SCHEMA_IDS,
+    receive1,
+    send1,
+    broadcast
+)
+
+mock_interface2 = Packager.Interface(
+    'mock1',
+    1200,
+    configure,
+    Packager.SCHEMA_IDS,
+    receive2,
+    send2,
+    broadcast
+)
 
 class TestInterface(unittest.TestCase):
-    mock_interface: Packager.Interface
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.mock_interface = Packager.Interface(
-            'mock',
-            1200,
-            configure,
-            Packager.SCHEMA_IDS,
-            receive,
-            send,
-            broadcast
-        )
-        return super().setUpClass()
-
     def test_validate(self):
-        assert self.mock_interface.validate()
+        assert mock_interface1.validate()
 
     def test_configure(self):
         assert 'thing' not in config
-        self.mock_interface.configure({'thing': 123})
+        mock_interface1.configure({'thing': 123})
         assert 'thing' in config
 
     def test_receive_process(self):
         assert len(inbox) == 0
         dgram = Packager.Datagram(b'hello', b'mac address')
         inbox.append(dgram)
-        assert len(self.mock_interface.inbox) == 0
-        asyncio.run(self.mock_interface.process())
-        assert len(self.mock_interface.inbox) == 1
-        assert self.mock_interface.receive() == dgram
-        assert len(self.mock_interface.inbox) == 0
+        assert len(mock_interface1.inbox) == 0
+        asyncio.run(mock_interface1.process())
+        assert len(mock_interface1.inbox) == 1
+        assert mock_interface1.receive() == dgram
+        assert len(mock_interface1.inbox) == 0
         assert len(inbox) == 0
 
     def test_send_process(self):
         assert len(outbox) == 0
         dgram = Packager.Datagram(b'hello', b'mac address')
-        assert len(self.mock_interface.outbox) == 0
-        self.mock_interface.send(dgram)
-        assert len(self.mock_interface.outbox) == 1
+        assert len(mock_interface1.outbox) == 0
+        mock_interface1.send(dgram)
+        assert len(mock_interface1.outbox) == 1
         assert len(outbox) == 0
-        asyncio.run(self.mock_interface.process())
-        assert len(self.mock_interface.outbox) == 0
+        asyncio.run(mock_interface1.process())
+        assert len(mock_interface1.outbox) == 0
         assert len(outbox) == 1
+        outbox.pop()
 
     def test_broadcast_process(self):
         assert len(castbox) == 0
         dgram = Packager.Datagram(b'hello', b'mac address')
-        assert len(self.mock_interface.castbox) == 0
-        self.mock_interface.broadcast(dgram)
-        assert len(self.mock_interface.castbox) == 1
+        assert len(mock_interface1.castbox) == 0
+        mock_interface1.broadcast(dgram)
+        assert len(mock_interface1.castbox) == 1
         assert len(castbox) == 0
-        asyncio.run(self.mock_interface.process())
-        assert len(self.mock_interface.castbox) == 0
+        asyncio.run(mock_interface1.process())
+        assert len(mock_interface1.castbox) == 0
         assert len(castbox) == 1
+        castbox.pop()
 
 
 class TestPeer(unittest.TestCase):
-    ...
+    def test_e2e(self):
+        peer = Packager.Peer(b'123', {b'mac': mock_interface1})
+        assert len(peer.addrs) == 0
+        peer.set_addr(Packager.Address(b'\x00', b'\x00\x00\x00'))
+        assert len(peer.addrs) == 1
+        peer.set_addr(Packager.Address(b'\x01', b'\x01\x00\x00'))
+        assert len(peer.addrs) == 2
+        peer.set_addr(Packager.Address(b'\x02', b'\x02\x00\x00'))
+        assert len(peer.addrs) == 2
+        assert peer.addrs[0].tree_state == b'\x01'
+        assert peer.addrs[1].tree_state == b'\x02'
 
 
 class TestPackager(unittest.TestCase):
-    # def test_add_peer_remove_peer_e2e(self):
-        # ...
-    ...
+    def test_add_interface_remove_interface_e2e(self):
+        assert len(Packager.Packager.interfaces) == 0
+        Packager.Packager.add_interface(mock_interface1)
+        assert len(Packager.Packager.interfaces) == 1
+        Packager.Packager.remove_interface(mock_interface1)
+        assert len(Packager.Packager.interfaces) == 0
+
+    def test_add_peer_remove_peer(self):
+        assert len(Packager.Packager.peers.keys()) == 0
+        Packager.Packager.add_peer(b'peer0', {b'mac0': mock_interface1})
+        assert len(Packager.Packager.peers.keys()) == 1
+        Packager.Packager.remove_peer(b'peer0')
+        assert len(Packager.Packager.peers.keys()) == 0
+
+    def test_add_route_remove_route(self):
+        assert len(Packager.Packager.routes.keys()) == 0
+        addr = Packager.Address(b'\x00', b'12345')
+        with self.assertRaises(AssertionError) as e:
+            Packager.Packager.add_route(b'peer0', addr)
+        assert 'peer not added' in str(e.exception)
+        Packager.Packager.add_peer(b'peer0', {b'mac0': mock_interface1})
+        Packager.Packager.add_route(b'peer0', addr)
+        assert len(Packager.Packager.routes.keys()) == 1
+        Packager.Packager.remove_route(addr)
+        assert len(Packager.Packager.routes.keys()) == 0
+        # cleanup
+        Packager.Packager.remove_peer(b'peer0')
+
+    def test_set_addr(self):
+        assert len(Packager.Packager.node_addrs) == 0
+        Packager.Packager.set_addr(Packager.Address(b'\x00', b'local node addr 0'))
+        assert len(Packager.Packager.node_addrs) == 1
+        Packager.Packager.set_addr(Packager.Address(b'\x01', b'local node addr 1'))
+        assert len(Packager.Packager.node_addrs) == 2
+        Packager.Packager.set_addr(Packager.Address(b'\x02', b'local node addr 2'))
+        assert len(Packager.Packager.node_addrs) == 2
+        assert Packager.Packager.node_addrs[0].tree_state == b'\x01'
+        assert Packager.Packager.node_addrs[1].tree_state == b'\x02'
+        # cleanup
+        Packager.Packager.node_addrs.clear()
 
 
 if __name__ == '__main__':

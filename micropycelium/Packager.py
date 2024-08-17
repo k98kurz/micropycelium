@@ -723,6 +723,15 @@ class Interface:
 
     async def process(self):
         """Process Interface actions."""
+        if self.receive_func:
+            datagram = self.receive_func()
+            if datagram:
+                self.inbox.append(datagram)
+        elif self.receive_func_async:
+            datagram = await self.receive_func_async()
+            if datagram:
+                self.inbox.append(datagram)
+
         if len(self.outbox):
             if self.send_func:
                 self.send_func(self.outbox.popleft())
@@ -734,15 +743,6 @@ class Interface:
                 self.broadcast_func(self.castbox.popleft())
             elif self.broadcast_func_async:
                 await self.broadcast_func_async(self.castbox.popleft())
-
-        if self.receive_func:
-            datagram = self.receive_func()
-            if datagram:
-                self.inbox.append(datagram)
-        elif self.receive_func_async:
-            datagram = await self.receive_func_async()
-            if datagram:
-                self.inbox.append(datagram)
 
     def validate(self) -> bool:
         """Returns False if the interface does not have all required methods
@@ -764,6 +764,8 @@ class Interface:
         return True
 
 
+Address = namedtuple('Address', ['tree_state', 'address'])
+
 @native
 class Peer:
     """Class for tracking local peer connectivity info. Peer id should
@@ -784,7 +786,6 @@ class Peer:
         while len(self.addrs) > 2:
             self.addrs.popleft()
 
-Address = namedtuple('Address', ['tree_state', 'address'])
 
 @native
 class Packager:
@@ -825,7 +826,7 @@ class Packager:
         """
         if peer_id in cls.peers:
             peer = cls.peers.pop(peer_id)
-            for addr in peer.addr:
+            for addr in peer.addrs:
                 if addr in cls.routes:
                     cls.routes.pop(addr)
 
@@ -835,7 +836,7 @@ class Packager:
             Address for the peer to maintain routability during tree
             state transitions.
         """
-        assert peer_id in cls.peers
+        assert peer_id in cls.peers, 'peer not added'
         addrs = cls.peers[peer_id].addrs
         if len(addrs) > 1 and address not in addrs:
             cls.routes.pop(addrs[0])
