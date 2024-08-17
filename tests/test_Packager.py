@@ -1,4 +1,6 @@
+import asyncio
 from binascii import crc32
+from collections import deque
 from context import Packager
 import unittest
 
@@ -171,6 +173,92 @@ class TestSequence(unittest.TestCase):
         assert seq2.data == data, \
             (len(seq2.data), len(data), sequence.seq_size, seq2.seq_size,
              xor_diff(seq2.data, data))
+
+
+outbox = deque()
+inbox = deque()
+castbox = deque()
+config = {}
+
+def configure(_: Packager.Interface, data: dict):
+    for key, value in data.items():
+        config[key] = value
+
+def receive():
+    return inbox.popleft() if len(inbox) else None
+
+def send(datagram: Packager.Datagram):
+    outbox.append(datagram)
+
+def broadcast(datagram: Packager.Datagram):
+    castbox.append(datagram)
+
+
+class TestInterface(unittest.TestCase):
+    mock_interface: Packager.Interface
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.mock_interface = Packager.Interface(
+            'mock',
+            1200,
+            configure,
+            Packager.SCHEMA_IDS,
+            receive,
+            send,
+            broadcast
+        )
+        return super().setUpClass()
+
+    def test_validate(self):
+        assert self.mock_interface.validate()
+
+    def test_configure(self):
+        assert 'thing' not in config
+        self.mock_interface.configure({'thing': 123})
+        assert 'thing' in config
+
+    def test_receive_process(self):
+        assert len(inbox) == 0
+        dgram = Packager.Datagram(b'hello', b'mac address')
+        inbox.append(dgram)
+        assert len(self.mock_interface.inbox) == 0
+        asyncio.run(self.mock_interface.process())
+        assert len(self.mock_interface.inbox) == 1
+        assert self.mock_interface.receive() == dgram
+        assert len(self.mock_interface.inbox) == 0
+        assert len(inbox) == 0
+
+    def test_send_process(self):
+        assert len(outbox) == 0
+        dgram = Packager.Datagram(b'hello', b'mac address')
+        assert len(self.mock_interface.outbox) == 0
+        self.mock_interface.send(dgram)
+        assert len(self.mock_interface.outbox) == 1
+        assert len(outbox) == 0
+        asyncio.run(self.mock_interface.process())
+        assert len(self.mock_interface.outbox) == 0
+        assert len(outbox) == 1
+
+    def test_broadcast_process(self):
+        assert len(castbox) == 0
+        dgram = Packager.Datagram(b'hello', b'mac address')
+        assert len(self.mock_interface.castbox) == 0
+        self.mock_interface.broadcast(dgram)
+        assert len(self.mock_interface.castbox) == 1
+        assert len(castbox) == 0
+        asyncio.run(self.mock_interface.process())
+        assert len(self.mock_interface.castbox) == 0
+        assert len(castbox) == 1
+
+
+class TestPeer(unittest.TestCase):
+    ...
+
+
+class TestPackager(unittest.TestCase):
+    # def test_add_peer_remove_peer_e2e(self):
+        # ...
+    ...
 
 
 if __name__ == '__main__':
