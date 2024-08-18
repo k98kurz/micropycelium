@@ -9,6 +9,10 @@ with even smaller data size.
 
 ## Encapsulation Model
 
+The primary encapsulation model is application message blobs within Packages
+within Packet(s). Additionally, applications will be able to encapsulate each
+other's Packages, e.g. to add a layer of encryption or use gossip for pub/sub.
+
 |-- Packet/sequence of packets --------|
 |  |-- Package ---------------------|  |
 |  |      app_id: 16                |  |
