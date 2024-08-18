@@ -793,6 +793,51 @@ class Peer:
 
 
 @native
+class Application:
+    name: str
+    description: str
+    version: int
+    id: bytes
+    receive_func: Callable
+    callbacks: dict[str, Callable]
+
+    def __init__(self, name: str, description: str, version: int,
+                 receive_func: Callable, callbacks: dict = {}) -> None:
+        self.name = name
+        self.description = description
+        self.version = version
+        name = name.encode()
+        description = description.encode()
+        self.id = sha256(pack(
+            f'!{len(name)}s{len(description)}sI',
+            name,
+            description,
+            version
+        )).digest()[:16]
+        self.receive_func = receive_func
+        self.callbacks = callbacks
+
+    def receive(self, blob: bytes):
+        """Passes self and blob to the receive_func callback."""
+        self.receive_func(self, blob)
+
+    def available(self, name: str|None = None) -> list[str]|bool:
+        """If name is passed, returns True if there is a callback with
+            that name and False if there is not. Otherwise, return a
+            list[str] of callback names.
+        """
+        return name in self.callbacks if name else [n for n in self.callbacks]
+
+    def invoke(self, name: str, *args, **kwargs):
+        """Tries to invoke the named callback, passing self, args, and
+            kwargs. Returns None if the callback does not exist or the
+            result of the function call. If the callback is async, a
+            coroutine will be returned.
+        """
+        return (self.callbacks[name](self, *args, **kwargs)) if name in self.callbacks else None
+
+
+@native
 class Packager:
     interfaces: list[Interface] = []
     seq_id: int = 0
@@ -804,6 +849,7 @@ class Packager:
     routes: dict[Address, bytes] = {}
     node_id: bytes = b''
     node_addrs: deque[Address] = deque()
+    apps: dict[bytes, Application] = {}
 
     @classmethod
     def add_interface(cls, interface: Interface):
@@ -986,6 +1032,16 @@ class Packager:
         ...
 
     @classmethod
+    def add_application(cls, app: Application):
+        cls.apps[app.id] = app
+
+    @classmethod
+    def remove_appliation(cls, app: Application|bytes):
+        if isinstance(app, Application):
+            app = app.id
+        cls.apps.pop(app)
+
+    @classmethod
     async def process(cls):
         """Process interface actions, then process Packager actions."""
         tasks = []
@@ -994,3 +1050,11 @@ class Packager:
         await asyncio.gather(*tasks)
 
         # to-do: Packager actions
+
+    @classmethod
+    async def work(cls, interval_ms: int = 100):
+        """Runs the process method in a loop."""
+        interval = interval_ms / 1000
+        while True:
+            await cls.process()
+            await asyncio.sleep(interval)

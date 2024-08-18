@@ -73,6 +73,51 @@ Receive operation, but can also be invoked through the Packager API directly.
 Directly invoking the Deliver operation may be useful for bootstrapping an
 application or for inter-application communication.
 
+## Add Application
+
+Registers an Application to receive Packages.
+
+## Remove Application
+
+Deregestiers an Application so it will not receive Packages.
+
+## Process
+
+Asynchronous method that creates a task for each interface to let them process
+their pending actions, then process pending Packager actions.
+
+## Work
+
+Asynchronous method that loops indefinitely, running the Process operation and
+then sleeping for a short timeout.
+
+
+# Application
+
+An Application consists of a callback for accepting Package delivery and a set
+of callbacks to expose functions to other Applications. The Application class
+must be initialized with a name, a description, a verison number, a callback for
+receiving Packages, and a dict with any functions that should be exposed to
+other Applications. If callbacks are async, the results of invoking them will be
+a coroutine.
+
+## Receive
+
+This method takes in a blob of bytes representing an application message and
+invokes the callback, passing self and blob.
+
+## Available
+
+Returns a list[str] of the names of available callbacks. If a str name is
+passed, it instead returns True if there is a callback with that name and False
+otherwise.
+
+## Invoke
+
+Takes a str name, args, and kwargs, and attempts to invoke the callback with the
+name, passing self, args, and kwargs. If the callback is async, a coroutine will
+be returned.
+
 
 # Package Format
 
