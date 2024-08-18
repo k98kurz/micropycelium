@@ -837,18 +837,18 @@ class Packager:
                     cls.routes.pop(addr)
 
     @classmethod
-    def add_route(cls, peer_id: bytes, address: Address):
+    def add_route(cls, node_id: bytes, address: Address):
         """Adds an address for a peer. Will also store the previous
             Address for the peer to maintain routability during tree
             state transitions.
         """
-        assert peer_id in cls.peers, 'peer not added'
-        addrs = cls.peers[peer_id].addrs
-        if len(addrs) > 1 and address not in addrs:
-            cls.routes.pop(addrs[0])
-        if address not in addrs:
-            cls.peers[peer_id].set_addr(address)
-        cls.routes[address] = peer_id
+        if node_id in cls.peers:
+            addrs = cls.peers[node_id].addrs
+            if len(addrs) > 1 and address not in addrs:
+                cls.routes.pop(addrs[0])
+            if address not in addrs:
+                cls.peers[node_id].set_addr(address)
+        cls.routes[address] = node_id
 
     @classmethod
     def remove_route(cls, address: Address):
@@ -922,7 +922,7 @@ class Packager:
             route to the node).
         """
         islocal = node_id in cls.peers
-        if not islocal and node_id not in cls.routes:
+        if not islocal and node_id not in [r for a, r in cls.routes.items()]:
             return False
 
         p = Package.from_blob(app_id, blob).pack()
@@ -932,9 +932,15 @@ class Packager:
         else:
             # to-do: routing
             # for now, pick one at random
-            addrs = list(cls.routes.keys())
+            peers = [p for _, p in cls.peers.items()]
+            addrs = [
+                a for a, p in cls.routes.items()
+                if p in cls.peers
+            ]
             addrs.sort(key=lambda _: randint(0, 255))
             addr = addrs[-1]
+            peer_id = cls.routes[addr]
+            peer = cls.peers[peer_id]
 
         intrfcs = peer.interfaces
         sids = set(intrfcs[list(intrfcs.keys())[0]].supported_schemas)
@@ -950,6 +956,7 @@ class Packager:
         fields = {'body':p, 'packet_id': cls.packet_id, 'seq_id': cls.seq_id, 'seq_size': 1}
         if not islocal:
             fields = {
+                **fields,
                 'to_addr': addr.address,
                 'from_addr': cls.node_addrs[-1].address,
                 'tree_state': addr.tree_state,

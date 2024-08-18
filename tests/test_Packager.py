@@ -315,9 +315,6 @@ class TestPackager(unittest.TestCase):
     def test_add_route_remove_route(self):
         assert len(Packager.Packager.routes.keys()) == 0
         addr = Packager.Address(b'\x00', b'12345')
-        with self.assertRaises(AssertionError) as e:
-            Packager.Packager.add_route(b'peer0', addr)
-        assert 'peer not added' in str(e.exception)
         Packager.Packager.add_peer(b'peer0', {b'mac0': mock_interface1})
         Packager.Packager.add_route(b'peer0', addr)
         assert len(Packager.Packager.routes.keys()) == 1
@@ -376,6 +373,86 @@ class TestPackager(unittest.TestCase):
         Packager.Packager.send(b'app 9659b56ae1d8', b'test', b'123')
         asyncio.run(Packager.Packager.process())
         assert len(outbox) == 1, outbox
+
+    def test_send_local_large(self):
+        Packager.Packager.add_interface(mock_interface1)
+        assert len(Packager.Packager.interfaces) == 1
+        assert len(outbox) == 0
+        app_id = b'app 9659b56ae1d8'
+        blob = b''.join([(i%256).to_bytes(1, 'big') for i in range(300)])
+        node_id = b'123'
+        Packager.Packager.add_peer(node_id, {b'macpeer0': mock_interface1})
+        Packager.Packager.send(app_id, blob, node_id)
+        asyncio.run(Packager.Packager.process())
+        asyncio.run(Packager.Packager.process())
+        asyncio.run(Packager.Packager.process())
+        assert len(outbox) == 2, (len(outbox), len(outbox[0].data))
+        packet = Packager.Packet.unpack(outbox.popleft().data)
+        sequence = Packager.Sequence(
+            packet.schema,
+            packet.fields['seq_id'],
+            seq_size=packet.fields['seq_size']+1
+        )
+        sequence.add_packet(packet)
+        while len(outbox):
+            packet = Packager.Packet.unpack(outbox.popleft().data)
+            sequence.add_packet(packet)
+        assert len(sequence.get_missing()) == 0, sequence.get_missing()
+        package = Packager.Package.from_sequence(sequence)
+        assert package.app_id == app_id, (app_id, package.app_id)
+        assert package.blob == blob
+
+    def test_send_route_small(self):
+        Packager.Packager.add_interface(mock_interface1)
+        assert len(Packager.Packager.interfaces) == 1
+        assert len(outbox) == 0
+        app_id = b'app 9659b56ae1d8'
+        blob = b'test'
+        peer_id = b'123'
+        peer_addr = Packager.Address(b'\x00', b'123')
+        node_id = b'321'
+        node_addr = Packager.Address(b'\x00', b'321')
+        Packager.Packager.set_addr(Packager.Address(b'\x00', b'node0'))
+        Packager.Packager.add_peer(peer_id, {b'macpeer0': mock_interface1})
+        Packager.Packager.add_route(peer_id, peer_addr)
+        Packager.Packager.add_route(node_id, node_addr)
+        Packager.Packager.send(app_id, blob, node_id)
+        asyncio.run(Packager.Packager.process())
+        assert len(outbox) == 1, outbox
+
+    def test_send_route_large(self):
+        Packager.Packager.add_interface(mock_interface1)
+        assert len(Packager.Packager.interfaces) == 1
+        assert len(outbox) == 0
+        app_id = b'app 9659b56ae1d8'
+        blob = b''.join([(i%256).to_bytes(1, 'big') for i in range(300)])
+        peer_id = b'123'
+        peer_addr = Packager.Address(b'\x00', b'123')
+        node_id = b'321'
+        node_addr = Packager.Address(b'\x00', b'321')
+        Packager.Packager.set_addr(Packager.Address(b'\x00', b'node0'))
+        Packager.Packager.add_peer(node_id, {b'macpeer0': mock_interface1})
+        Packager.Packager.add_route(peer_id, peer_addr)
+        Packager.Packager.add_route(node_id, node_addr)
+        Packager.Packager.send(app_id, blob, node_id)
+        asyncio.run(Packager.Packager.process())
+        asyncio.run(Packager.Packager.process())
+        asyncio.run(Packager.Packager.process())
+        assert len(outbox) == 2, (len(outbox), len(outbox[0].data))
+        packet = Packager.Packet.unpack(outbox.popleft().data)
+        sequence = Packager.Sequence(
+            packet.schema,
+            packet.fields['seq_id'],
+            seq_size=packet.fields['seq_size']+1
+        )
+        sequence.add_packet(packet)
+        while len(outbox):
+            packet = Packager.Packet.unpack(outbox.popleft().data)
+            sequence.add_packet(packet)
+        assert len(sequence.get_missing()) == 0, sequence.get_missing()
+        package = Packager.Package.from_sequence(sequence)
+        assert package.app_id == app_id, (app_id, package.app_id)
+        assert package.blob == blob
 
 
 if __name__ == '__main__':
