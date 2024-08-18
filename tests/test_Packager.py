@@ -307,7 +307,7 @@ class TestPackager(unittest.TestCase):
 
     def test_add_peer_remove_peer(self):
         assert len(Packager.Packager.peers.keys()) == 0
-        Packager.Packager.add_peer(b'peer0', {b'mac0': mock_interface1})
+        Packager.Packager.add_peer(b'peer0', [(b'macpeer0', mock_interface1)])
         assert len(Packager.Packager.peers.keys()) == 1
         Packager.Packager.remove_peer(b'peer0')
         assert len(Packager.Packager.peers.keys()) == 0
@@ -315,7 +315,7 @@ class TestPackager(unittest.TestCase):
     def test_add_route_remove_route(self):
         assert len(Packager.Packager.routes.keys()) == 0
         addr = Packager.Address(b'\x00', b'12345')
-        Packager.Packager.add_peer(b'peer0', {b'mac0': mock_interface1})
+        Packager.Packager.add_peer(b'peer0', [(b'macpeer0', mock_interface1)])
         Packager.Packager.add_route(b'peer0', addr)
         assert len(Packager.Packager.routes.keys()) == 1
         Packager.Packager.remove_route(addr)
@@ -369,7 +369,7 @@ class TestPackager(unittest.TestCase):
         Packager.Packager.add_interface(mock_interface1)
         assert len(Packager.Packager.interfaces) == 1
         assert len(outbox) == 0
-        Packager.Packager.add_peer(b'123', {b'macpeer0': mock_interface1})
+        Packager.Packager.add_peer(b'123', [(b'macpeer0', mock_interface1)])
         Packager.Packager.send(b'app 9659b56ae1d8', b'test', b'123')
         asyncio.run(Packager.Packager.process())
         assert len(outbox) == 1, outbox
@@ -381,7 +381,7 @@ class TestPackager(unittest.TestCase):
         app_id = b'app 9659b56ae1d8'
         blob = b''.join([(i%256).to_bytes(1, 'big') for i in range(300)])
         node_id = b'123'
-        Packager.Packager.add_peer(node_id, {b'macpeer0': mock_interface1})
+        Packager.Packager.add_peer(node_id, [(b'macpeer0', mock_interface1)])
         Packager.Packager.send(app_id, blob, node_id)
         asyncio.run(Packager.Packager.process())
         asyncio.run(Packager.Packager.process())
@@ -413,7 +413,7 @@ class TestPackager(unittest.TestCase):
         node_id = b'321'
         node_addr = Packager.Address(b'\x00', b'321')
         Packager.Packager.set_addr(Packager.Address(b'\x00', b'node0'))
-        Packager.Packager.add_peer(peer_id, {b'macpeer0': mock_interface1})
+        Packager.Packager.add_peer(peer_id, [(b'macpeer0', mock_interface1)])
         Packager.Packager.add_route(peer_id, peer_addr)
         Packager.Packager.add_route(node_id, node_addr)
         Packager.Packager.send(app_id, blob, node_id)
@@ -431,7 +431,7 @@ class TestPackager(unittest.TestCase):
         node_id = b'321'
         node_addr = Packager.Address(b'\x00', b'321')
         Packager.Packager.set_addr(Packager.Address(b'\x00', b'node0'))
-        Packager.Packager.add_peer(node_id, {b'macpeer0': mock_interface1})
+        Packager.Packager.add_peer(peer_id, [(b'macpeer0', mock_interface1)])
         Packager.Packager.add_route(peer_id, peer_addr)
         Packager.Packager.add_route(node_id, node_addr)
         Packager.Packager.send(app_id, blob, node_id)
@@ -453,6 +453,32 @@ class TestPackager(unittest.TestCase):
         package = Packager.Package.from_sequence(sequence)
         assert package.app_id == app_id, (app_id, package.app_id)
         assert package.blob == blob
+
+    def test_get_interface_and_send_packet(self):
+        Packager.Packager.add_interface(mock_interface1)
+        Packager.Packager.add_interface(mock_interface2)
+        assert len(Packager.Packager.interfaces) == 2
+        Packager.Packager.add_peer(b'123', [(b'macpeer0', mock_interface1)])
+        intrfc = Packager.Packager.get_interface(b'123')
+        assert type(intrfc) is tuple
+        assert len(intrfc) == 2
+        assert intrfc[0] == b'macpeer0'
+        assert intrfc[1] == mock_interface1
+
+        packet = Packager.Packet(
+            Packager.get_schema(Packager.SCHEMA_IDS[0]),
+            Packager.Flags(0),
+            {
+                'body': b'test',
+                'packet_id': 0,
+            }
+        )
+        assert len(outbox) == 0
+        # prevent mock_interface2 from receiving the datagram
+        Packager.Packager.remove_interface(mock_interface2)
+        assert Packager.Packager.send_packet(packet, b'123')
+        asyncio.run(Packager.Packager.process())
+        assert len(outbox) == 1, outbox
 
 
 if __name__ == '__main__':

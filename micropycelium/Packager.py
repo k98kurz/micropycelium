@@ -673,7 +673,15 @@ class Package:
         return cls(app_id, half_sha256, blob)
 
 
-Datagram = namedtuple('Datagram', ['data', 'addr'], defaults=(None,))
+@native
+class Datagram:
+    data: bytes
+    addr: bytes
+
+    def __init__(self, data: bytes, addr: bytes|None = None) -> None:
+        self.data = data
+        self.addr = addr
+
 
 @native
 class Interface:
@@ -769,7 +777,15 @@ class Interface:
         return True
 
 
-Address = namedtuple('Address', ['tree_state', 'address'])
+@native
+class Address:
+    tree_state: bytes
+    address: bytes
+
+    def __init__(self, tree_state: bytes, address: bytes) -> None:
+        self.tree_state = tree_state
+        self.address = address
+
 
 @native
 class Peer:
@@ -778,10 +794,10 @@ class Peer:
         address bytes to associated Interface.
     """
     id: bytes
-    interfaces: dict[bytes, Interface]
+    interfaces: list[tuple[bytes, Interface],]
     addrs: deque[Address]
 
-    def __init__(self, id: bytes, interfaces: dict[bytes, Interface]) -> None:
+    def __init__(self, id: bytes, interfaces: list[tuple[bytes, Interface],]) -> None:
         self.id = id
         self.interfaces = interfaces
         self.addrs = deque()
@@ -865,7 +881,7 @@ class Packager:
         cls.interfaces.remove(interface)
 
     @classmethod
-    def add_peer(cls, peer_id: bytes, interfaces: dict[bytes, Interface]):
+    def add_peer(cls, peer_id: bytes, interfaces: list[tuple[bytes, Interface],]):
         """Adds a peer to the local peer list. Packager will be able to
             send Packages to all such peers.
         """
@@ -904,6 +920,10 @@ class Packager:
 
     @classmethod
     def set_addr(cls, addr: Address):
+        """Sets the current tree embedding address for this node,
+            preserving the previous address to maintain routability
+            between tree state transitions.
+        """
         cls.node_addrs.append(addr)
         while len(cls.node_addrs) > 2:
             cls.node_addrs.popleft()
@@ -978,7 +998,6 @@ class Packager:
         else:
             # to-do: routing
             # for now, pick one at random
-            peers = [p for _, p in cls.peers.items()]
             addrs = [
                 a for a, p in cls.routes.items()
                 if p in cls.peers
@@ -989,15 +1008,14 @@ class Packager:
             peer = cls.peers[peer_id]
 
         intrfcs = peer.interfaces
-        sids = set(intrfcs[list(intrfcs.keys())[0]].supported_schemas)
-        for _, ntrfc in intrfcs.items():
+        sids = set(intrfcs[0][1].supported_schemas)
+        for _, ntrfc in intrfcs:
             sids.intersection_update(set(ntrfc.supported_schemas))
         sids = get_schemas(list(sids))
         sids = [s for s in sids if s.max_blob >= len(p)]
         sids.sort(key=lambda s: s.max_body, reverse=True)
         schema = sids[0]
-        intrfcs = [(intrfcs[i], i) for i in intrfcs]
-        intrfcs.sort(key=lambda mi: mi[0].bitrate, reverse=True)
+        intrfcs.sort(key=lambda mi: mi[1].bitrate, reverse=True)
         intrfc = intrfcs[0]
         fields = {'body':p, 'packet_id': cls.packet_id, 'seq_id': cls.seq_id, 'seq_size': 1}
         if not islocal:
@@ -1011,32 +1029,118 @@ class Packager:
             seq = Sequence(schema, cls.seq_id, len(p))
             seq.set_data(p)
             for i in range(seq.seq_size):
-                intrfc[0].send(Datagram(
+                intrfc[1].send(Datagram(
                     seq.get_packet(i, Flags(0), fields).pack(),
-                    intrfc[1]
+                    intrfc[0]
                 ))
         else:
             fields['body'] = p
-            intrfc[0].send(Datagram(
+            intrfc[1].send(Datagram(
                 Packet(schema, Flags(0), fields).pack(),
-                intrfc[1]
+                intrfc[0]
             ))
             cls.packet_id = (cls.packet_id + 1) % 256
 
     @classmethod
+    def get_interface(cls, node_id: bytes|None = None,
+                             to_addr: Address|None = None,
+                             exclude: list[bytes,] = []) -> tuple[bytes, Interface]|None:
+        """Get the proper Interface and MAC for direct transmission to
+            the neighbor with the given node_id or for direct
+            transmission to the best candidate for routing toward the
+            given to_addr. Returns None if neither node_id nor to_addr
+            are passed or if an Interface cannot be found. If exclude is
+            passed, the Interfaces for those nodes with ids specified in
+            the list will be excluded from consideration.
+        """
+        if node_id in cls.peers:
+            # direct neighbors
+            intrfcs = cls.peers[node_id].interfaces
+            intrfcs.sort(key=lambda mi: mi[1].bitrate, reverse=True)
+            return intrfcs[0]
+        elif node_id in (nid for _, nid in cls.routes.items()):
+            # known node reachable via routing; find next hop
+            # set to_addr
+            addrs = [addr for addr, pid in cls.routes.items() if pid == node_id]
+            nowaddrs = [a for a in addrs if a.tree_state == cls.node_addrs[-1].tree_state]
+            if len(nowaddrs):
+                to_addr = nowaddrs[0]
+            to_addr = addrs[0]
+        if to_addr:
+            # need to route
+            # to-do: routing
+            # for now, pick one at random
+            addrs = [
+                a for a, p in cls.routes.items()
+                if p in cls.peers
+            ]
+            addrs.sort(key=lambda _: randint(0, 255))
+            addr = addrs[-1]
+            peer_id = cls.routes[addr]
+            intrfcs = cls.peers[peer_id].interfaces
+            intrfcs.sort(key=lambda mi: mi[1].bitrate, reverse=True)
+            return intrfcs[0]
+        else:
+            return None
+
+    @classmethod
+    def send_packet(cls, packet: Packet, node_id: bytes = None) -> bool:
+        """Attempts to send a Packet either to a specific node or toward
+            the to_addr field. Returns False if it cannot be sent.
+        """
+        if node_id in cls.peers:
+            # direct neighbors
+            mac = cls.get_interface(node_id)
+        elif node_id in (nid for _, nid in cls.routes.items()):
+            # known node reachable via routing
+            mac = cls.get_interface(node_id)
+        elif 'to_addr' in packet.fields and 'from_addr' in packet.fields:
+            # this is an intermediate hop
+            to_addr = Address(packet.fields['tree_state'], packet.fields['to_addr'])
+            mac = cls.get_interface(to_addr=to_addr)
+            packet.fields['ttl'] -= 1
+
+            if packet.fields['ttl'] <= 0:
+                # drop the packet
+                return False
+        else:
+            return False
+
+        if not mac:
+            return False
+        mac[1].send(Datagram(packet.pack(), mac[0]))
+        return True
+
+    @classmethod
     def receive(cls, p: Packet) -> None:
+        """Receives a Packet and determines what to do with it. If it is
+            a routable packet
+        """
         ...
 
     @classmethod
     def deliver(cls, p: Package) -> bool:
-        ...
+        """Attempt to deliver a Package. Returns False if the Package
+            half_sha256 is invalid for the blob, or if the Application
+            was not registered, or if the Application's receive method
+            errors. Otherwise returns True.
+        """
+        if p.half_sha256 != sha256(p.blob).digest()[:16] or p.app_id not in cls.apps:
+            return False
+        try:
+            cls.apps[p.app_id].receive(p.blob)
+            return True
+        except:
+            return False
 
     @classmethod
     def add_application(cls, app: Application):
+        """Registers an Application to accept Package delivery."""
         cls.apps[app.id] = app
 
     @classmethod
     def remove_appliation(cls, app: Application|bytes):
+        """Deregisters an Application to no longer accept Package delivery."""
         if isinstance(app, Application):
             app = app.id
         cls.apps.pop(app)
