@@ -6,12 +6,25 @@ from math import ceil
 from micropython import native, _const
 from random import randint
 from struct import pack, unpack
+from time import time
 import asyncio
 
 try:
     from typing import Callable
 except ImportError:
     ...
+
+try:
+    from types import GeneratorType
+except ImportError:
+    GeneratorType = type((lambda: (yield))())
+
+if hasattr(asyncio, 'coroutines'):
+    def iscoroutine(c):
+        return asyncio.coroutines.iscoroutine(c)
+else:
+    def iscoroutine(c):
+        return isinstance(c, GeneratorType)
 
 
 VERSION = _const(0)
@@ -676,10 +689,11 @@ class Package:
 @native
 class Datagram:
     data: bytes
-    addr: bytes
-
-    def __init__(self, data: bytes, addr: bytes|None = None) -> None:
+    intrfc_id: bytes|None
+    addr: bytes|None
+    def __init__(self, data: bytes, intrfc_id: bytes|None = None, addr: bytes|None = None) -> None:
         self.data = data
+        self.intrfc_id = intrfc_id
         self.addr = addr
 
 
@@ -688,6 +702,7 @@ class Interface:
     name: str
     supported_schemas: list[int]
     bitrate: int
+    id: bytes
     inbox: deque[Datagram]
     outbox: deque[Datagram]
     castbox: deque[Datagram]
@@ -711,6 +726,10 @@ class Interface:
         self._configure = configure
         self.bitrate = bitrate
         self.supported_schemas = supported_schemas
+        self.id = sha256(
+            name.encode() + bitrate.to_bytes(4, 'big') +
+            b''.join([i.to_bytes(1, 'big') for i in supported_schemas])
+        ).digest()[:4]
         self.receive_func = receive_func
         self.send_func = send_func
         self.broadcast_func = broadcast_func
@@ -854,18 +873,48 @@ class Application:
 
 
 @native
+class Event:
+    ts: int # in milliseconds
+    id: bytes
+    handler: Callable
+    args: tuple
+    kwargs: dict
+    def __init__(self, ts: int, id: bytes, handler: Callable,
+                 *args, **kwargs) -> None:
+        self.ts = ts
+        self.id = id
+        self.handler = handler
+        self.args = args
+        self.kwargs = kwargs
+
+
+@native
+class InSequence:
+    seq: Sequence
+    src: bytes|Address
+    retry: int
+    def __init__(self, seq: Sequence, src: bytes|Address) -> None:
+        self.seq = seq
+        self.src = src
+        self.retry = 2
+
+
+@native
 class Packager:
     interfaces: list[Interface] = []
     seq_id: int = 0
     packet_id: int = 0
     seq_cache: dict[int, Sequence] = {} # to-do
     apps: dict[bytes, object] = {}
-    in_seqs: dict[int, Sequence] = {}
+    in_seqs: dict[int, InSequence] = {}
     peers: dict[bytes, Peer] = {}
     routes: dict[Address, bytes] = {}
     node_id: bytes = b''
     node_addrs: deque[Address] = deque()
     apps: dict[bytes, Application] = {}
+    schedule: dict[bytes, Event] = {}
+    new_events: deque[Event] = deque([], 64)
+    running: bool = False
 
     @classmethod
     def add_interface(cls, interface: Interface):
@@ -1031,12 +1080,14 @@ class Packager:
             for i in range(seq.seq_size):
                 intrfc[1].send(Datagram(
                     seq.get_packet(i, Flags(0), fields).pack(),
+                    intrfc[1].id,
                     intrfc[0]
                 ))
         else:
             fields['body'] = p
             intrfc[1].send(Datagram(
                 Packet(schema, Flags(0), fields).pack(),
+                intrfc[1].id,
                 intrfc[0]
             ))
             cls.packet_id = (cls.packet_id + 1) % 256
@@ -1086,7 +1137,9 @@ class Packager:
     @classmethod
     def send_packet(cls, packet: Packet, node_id: bytes = None) -> bool:
         """Attempts to send a Packet either to a specific node or toward
-            the to_addr field. Returns False if it cannot be sent.
+            the to_addr field (decrement ttl); if flags.error is set,
+            send toward the from_addr field (no ttl decrement). Returns
+            False if it cannot be sent.
         """
         if node_id in cls.peers:
             # direct neighbors
@@ -1097,8 +1150,14 @@ class Packager:
         elif 'to_addr' in packet.fields and 'from_addr' in packet.fields:
             # this is an intermediate hop
             to_addr = Address(packet.fields['tree_state'], packet.fields['to_addr'])
-            mac = cls.get_interface(to_addr=to_addr)
-            packet.fields['ttl'] -= 1
+            from_addr = packet.fields['from_addr']
+            if packet.flags.error:
+                exclude = [cls.routes[to_addr]] if from_addr in cls.routes else []
+                mac = cls.get_interface(to_addr=from_addr, exclude=exclude)
+            else:
+                exclude = [cls.routes[from_addr]] if from_addr in cls.routes else []
+                mac = cls.get_interface(to_addr=to_addr, exclude=exclude)
+                packet.fields['ttl'] -= 1
 
             if packet.fields['ttl'] <= 0:
                 # drop the packet
@@ -1108,15 +1167,127 @@ class Packager:
 
         if not mac:
             return False
-        mac[1].send(Datagram(packet.pack(), mac[0]))
+        mac[1].send(Datagram(packet.pack(), mac[1].id, mac[0]))
         return True
 
     @classmethod
-    def receive(cls, p: Packet) -> None:
+    def sync_sequence(cls, seq_id: int):
+        """Requests retransmission of any missing packets."""
+        seq = cls.in_seqs[seq_id]
+        if seq.retry <= 0:
+            # drop sequence because the originator is not responding to rtx
+            cls.in_seqs.pop(seq_id)
+            return
+
+        flags = Flags(0)
+        flags.rtx = True
+        fields = {
+            'body': b'',
+            'seq_id': seq_id,
+            'seq_size': seq.seq.seq_size,
+        }
+
+        if isinstance(seq.src, Address):
+            tree_state = seq.src.tree_state
+            from_addr = [a for a in cls.node_addrs if a.tree_state == tree_state]
+            if len(from_addr) == 0:
+                # drop sequence because of tree state transition
+                cls.in_seqs.pop(seq_id)
+                return
+            fields['to_addr'] = seq.src.address
+            fields['tree_state'] = tree_state
+            fields['from_addr'] = from_addr[0]
+
+        for pid in seq.seq.get_missing():
+            cls.send_packet(Packet(
+                seq.seq.schema,
+                flags,
+                {
+                    'packet_id': pid,
+                    **fields
+                }
+            ))
+
+        # decrement retry counter and schedule event
+        seq.retry -= 1
+        eid = b'SS' + seq.seq.id.to_bytes(2, 'big')
+        cls.schedule[eid] = Event(
+            int(time()+30)*1000,
+            eid,
+            cls.sync_sequence,
+            seq_id
+        )
+
+    @classmethod
+    def receive(cls, p: Packet, intrfc: Interface, mac: bytes) -> None:
         """Receives a Packet and determines what to do with it. If it is
-            a routable packet
+            a routable packet, forward to the next hop using send_packet;
+            if that fails, set the error flag and transmit backwards
+            through the route.
         """
-        ...
+        src = b'' # source of Packet
+        if 'to_addr' in p.fields:
+            if p.fields['to_addr'] not in [a.address for a in cls.node_addrs]:
+                # forward
+                cls.send_packet(p)
+                return
+            else:
+                # this is the intended delivery point
+                src = p.fields['from_addr']
+                if p.flags.ask:
+                    # send ack
+                    flags = Flags(p.flags.state)
+                    flags.ask = False
+                    flags.ack = True
+                    fields = {
+                        'packet_id': p.id,
+                        'to_addr': p.fields['from_adr'],
+                        'from_addr': p.fields['to_adr'],
+                        'tree_state': p.fields['tree_state'],
+                        'body': b'',
+                    }
+                    if 'seq_id' in p.fields:
+                        fields['seq_size'] = p.fields['seq_size']
+                        fields['seq_id'] = p.fields['seq_id']
+                    cls.send_packet(Packet(
+                        p.schema,
+                        flags,
+                        fields
+                    ))
+        else:
+            for nid, peer in cls.peers.items():
+                if mac in [i[0] for i in peer.interfaces if i[1] is intrfc]:
+                    src = nid
+                    break
+
+        if 'seq_id' in p.fields:
+            # try to reconstitute the sequence
+            # first cancel pending sequence synchronization event
+            seq_id = p.fields['seq_id']
+            eid = b'SS' + seq_id.to_bytes(2, 'big')
+            if eid in cls.schedule:
+                cls.schedule.pop(eid)
+            if seq_id not in cls.in_seqs:
+                cls.in_seqs[seq_id] = InSequence(
+                    Sequence(p.schema, seq_id, p.fields['seq_size']),
+                    src
+                )
+            seq = cls.in_seqs[seq_id]
+            seq.retry = 3 # reset retries because the originator is reachable
+            if seq.seq.add_packet(p):
+                cls.deliver(Package.unpack(seq.seq.data))
+            else:
+                # schedule sequence sync event
+                cls.schedule[eid] = Event(
+                    int(time() + 30)*1000,
+                    eid,
+                    cls.sync_sequence,
+                    seq_id
+                )
+        else:
+            # parse and deliver the Package
+            cls.deliver(Package.unpack(p.body))
+            return
 
     @classmethod
     def deliver(cls, p: Package) -> bool:
@@ -1146,19 +1317,53 @@ class Packager:
         cls.apps.pop(app)
 
     @classmethod
+    def queue_event(cls, event: Event):
+        """Queues a new event. On the next call to cls.process(), it
+            will be added to the schedule, overwriting any event with
+            the same ID.
+        """
+        cls.new_events.append(event)
+
+    @classmethod
     async def process(cls):
         """Process interface actions, then process Packager actions."""
+        # schedule new events
+        while len(cls.new_events):
+            event = cls.new_events.popleft()
+            cls.schedule[event.id] = event
+
+        # process interface actions
         tasks = []
         for intrfc in cls.interfaces:
             tasks.append(intrfc.process())
         await asyncio.gather(*tasks)
 
-        # to-do: Packager actions
+        # handle scheduled events
+        ce = []
+        cos = []
+        now = int(time()*1000)
+        for eid, event in cls.schedule.items():
+            if now >= event.ts:
+                t = event.handler(*event.args, **event.kwargs)
+                if iscoroutine(t):
+                    cos.append(t)
+                ce.append((eid, event.ts))
+        if len(cos):
+            await asyncio.gather(cos)
+
+        # remove all processed events from the schedule
+        for eid, ts in ce:
+            cls.schedule.pop(eid)
 
     @classmethod
     async def work(cls, interval_ms: int = 100):
         """Runs the process method in a loop."""
-        interval = interval_ms / 1000
-        while True:
+        cls.running = True
+        while cls.running:
             await cls.process()
-            await asyncio.sleep(interval)
+            await asyncio.sleep(interval_ms / 1000)
+
+    @classmethod
+    def stop(cls):
+        """Sets cls.running to False for graceful shutdown of worker."""
+        cls.running = False

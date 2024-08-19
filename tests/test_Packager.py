@@ -2,6 +2,7 @@ import asyncio
 from binascii import crc32
 from collections import deque
 from context import Packager
+from time import time, sleep
 import unittest
 
 
@@ -226,6 +227,15 @@ mock_interface2 = Packager.Interface(
 )
 
 class TestInterface(unittest.TestCase):
+    def tearDown(self) -> None:
+        inbox.clear()
+        outbox.clear()
+        castbox.clear()
+        mock_interface1.inbox.clear()
+        mock_interface1.outbox.clear()
+        mock_interface1.castbox.clear()
+        return super().tearDown()
+
     def test_validate(self):
         assert mock_interface1.validate()
 
@@ -236,7 +246,7 @@ class TestInterface(unittest.TestCase):
 
     def test_receive_process(self):
         assert len(inbox) == 0
-        dgram = Packager.Datagram(b'hello', b'mac address')
+        dgram = Packager.Datagram(b'hello', mock_interface1.id, b'mac address')
         inbox.append(dgram)
         assert len(mock_interface1.inbox) == 0
         asyncio.run(mock_interface1.process())
@@ -247,7 +257,7 @@ class TestInterface(unittest.TestCase):
 
     def test_send_process(self):
         assert len(outbox) == 0
-        dgram = Packager.Datagram(b'hello', b'mac address')
+        dgram = Packager.Datagram(b'hello', mock_interface1.id, b'mac address')
         assert len(mock_interface1.outbox) == 0
         mock_interface1.send(dgram)
         assert len(mock_interface1.outbox) == 1
@@ -259,7 +269,7 @@ class TestInterface(unittest.TestCase):
 
     def test_broadcast_process(self):
         assert len(castbox) == 0
-        dgram = Packager.Datagram(b'hello', b'mac address')
+        dgram = Packager.Datagram(b'hello', mock_interface1.id, b'mac address')
         assert len(mock_interface1.castbox) == 0
         mock_interface1.broadcast(dgram)
         assert len(mock_interface1.castbox) == 1
@@ -284,6 +294,51 @@ class TestPeer(unittest.TestCase):
         assert peer.addrs[1].tree_state == b'\x02'
 
 
+app_blobs = []
+
+test_app = Packager.Application(
+    'test',
+    'test',
+    0,
+    lambda _, blob: app_blobs.append(blob),
+    {
+        'hello': lambda _: 'world',
+    }
+)
+
+class TestApplication(unittest.TestCase):
+    def setUp(self) -> None:
+        app_blobs.clear()
+        return super().setUp()
+
+    def tearDown(self) -> None:
+        app_blobs.clear()
+        return super().tearDown()
+
+    def test_has_id(self):
+        assert type(test_app.id) is bytes
+        assert len(test_app.id) == 16
+
+    def test_receive(self):
+        assert len(app_blobs) == 0
+        test_app.receive(b'hello world')
+        assert len(app_blobs) == 1
+        assert app_blobs[0] == b'hello world'
+
+    def test_available(self):
+        a1 = test_app.available()
+        assert type(a1) is list
+        assert all([type(a) is str for a in a1])
+
+        a2 = test_app.available('nope')
+        assert type(a2) is bool
+        assert not a2
+        assert test_app.available('hello')
+
+    def test_invoke(self):
+        assert test_app.invoke('hello') == 'world'
+
+
 class TestPackager(unittest.TestCase):
     def setUp(self) -> None:
         inbox.clear()
@@ -297,6 +352,19 @@ class TestPackager(unittest.TestCase):
         Packager.Packager.peers.clear()
         Packager.Packager.routes.clear()
         return super().setUp()
+
+    def tearDown(self) -> None:
+        inbox.clear()
+        outbox.clear()
+        castbox.clear()
+        mock_interface1.inbox.clear()
+        mock_interface1.outbox.clear()
+        mock_interface1.castbox.clear()
+        Packager.Packager.interfaces.clear()
+        Packager.Packager.node_addrs.clear()
+        Packager.Packager.peers.clear()
+        Packager.Packager.routes.clear()
+        return super().tearDown()
 
     def test_add_interface_remove_interface_e2e(self):
         assert len(Packager.Packager.interfaces) == 0
@@ -479,6 +547,40 @@ class TestPackager(unittest.TestCase):
         assert Packager.Packager.send_packet(packet, b'123')
         asyncio.run(Packager.Packager.process())
         assert len(outbox) == 1, outbox
+
+    def test_event_handling_in_work(self):
+        now = int(time())
+        log = []
+        def logcallback(count: int):
+            log.append(int(time()*1000))
+            if count > 1:
+                return
+            event = Packager.Event(
+                (now-1)*1000,
+                b'log' + count.to_bytes(1, 'big'),
+                logcallback,
+                count+1
+            )
+            Packager.Packager.queue_event(event)
+
+        Packager.Packager.queue_event(Packager.Event(
+            (now+1)*1000,
+            b'test',
+            Packager.Packager.stop,
+        ))
+        Packager.Packager.queue_event(Packager.Event(
+            (now-1)*1000,
+            b'log',
+            logcallback,
+            0
+        ))
+        assert len(log) == 0
+        assert not Packager.Packager.running
+        asyncio.run(Packager.Packager.work())
+        assert not Packager.Packager.running
+        assert now < int(time()) <= now + 2
+        assert len(log) == 3, len(log)
+        assert len(Packager.Packager.schedule.keys()) == 0
 
 
 if __name__ == '__main__':
