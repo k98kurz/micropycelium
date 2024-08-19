@@ -26,6 +26,9 @@ discover each other
 - [ ] VOUTE-based routing: tree state construction and updating
 - [ ] VOUTE-based routing: tree distance routing (flags.mode=0)
 - [ ] VOUTE-based routing: common prefix length routing (flags.mode=1)
+- [ ] Cache management
+- [ ] Refactor: Store class to save RAM with Sequence handling
+- [ ] Peer throttling/congestion control
 - [ ] RYLR-998 plugin
 - [ ] UDP/IP
 - [ ] Bluetooth plugin

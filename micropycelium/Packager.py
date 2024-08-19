@@ -815,16 +815,33 @@ class Peer:
     id: bytes
     interfaces: list[tuple[bytes, Interface],]
     addrs: deque[Address]
+    timeout: int # drop peers that turn off
+    throttle: int # congestion control
+    last_tx: int
 
     def __init__(self, id: bytes, interfaces: list[tuple[bytes, Interface],]) -> None:
         self.id = id
         self.interfaces = interfaces
         self.addrs = deque()
+        self.timeout = 4
+        self.throttle = 0
+        self.last_tx = 0
 
     def set_addr(self, addr: Address):
         self.addrs.append(addr)
         while len(self.addrs) > 2:
             self.addrs.popleft()
+
+
+@native
+class Node:
+    """Class for tracking nodes and the apps they support."""
+    id: bytes
+    apps: list[bytes]
+
+    def __init__(self, id: bytes, apps: list[bytes] = []) -> None:
+        self.id = id
+        self.apps = apps
 
 
 @native

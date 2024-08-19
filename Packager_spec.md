@@ -49,18 +49,18 @@ resequencing in case of transmission failure via one interface).
 
 ## Receive
 
-Receives a Packet and determines what to do with it. Once routing is enabled, if
-the Packet is routable, it will attempt to forward the packet.
+Receives a Packet and the interface and MAC it came from, and determines what to
+do with it. If the Packet is routable, it will attempt to forward the packet.
 
-When a node receives a Package in a single packet, it will check the application
-ID and drop the Package if the application has not registered to accept Packages.
-If the application was registered, the Package will be delivered to the
-application.
+When a node receives a Package in a single packet, it will check the Application
+ID and drop the Package if the Application has not registered to accept Packages.
+If the Application was registered, the Package will be delivered to the
+Application.
 
 When a node receives a sequence, it will request retransmission of the first
 packet in the sequence (`packet_id=0`) if it did not receive it, but it will not
 request retransmission of other missing packets until it receives the first
-packet (which contains the application ID) and verifies that the Package will be
+packet (which contains the Application ID) and verifies that the Package will be
 deliverable. If the Package is deliverable, the node will attempt to collect the
 whole Package sequence and deliver the Package to the appropriate application.
 
@@ -68,10 +68,10 @@ This will be called by an asynchronous task that monitors network interfaces.
 
 ## Deliver
 
-Takes a Package and attempts to deliver it to the application. Invoked by the
+Takes a Package and attempts to deliver it to the Application. Invoked by the
 Receive operation, but can also be invoked through the Packager API directly.
 Directly invoking the Deliver operation may be useful for bootstrapping an
-application or for inter-application communication.
+Application or for inter-Application communication.
 
 ## Add Application
 
@@ -545,10 +545,12 @@ with a 1-byte `packet_id` field can be broadcast.
 ## Ack
 
 When a receiving node receives and processes a packet with `flags.ask=1`,
-it will queue up a response packet using the simplest appropriate schema that
-has `flags.ack=1`, an empty `body`, and the same `packet_id` as the received
-packet. If the received packet was part of a sequence, the `seq_size` and
-`seq_id` fields will be copied from the received packet.
+it will queue up a response packet using the same schema that has `flags.ack=1`,
+an empty `body`, and the same `packet_id` as the received packet. If the
+received packet was part of a sequence, the `seq_size` and `seq_id` fields will
+be copied from the received packet. If the packet was routed, the `to_addr` will
+be set to the `from_addr` of the original packet; the `from_addr` will be set to
+the `to_addr` of the original packet; and the `tree_state` field will be copied.
 
 ## Request Retransmission
 
@@ -705,19 +707,20 @@ nodes closer to the root, but sometimes takes longer paths.
 
 # Peer Discovery and Management
 
-The Packager system will include a peer discovery and management application.
-This application will maintain a list of peers (i.e. directly connected nodes
-reachable without packet routing) and the applications they support, and it will
-expose this data to other applications.
+The Packager system will include peer discovery and management logic. This will
+maintain a list of peers (i.e. directly connected nodes reachable without packet
+routing) and nodes (reachable with or without routing) and the applications they
+support, and it will expose this data to other applications.
 
 ## Peer list
 
 Each node will maintain a peer list containing the following information:
 
-- Peer ID: the public key of the peer
-- Interface: a tuple containing (interface_id, interface_info)
-- Timeout: an int used for automatic peer disconnects
-- Throttle Count: an int used to throttle bandwidth for a peer
+- id: the public key of the peer
+- interfaces: a list of tuples each containing (mac, interface_id)
+- timeout: an int used for automatic peer disconnects
+- throttle: an int used to throttle bandwidth for a peer
+- last_tx: an int used to track transmissions for throttling
 
 When a node adds a peer or receives a Beacon from that peer, it sets the timeout
 value to 4. After a node sends its own Beacon, it decrements every peer timeout
@@ -726,21 +729,40 @@ counter, then drops all peers with a timeout counter of 0.
 When a node receives a packet from a peer that includes `flags.throttle=1`, it
 will increment the throttle count for that peer; when it receives a packet from
 a peer that includes `flags.throttle=0`, it will decrement the throttle count
-for that peer unless it is already 0.
+for that peer unless it is already 0. When a node tries to send a packet to a
+peer with a throttle value greater than 0, it first checks the last_tx value; if
+it is more than `throttle * 1000` ms in the past, transmit the packet, otherwise
+schedule the transmission for `last_tx + throttle * 1000`.
+
+## Node list
+
+Each node will maintain a node list containing the following information:
+
+- id: the public key of the node
+- apps: list of IDs for apps the node supports
+- ts: int timestamp of last update
+
+See the Beacon and Gossip (Application Discovery) sections for details on how
+this is populated and updated. Nodes will be dropped from the list after 30
+minutes of the last update.
 
 ## Beacon
 
 At initialization and periodically thereafter, each node will broadcast a beacon
 Package introducing the node. The body of this beacon will be the byte 0x00, the
-node's public key, and the app IDs it supports, and it will use the simplest
-possible schema and all `flags` set to 0.
+node's ed25519 public key and up to 10 app IDs it supports, and it will use the
+simplest possible schema and all `flags` set to 0. This message format will be
+compatible with both ESP-NOW and RYLR-998 using Packet Schemas 0 and 20,
+respectively. If a node supports more than 10 apps, it will broadcast several
+beacons.
 
 ## Beacon Response
 
 Upon receiving a beacon from an unknown peer, a node will add this peer to its
 peer list and then respond by sending a beacon response to that peer. The beacon
-response Package body will contain the byte 0x01, the node's public key, and the
-app IDs it supports.
+response Package body will contain the byte 0x01, the node's public key, and up
+to 10 app IDs it supports. If the responding node supports mode than 10 apps, it
+will send additional beacon responses.
 
 When a node receives a beacon response Package, it will add that peer to its
 peer list.
