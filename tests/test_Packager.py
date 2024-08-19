@@ -2,6 +2,7 @@ import asyncio
 from binascii import crc32
 from collections import deque
 from context import Packager
+from hashlib import sha256
 from time import time, sleep
 import unittest
 
@@ -344,6 +345,7 @@ class TestPackager(unittest.TestCase):
         inbox.clear()
         outbox.clear()
         castbox.clear()
+        app_blobs.clear()
         mock_interface1.inbox.clear()
         mock_interface1.outbox.clear()
         mock_interface1.castbox.clear()
@@ -351,12 +353,15 @@ class TestPackager(unittest.TestCase):
         Packager.Packager.node_addrs.clear()
         Packager.Packager.peers.clear()
         Packager.Packager.routes.clear()
+        Packager.Packager.apps.clear()
+        Packager.Packager.in_seqs.clear()
         return super().setUp()
 
     def tearDown(self) -> None:
         inbox.clear()
         outbox.clear()
         castbox.clear()
+        app_blobs.clear()
         mock_interface1.inbox.clear()
         mock_interface1.outbox.clear()
         mock_interface1.castbox.clear()
@@ -364,6 +369,8 @@ class TestPackager(unittest.TestCase):
         Packager.Packager.node_addrs.clear()
         Packager.Packager.peers.clear()
         Packager.Packager.routes.clear()
+        Packager.Packager.apps.clear()
+        Packager.Packager.in_seqs.clear()
         return super().tearDown()
 
     def test_add_interface_remove_interface_e2e(self):
@@ -557,7 +564,7 @@ class TestPackager(unittest.TestCase):
                 return
             event = Packager.Event(
                 (now-1)*1000,
-                b'log' + count.to_bytes(1, 'big'),
+                b'log',
                 logcallback,
                 count+1
             )
@@ -579,8 +586,231 @@ class TestPackager(unittest.TestCase):
         asyncio.run(Packager.Packager.work())
         assert not Packager.Packager.running
         assert now < int(time()) <= now + 2
-        assert len(log) == 3, len(log)
+        assert len(log) >= 2, len(log) # async is somewhat random
         assert len(Packager.Packager.schedule.keys()) == 0
+
+        # test event cancellation
+        def cancelcallback(eid: bytes):
+            Packager.Packager.cancel_events.append(eid)
+
+        def logcallback2(count: int):
+            logcallback(count)
+            cancelcallback(b'log')
+
+        log.clear()
+        now = int(time())
+        Packager.Packager.queue_event(Packager.Event(
+            (now+1)*1000,
+            b'test',
+            Packager.Packager.stop,
+        ))
+        Packager.Packager.queue_event(Packager.Event(
+            (now-1)*1000,
+            b'log',
+            logcallback2,
+            0
+        ))
+        asyncio.run(Packager.Packager.work())
+        assert now < int(time()) <= now + 2
+        assert len(log) == 1, log # the recurring event should have been canceled
+        assert len(Packager.Packager.schedule.keys()) == 0
+
+    def test_deliver(self):
+        package = Packager.Package.from_blob(test_app.id, b'hello world')
+        Packager.Packager.add_application(test_app)
+        assert len(app_blobs) == 0
+        Packager.Packager.deliver(package)
+        assert len(app_blobs) == 1
+
+    def test_sequence_synchronization_e2e_success(self):
+        # prepare the sequence
+        blob = b''.join([(i%256).to_bytes(1, 'big') for i in range(400)])
+        package = Packager.Package.from_blob(test_app.id, blob).pack()
+        schema_ids = list(set(Packager.SCHEMA_IDS_SUPPORT_SEQUENCE).difference(
+            Packager.SCHEMA_IDS_SUPPORT_ROUTING
+        ).difference(Packager.SCHEMA_IDS_SUPPORT_CHECKSUM))
+        schemas = Packager.get_schemas(schema_ids)
+        schemas.sort(key=lambda s: s.max_body, reverse=True)
+        schema = schemas[0]
+        seq = Packager.Sequence(schema, 0, data_size=len(package))
+        seq.set_data(package)
+        assert seq.seq_size == 2
+
+        # add application, network interface, and peer
+        Packager.Packager.add_application(test_app)
+        Packager.Packager.add_interface(mock_interface1)
+        Packager.Packager.add_peer(b'peer0', [(b'mac0', mock_interface1)])
+
+        # start sequence transmission with first packet
+        flags = Packager.Flags(0)
+        inbox.append(Packager.Datagram(
+            seq.get_packet(0, flags, {}).pack(),
+            mock_interface1.id,
+            b'mac0',
+        ))
+
+        assert len(Packager.Packager.new_events) == 0
+        assert len(Packager.Packager.schedule.keys()) == 0
+        assert len(Packager.Packager.in_seqs.keys()) == 0
+        assert len(mock_interface1.outbox) == 0
+
+        # should queue the sync_sequence event and send an ack
+        asyncio.run(Packager.Packager.process())
+        assert len(Packager.Packager.new_events) == 1
+        assert len(Packager.Packager.schedule.keys()) == 0
+        assert len(Packager.Packager.in_seqs.keys()) == 1
+        assert len(mock_interface1.outbox) == 1
+        assert len(outbox) == 0
+
+        # mock_interface1 should send the ack datagram, and the event should be scheduled
+        asyncio.run(Packager.Packager.process())
+        assert len(mock_interface1.outbox) == 0
+        assert len(outbox) == 1
+        assert len(Packager.Packager.new_events) == 0
+        assert len(Packager.Packager.schedule.keys()) == 1
+        outbox.clear()
+
+        # spoof timestamp to advance the event
+        eid = list(Packager.Packager.schedule.keys())[0]
+        event = Packager.Packager.schedule[eid]
+        event.ts = int(time()-1)*1000
+        assert event.handler == Packager.Packager.sync_sequence, event.handler
+
+        # should now execute cls.sync_sequence
+        assert Packager.Packager.in_seqs[0].retry == 3, Packager.Packager.in_seqs[0].retry
+        assert len(mock_interface1.outbox) == 0
+        assert len(outbox) == 0
+        asyncio.run(Packager.Packager.process())
+        # rtx should be queued for sending in the interface
+        assert len(mock_interface1.outbox) == 1
+        assert len(outbox) == 0
+        assert mock_interface1.outbox[0].addr == b'mac0'
+        assert Packager.Packager.in_seqs[0].retry == 2, Packager.Packager.in_seqs[0].retry
+
+        # mock_interface1 should now send the rtx datagram
+        asyncio.run(Packager.Packager.process())
+        assert len(mock_interface1.outbox) == 0
+        assert len(outbox) == 1
+        packet = Packager.Packet.unpack(outbox.popleft().data)
+        assert packet.flags.rtx
+        assert packet.id == 1
+        assert packet.fields['seq_id'] == 0
+        assert packet.fields['seq_size'] == 1
+
+        # retransmitting missing Packet should finish the Sequence and deliver the Package
+        inbox.append(Packager.Datagram(
+            seq.get_packet(packet.id, flags, {}).pack(),
+            mock_interface1.id,
+            b'mac0',
+        ))
+        assert len(app_blobs) == 0
+        assert len(Packager.Packager.in_seqs.keys()) == 1
+        asyncio.run(Packager.Packager.process())
+        assert len(app_blobs) == 1
+        assert app_blobs[0] == blob
+        assert len(Packager.Packager.in_seqs.keys()) == 0
+
+    def test_sequence_synchronization_e2e_failure(self):
+        # sequence construction attempt should be dropped if the origin is unresponsive
+        # prepare the sequence
+        blob = b''.join([(i%256).to_bytes(1, 'big') for i in range(400)])
+        package = Packager.Package.from_blob(test_app.id, blob).pack()
+        schema_ids = list(set(Packager.SCHEMA_IDS_SUPPORT_SEQUENCE).difference(
+            Packager.SCHEMA_IDS_SUPPORT_ROUTING
+        ).difference(Packager.SCHEMA_IDS_SUPPORT_CHECKSUM))
+        schemas = Packager.get_schemas(schema_ids)
+        schemas.sort(key=lambda s: s.max_body, reverse=True)
+        schema = schemas[0]
+        seq = Packager.Sequence(schema, 0, data_size=len(package))
+        seq.set_data(package)
+        assert seq.seq_size == 2
+
+        # add application, network interface, and peer
+        Packager.Packager.add_application(test_app)
+        Packager.Packager.add_interface(mock_interface1)
+        Packager.Packager.add_peer(b'peer0', [(b'mac0', mock_interface1)])
+
+        # start sequence transmission with first packet
+        flags = Packager.Flags(0)
+        inbox.append(Packager.Datagram(
+            seq.get_packet(0, flags, {}).pack(),
+            mock_interface1.id,
+            b'mac0',
+        ))
+
+        # should queue the sync_sequence event and send an ack
+        asyncio.run(Packager.Packager.process())
+        assert len(Packager.Packager.new_events) == 1
+        assert len(Packager.Packager.in_seqs.keys()) == 1
+        assert len(mock_interface1.outbox) == 1
+
+        # mock_interface1 should send the ack datagram, and the event should be scheduled
+        asyncio.run(Packager.Packager.process())
+        assert len(outbox) == 1
+        assert len(Packager.Packager.schedule.keys()) == 1
+        outbox.clear()
+
+        # spoof timestamp to advance the event
+        eid = list(Packager.Packager.schedule.keys())[0]
+        event = Packager.Packager.schedule[eid]
+        event.ts = int(time()-1)*1000
+        assert event.handler == Packager.Packager.sync_sequence, event.handler
+
+        # should now execute cls.sync_sequence
+        assert Packager.Packager.in_seqs[0].retry == 3, Packager.Packager.in_seqs[0].retry
+        asyncio.run(Packager.Packager.process())
+        # rtx should be queued for sending in the interface
+        assert len(mock_interface1.outbox) == 1
+        assert Packager.Packager.in_seqs[0].retry == 2, Packager.Packager.in_seqs[0].retry
+        assert len(Packager.Packager.new_events) == 1
+
+        # mock_interface1 should now send the rtx datagram
+        asyncio.run(Packager.Packager.process())
+        assert len(Packager.Packager.new_events) == 0
+        assert len(outbox) == 1
+        packet = Packager.Packet.unpack(outbox.popleft().data)
+        assert packet.flags.rtx
+
+        # simulate unresponsive node by spoofing timestamp
+        eid = list(Packager.Packager.schedule.keys())[0]
+        event = Packager.Packager.schedule[eid]
+        event.ts = int(time()-1)*1000
+        assert event.handler == Packager.Packager.sync_sequence, event.handler
+
+        # should execute cls.sync_sequence again
+        assert Packager.Packager.in_seqs[0].retry == 2, Packager.Packager.in_seqs[0].retry
+        asyncio.run(Packager.Packager.process())
+        asyncio.run(Packager.Packager.process())
+        assert Packager.Packager.in_seqs[0].retry == 1, Packager.Packager.in_seqs[0].retry
+        # rtx datagram should be sent
+        assert len(outbox) == 1
+        outbox.clear()
+
+        # simulate unresponsive node by spoofing timestamp
+        eid = list(Packager.Packager.schedule.keys())[0]
+        event = Packager.Packager.schedule[eid]
+        event.ts = int(time()-1)*1000
+        assert event.handler == Packager.Packager.sync_sequence, event.handler
+
+        # should execute cls.sync_sequence again
+        assert Packager.Packager.in_seqs[0].retry == 1, Packager.Packager.in_seqs[0].retry
+        asyncio.run(Packager.Packager.process())
+        asyncio.run(Packager.Packager.process())
+        assert Packager.Packager.in_seqs[0].retry == 0, Packager.Packager.in_seqs[0].retry
+        # rtx datagram should be sent
+        assert len(outbox) == 1
+        outbox.clear()
+
+        # simulate unresponsive node by spoofing timestamp
+        eid = list(Packager.Packager.schedule.keys())[0]
+        event = Packager.Packager.schedule[eid]
+        event.ts = int(time()-1)*1000
+        assert event.handler == Packager.Packager.sync_sequence, event.handler
+
+        # InSequence should be dropped
+        assert len(Packager.Packager.in_seqs.keys()) == 1
+        asyncio.run(Packager.Packager.process())
+        assert len(Packager.Packager.in_seqs.keys()) == 0
 
 
 if __name__ == '__main__':

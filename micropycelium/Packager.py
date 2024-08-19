@@ -914,6 +914,7 @@ class Packager:
     apps: dict[bytes, Application] = {}
     schedule: dict[bytes, Event] = {}
     new_events: deque[Event] = deque([], 64)
+    cancel_events: deque[bytes] = deque([], 64)
     running: bool = False
 
     @classmethod
@@ -1184,7 +1185,7 @@ class Packager:
         fields = {
             'body': b'',
             'seq_id': seq_id,
-            'seq_size': seq.seq.seq_size,
+            'seq_size': seq.seq.seq_size - 1,
         }
 
         if isinstance(seq.src, Address):
@@ -1197,6 +1198,7 @@ class Packager:
             fields['to_addr'] = seq.src.address
             fields['tree_state'] = tree_state
             fields['from_addr'] = from_addr[0]
+            seq.src = cls.routes[seq.src]
 
         for pid in seq.seq.get_missing():
             cls.send_packet(Packet(
@@ -1206,17 +1208,17 @@ class Packager:
                     'packet_id': pid,
                     **fields
                 }
-            ))
+            ), seq.src)
 
         # decrement retry counter and schedule event
         seq.retry -= 1
         eid = b'SS' + seq.seq.id.to_bytes(2, 'big')
-        cls.schedule[eid] = Event(
+        cls.queue_event(Event(
             int(time()+30)*1000,
             eid,
             cls.sync_sequence,
             seq_id
-        )
+        ))
 
     @classmethod
     def receive(cls, p: Packet, intrfc: Interface, mac: bytes) -> None:
@@ -1233,7 +1235,6 @@ class Packager:
                 return
             else:
                 # this is the intended delivery point
-                src = p.fields['from_addr']
                 if p.flags.ask:
                     # send ack
                     flags = Flags(p.flags.state)
@@ -1241,8 +1242,8 @@ class Packager:
                     flags.ack = True
                     fields = {
                         'packet_id': p.id,
-                        'to_addr': p.fields['from_adr'],
-                        'from_addr': p.fields['to_adr'],
+                        'to_addr': p.fields['from_addr'],
+                        'from_addr': p.fields['to_addr'],
                         'tree_state': p.fields['tree_state'],
                         'body': b'',
                     }
@@ -1256,7 +1257,7 @@ class Packager:
                     ))
         else:
             for nid, peer in cls.peers.items():
-                if mac in [i[0] for i in peer.interfaces if i[1] is intrfc]:
+                if mac in (i[0] for i in peer.interfaces if i[1] is intrfc):
                     src = nid
                     break
 
@@ -1266,28 +1267,46 @@ class Packager:
             seq_id = p.fields['seq_id']
             eid = b'SS' + seq_id.to_bytes(2, 'big')
             if eid in cls.schedule:
-                cls.schedule.pop(eid)
+                cls.cancel_events.append(eid)
             if seq_id not in cls.in_seqs:
                 cls.in_seqs[seq_id] = InSequence(
-                    Sequence(p.schema, seq_id, p.fields['seq_size']),
+                    Sequence(p.schema, seq_id, seq_size=p.fields['seq_size']+1),
                     src
                 )
             seq = cls.in_seqs[seq_id]
             seq.retry = 3 # reset retries because the originator is reachable
             if seq.seq.add_packet(p):
                 cls.deliver(Package.unpack(seq.seq.data))
+                cls.in_seqs.pop(seq_id)
             else:
                 # schedule sequence sync event
-                cls.schedule[eid] = Event(
+                cls.queue_event(Event(
                     int(time() + 30)*1000,
                     eid,
                     cls.sync_sequence,
                     seq_id
-                )
+                ))
         else:
             # parse and deliver the Package
             cls.deliver(Package.unpack(p.body))
-            return
+
+        if p.flags.ask:
+            # send ack
+            flags = Flags(p.flags.state)
+            flags.ask = False
+            flags.ack = True
+            fields = {
+                'packet_id': p.id,
+                'body': b'',
+            }
+            if 'seq_id' in p.fields:
+                fields['seq_size'] = p.fields['seq_size']
+                fields['seq_id'] = p.fields['seq_id']
+            cls.send_packet(Packet(
+                p.schema,
+                flags,
+                fields
+            ), src)
 
     @classmethod
     def deliver(cls, p: Package) -> bool:
@@ -1332,11 +1351,26 @@ class Packager:
             event = cls.new_events.popleft()
             cls.schedule[event.id] = event
 
+        # remove all canceled events from the schedule
+        while len(cls.cancel_events):
+            eid = cls.cancel_events.popleft()
+            cls.schedule.pop(eid)
+
         # process interface actions
         tasks = []
         for intrfc in cls.interfaces:
             tasks.append(intrfc.process())
         await asyncio.gather(*tasks)
+
+        # read from interfaces
+        for intrfc in cls.interfaces:
+            while len(intrfc.inbox):
+                dgram = intrfc.inbox.popleft()
+                cls.receive(
+                    Packet.unpack(dgram.data),
+                    [i for i in cls.interfaces if i.id == dgram.intrfc_id][0],
+                    dgram.addr
+                )
 
         # handle scheduled events
         ce = []
