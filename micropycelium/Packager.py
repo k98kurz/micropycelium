@@ -40,6 +40,7 @@ class Flags:
     ask: bool
     ack: bool
     rtx: bool
+    reserved0: bool
     reserved1: bool
     reserved2: bool
     mode: bool
@@ -50,7 +51,6 @@ class Flags:
     @property
     def error(self) -> bool:
         return bool(self.state & 0b10000000)
-
     @error.setter
     def error(self, val: bool):
         if val:
@@ -61,7 +61,6 @@ class Flags:
     @property
     def throttle(self) -> bool:
         return bool(self.state & 0b01000000)
-
     @throttle.setter
     def throttle(self, val: bool):
         if val:
@@ -70,33 +69,57 @@ class Flags:
             self.state &= 0b10111111
 
     @property
-    def ask(self) -> bool:
+    def _bit2(self) -> bool:
         return bool(self.state & 0b00100000)
-
-    @ask.setter
-    def ask(self, val: bool):
+    @_bit2.setter
+    def _bit2(self, val):
         if val:
             self.state |= 0b00100000
         else:
             self.state &= 0b11011111
 
     @property
-    def ack(self) -> bool:
+    def _bit3(self) -> bool:
         return bool(self.state & 0b00010000)
-
-    @ack.setter
-    def ack(self, val: bool):
+    @_bit3.setter
+    def _bit3(self, val):
         if val:
             self.state |= 0b00010000
         else:
             self.state &= 0b11101111
 
     @property
-    def rtx(self) -> bool:
-        return bool(self.state & 0b00001000)
+    def ask(self) -> bool:
+        return not self._bit2 and self._bit3
+    @ask.setter
+    def ask(self, val: bool):
+        if val:
+            self._bit2 = False
+            self._bit3 = True
 
+    @property
+    def ack(self) -> bool:
+        return self._bit2 and not self._bit3
+    @ack.setter
+    def ack(self, val: bool):
+        if val:
+            self._bit2 = True
+            self._bit3 = False
+
+    @property
+    def rtx(self) -> bool:
+        return self._bit2 and self._bit3
     @rtx.setter
     def rtx(self, val: bool):
+        if val:
+            self._bit2 = True
+            self._bit3 = True
+
+    @property
+    def reserved0(self) -> bool:
+        return bool(self.state & 0b00001000)
+    @reserved0.setter
+    def reserved0(self, val):
         if val:
             self.state |= 0b00001000
         else:
@@ -105,7 +128,6 @@ class Flags:
     @property
     def reserved1(self) -> bool:
         return bool(self.state & 0b00000100)
-
     @reserved1.setter
     def reserved1(self, val: bool):
         if val:
@@ -116,7 +138,6 @@ class Flags:
     @property
     def reserved2(self) -> bool:
         return bool(self.state & 0b00000010)
-
     @reserved2.setter
     def reserved2(self, val: bool):
         if val:
@@ -127,7 +148,6 @@ class Flags:
     @property
     def mode(self) -> bool:
         return bool(self.state & 0b00000001)
-
     @mode.setter
     def mode(self, val: bool):
         if val:

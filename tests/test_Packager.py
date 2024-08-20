@@ -19,11 +19,27 @@ class TestFlags(unittest.TestCase):
         assert not flags.reserved2
         assert not flags.mode
 
+        flags.ask = True
+        assert flags.ask
+        assert not flags.ack
+        assert not flags.rtx
+        assert int(flags) == 0b00010000
+
+        flags.ack = True
+        assert flags.ack
+        assert not flags.ask
+        assert not flags.rtx
+        assert int(flags) == 0b00100000
+
+        flags.rtx = True
+        assert flags.rtx
+        assert not flags.ask
+        assert not flags.ack
+        assert int(flags) == 0b00110000
+
         flags.error = True
         flags.throttle = True
-        flags.ask = True
-        flags.ack = True
-        flags.rtx = True
+        flags.reserved0 = True
         flags.reserved1 = True
         flags.reserved2 = True
         flags.mode = True

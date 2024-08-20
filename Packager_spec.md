@@ -155,12 +155,22 @@ which fields are used in the packet.
 The `flags` field will be 8 bits (bits 0-7):
 - Bit 0: error - set in response as a generic error notification
 - Bit 1: throttle - set when a responding node is experiencing congestion
-- Bit 2: ask - set when a transmitting node wants an ack for the packet
-- Bit 3: ack - set when the transmitting node is responding to an ask
-- Bit 4: rtx - set when requesting a packet retransmission
+- Bits 2-3: encoded, mutually exclusive flags
+- Bits 4: reserved0
 - Bits 5: reserved1
 - Bits 6: reserved2
 - Bit 7: mode - set to switch the mode of a schema-specific feature
+
+Bits 2 and 3 are used to encode mutually-exclusive flags, which the `Flags`
+class exposes as attributes:
+
+- 0b01 - ask: set when a transmitting node wants an ack for the packet
+- 0b10 - ack: set when the transmitting node is responding to an ask
+- 0b11 - rtx: set when requesting a packet retransmission
+
+The mutually exclusive flag 0b00 is a no-op value. Bits 4-6 can be added to the
+encoded flags field to increase the number of mutually exclusive flags if
+necessary for future developments.
 
 ## packet_id
 
