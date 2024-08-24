@@ -241,16 +241,16 @@ def configure(_: Packager.Interface, data: dict):
     for key, value in data.items():
         config[key] = value
 
-def receive1():
+def receive1(intrfc: Packager.Interface):
     return inbox.popleft() if len(inbox) else None
 
-def receive12():
+def receive12(intrfc: Packager.Interface):
     return inbox.popleft() if len(inbox) else castbox.popleft() if len(castbox) else None
 
-def receive2():
+def receive2(intrfc: Packager.Interface):
     return outbox.popleft() if len(outbox) else None
 
-def receive22():
+def receive22(intrfc: Packager.Interface):
     return outbox.popleft() if len(outbox) else castbox.popleft() if len(castbox) else None
 
 def send1(datagram: Packager.Datagram):

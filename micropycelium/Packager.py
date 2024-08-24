@@ -817,11 +817,11 @@ class Interface:
     async def process(self):
         """Process Interface actions."""
         if self.receive_func:
-            datagram = self.receive_func()
+            datagram = self.receive_func(self)
             if datagram:
                 self.inbox.append(datagram)
         elif self.receive_func_async:
-            datagram = await self.receive_func_async()
+            datagram = await self.receive_func_async(self)
             if datagram:
                 self.inbox.append(datagram)
 

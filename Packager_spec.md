@@ -519,10 +519,12 @@ requires passing `name: str`, `configure: function`,
 `supported_schemas: list[int]`, and several synchronous and/or async callbacks.
 Must provide one of each pair: (`send_func`, `send_func_async`); (`receive_func`,
 `receive_func_async`); (`broadcast_func`, `broadcast_func_async`). When the
-async `process` method is called, it first tries to send a datagram queued for
-sending using one of the `send_` callbacks; it then tries to broadcast a
-datagram queued for broadcast using one of the `broadcast_` callbacks; it then
-tries to queue a datagram from calling one of the `receive_` callbacks.
+async `process` method is called, it first tries to queue a datagram from
+calling one of the `receive_` callbacks; it then tries to send a datagram queued
+for sending using one of the `send_` callbacks; it then tries to broadcast a
+datagram queued for broadcast using one of the `broadcast_` callbacks. The
+`receive_` callback must accept the Interface as its sole argument. The `send_`
+and `broadcast_` callbacks must accept a Datagram as their sole argument.
 
 
 # Packet Protocol
