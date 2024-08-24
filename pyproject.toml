@@ -1,0 +1,24 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "micropycelium"
+version = "0.0.1"
+authors = [
+  { name="k98kurz", email="k98kurz@gmail.com" },
+]
+description = "Mesh networking system for micropython"
+readme = "readme.md"
+requires-python = ">=3.10"
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: ISC License (ISCL)",
+  "Operating System :: OS Independent",
+  "Topic :: System :: Networking",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/k98kurz/micropycelium"
+"Bug Tracker" = "https://github.com/k98kurz/micropycelium/issues"
