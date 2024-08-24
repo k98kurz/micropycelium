@@ -15,6 +15,9 @@ class TestFlags(unittest.TestCase):
         assert not flags.ask
         assert not flags.ack
         assert not flags.rtx
+        assert not flags.rns
+        assert not flags.nia
+        assert not flags.encoded6
         assert not flags.reserved1
         assert not flags.reserved2
         assert not flags.mode
@@ -23,19 +26,55 @@ class TestFlags(unittest.TestCase):
         assert flags.ask
         assert not flags.ack
         assert not flags.rtx
-        assert int(flags) == 0b00010000
+        assert not flags.rns
+        assert not flags.nia
+        assert not flags.encoded6
+        assert int(flags) == 0b00001000
 
         flags.ack = True
         assert flags.ack
         assert not flags.ask
         assert not flags.rtx
-        assert int(flags) == 0b00100000
+        assert not flags.rns
+        assert not flags.nia
+        assert not flags.encoded6
+        assert int(flags) == 0b00010000
 
         flags.rtx = True
         assert flags.rtx
         assert not flags.ask
         assert not flags.ack
-        assert int(flags) == 0b00110000
+        assert not flags.rns
+        assert not flags.nia
+        assert not flags.encoded6
+        assert int(flags) == 0b00011000
+
+        flags.rns = True
+        assert flags.rns
+        assert not flags.ask
+        assert not flags.ack
+        assert not flags.rtx
+        assert not flags.nia
+        assert not flags.encoded6
+        assert int(flags) == 0b00100000
+
+        flags.nia = True
+        assert flags.nia
+        assert not flags.ask
+        assert not flags.ack
+        assert not flags.rtx
+        assert not flags.rns
+        assert not flags.encoded6
+        assert int(flags) == 0b00101000
+
+        flags.encoded6 = True
+        assert flags.encoded6
+        assert not flags.ask
+        assert not flags.ack
+        assert not flags.rtx
+        assert not flags.rns
+        assert not flags.nia
+        assert int(flags) == 0b00111000
 
         flags.error = True
         flags.throttle = True
@@ -371,6 +410,10 @@ class TestPackager(unittest.TestCase):
         Packager.Packager.routes.clear()
         Packager.Packager.apps.clear()
         Packager.Packager.in_seqs.clear()
+        Packager.Packager.schedule.clear()
+        Packager.Packager.new_events.clear()
+        Packager.Packager.cancel_events.clear()
+        Packager.Packager.sleepskip.clear()
         return super().setUp()
 
     def tearDown(self) -> None:
@@ -387,6 +430,10 @@ class TestPackager(unittest.TestCase):
         Packager.Packager.routes.clear()
         Packager.Packager.apps.clear()
         Packager.Packager.in_seqs.clear()
+        Packager.Packager.schedule.clear()
+        Packager.Packager.new_events.clear()
+        Packager.Packager.cancel_events.clear()
+        Packager.Packager.sleepskip.clear()
         return super().tearDown()
 
     def test_add_interface_remove_interface_e2e(self):
@@ -461,7 +508,7 @@ class TestPackager(unittest.TestCase):
         assert len(Packager.Packager.interfaces) == 1
         assert len(outbox) == 0
         Packager.Packager.add_peer(b'123', [(b'macpeer0', mock_interface1)])
-        Packager.Packager.send(b'app 9659b56ae1d8', b'test', b'123')
+        assert Packager.Packager.send(b'app 9659b56ae1d8', b'test', b'123')
         asyncio.run(Packager.Packager.process())
         assert len(outbox) == 1, outbox
 
@@ -473,7 +520,7 @@ class TestPackager(unittest.TestCase):
         blob = b''.join([(i%256).to_bytes(1, 'big') for i in range(300)])
         node_id = b'123'
         Packager.Packager.add_peer(node_id, [(b'macpeer0', mock_interface1)])
-        Packager.Packager.send(app_id, blob, node_id)
+        assert Packager.Packager.send(app_id, blob, node_id)
         asyncio.run(Packager.Packager.process())
         asyncio.run(Packager.Packager.process())
         asyncio.run(Packager.Packager.process())
@@ -507,7 +554,7 @@ class TestPackager(unittest.TestCase):
         Packager.Packager.add_peer(peer_id, [(b'macpeer0', mock_interface1)])
         Packager.Packager.add_route(peer_id, peer_addr)
         Packager.Packager.add_route(node_id, node_addr)
-        Packager.Packager.send(app_id, blob, node_id)
+        assert Packager.Packager.send(app_id, blob, node_id)
         asyncio.run(Packager.Packager.process())
         assert len(outbox) == 1, outbox
 
@@ -525,7 +572,7 @@ class TestPackager(unittest.TestCase):
         Packager.Packager.add_peer(peer_id, [(b'macpeer0', mock_interface1)])
         Packager.Packager.add_route(peer_id, peer_addr)
         Packager.Packager.add_route(node_id, node_addr)
-        Packager.Packager.send(app_id, blob, node_id)
+        assert Packager.Packager.send(app_id, blob, node_id)
         asyncio.run(Packager.Packager.process())
         asyncio.run(Packager.Packager.process())
         asyncio.run(Packager.Packager.process())
@@ -552,9 +599,10 @@ class TestPackager(unittest.TestCase):
         Packager.Packager.add_peer(b'123', [(b'macpeer0', mock_interface1)])
         intrfc = Packager.Packager.get_interface(b'123')
         assert type(intrfc) is tuple
-        assert len(intrfc) == 2
+        assert len(intrfc) == 3
         assert intrfc[0] == b'macpeer0'
         assert intrfc[1] == mock_interface1
+        assert type(intrfc[2]) is Packager.Peer
 
         packet = Packager.Packet(
             Packager.get_schema(Packager.SCHEMA_IDS[0]),
@@ -570,6 +618,172 @@ class TestPackager(unittest.TestCase):
         assert Packager.Packager.send_packet(packet, b'123')
         asyncio.run(Packager.Packager.process())
         assert len(outbox) == 1, outbox
+
+    def test_send_when_not_Peer_can_tx_queues_datagram(self):
+        # add application, network interface, and peer
+        Packager.Packager.add_application(test_app)
+        Packager.Packager.add_interface(mock_interface1)
+        Packager.Packager.add_peer(b'peer0', [(b'mac0', mock_interface1)])
+        peer = list(Packager.Packager.peers.items())[0][1]
+        # disable direct transmission
+        peer.last_rx = int(time()-1) * 1000
+
+        # try to send a Package, but it should queue the packet and send RNS
+        assert len(peer.queue) == 0
+        assert len(mock_interface1.outbox) == 0
+        assert Packager.Packager.send(test_app.id, b'test', b'peer0')
+        assert len(mock_interface1.outbox) == 1
+        dgram = mock_interface1.outbox.popleft()
+        packet = Packager.Packet.unpack(dgram.data)
+        assert packet.flags.rns, (packet.flags, packet.body)
+        assert len(peer.queue) == 1
+
+        # event to resend RNS should be queued with a retry of 9
+        assert len(Packager.Packager.new_events) == 1
+        asyncio.run(Packager.Packager.process())
+        assert len(Packager.Packager.new_events) == 0
+        eid = b'rnspeer0' + mock_interface1.id
+        assert eid in Packager.Packager.schedule
+        event = Packager.Packager.schedule[eid]
+        assert event.kwargs['retries'] == 9, event
+
+        # wait 30 ms and process again; it should resend the RNS
+        sleep(0.03)
+        asyncio.run(Packager.Packager.process())
+        assert len(mock_interface1.outbox) == 1
+        dgram = mock_interface1.outbox.popleft()
+        packet = Packager.Packet.unpack(dgram.data)
+        assert packet.flags.rns, (packet.flags, packet.body)
+
+        # event to resend RNS should be queued with a retry of 8
+        assert len(Packager.Packager.new_events) == 1
+        asyncio.run(Packager.Packager.process())
+        assert len(Packager.Packager.new_events) == 0
+        eid = b'rnspeer0' + mock_interface1.id
+        assert eid in Packager.Packager.schedule
+        event = Packager.Packager.schedule[eid]
+        assert event.kwargs['retries'] == 8, event
+
+        # simulate sending NIA
+        flags = Packager.Flags(0)
+        flags.nia = True
+        dgram = Packager.Datagram(
+            Packager.Packet(
+                mock_interface1.default_schema,
+                flags,
+                {
+                    'packet_id': 0,
+                    'body': b'',
+                }
+            ).pack(),
+            mock_interface1.id,
+            b'mac0'
+        )
+        inbox.append(dgram)
+        # receiving via process should set can_tx to True and send the packet
+        asyncio.run(Packager.Packager.process())
+        assert peer.can_tx
+        assert len(mock_interface1.outbox) == 1
+        asyncio.run(Packager.Packager.process())
+        assert len(mock_interface1.outbox) == 0
+        assert len(outbox) == 1
+
+    def test_receive_RNS_sends_NIA(self):
+        # add application, network interface, and peer
+        Packager.Packager.add_application(test_app)
+        Packager.Packager.add_interface(mock_interface1)
+        Packager.Packager.add_peer(b'peer0', [(b'mac0', mock_interface1)])
+
+        # simulate sending RNS from the peer
+        flags = Packager.Flags(0)
+        flags.rns = True
+        inbox.append(Packager.Datagram(
+            Packager.Packet(
+                mock_interface1.default_schema,
+                flags,
+                {
+                    'packet_id': 0,
+                    'body': b'',
+                }
+            ).pack(),
+            mock_interface1.id,
+            b'mac0'
+        ))
+        assert len(mock_interface1.outbox) == 0
+        asyncio.run(Packager.Packager.process())
+        assert len(mock_interface1.outbox) == 1
+        assert len(outbox) == 0
+        asyncio.run(Packager.Packager.process())
+        assert len(mock_interface1.outbox) == 0
+        assert len(outbox) == 1
+        dgram = outbox.popleft()
+        assert dgram.intrfc_id == mock_interface1.id
+        assert dgram.addr == b'mac0'
+        p = Packager.Packet.unpack(dgram.data)
+        assert p.flags.nia
+
+    def test_modem_sleep_basic(self):
+        # set up a logging event that shuts down after collecting 6 timestamps
+        log = []
+        now = lambda: int(time()*1000)
+        def callback():
+            log.append(now())
+            if len(log) > 5:
+                return Packager.Packager.stop()
+            Packager.Packager.new_events.append(Packager.Event(
+                now() + 10,
+                b'log',
+                callback
+            ))
+
+        Packager.Packager.new_events.append(Packager.Event(
+            now() + 10,
+            b'log',
+            callback
+        ))
+        asyncio.run(Packager.Packager.work(use_modem_sleep=True))
+        logdiff = []
+        for i in range(1, len(log)):
+            logdiff.append(log[i] - log[i-1])
+        sub20s = [i for i in logdiff if i < 20]
+        over90s = [i for i in logdiff if i >= 90]
+        assert len(sub20s) == len(logdiff) - 1
+        assert len(over90s) == 1
+
+    def test_modem_sleep_skips_after_rx_or_tx(self):
+        # set up a logging event that shuts down after collecting 6 timestamps
+        log = []
+        now = lambda: int(time()*1000)
+        peer_id = b'peer0'
+        peer_mac = b'mac0'
+        def callback():
+            log.append(now())
+            if len(log) > 5:
+                return Packager.Packager.stop()
+            Packager.Packager.new_events.append(Packager.Event(
+                now() + 10,
+                b'log',
+                callback
+            ))
+            Packager.Packager.send(test_app.id, b'hello world', peer_id)
+
+        Packager.Packager.add_interface(mock_interface1)
+        Packager.Packager.add_peer(peer_id, [(peer_mac, mock_interface1)])
+        Packager.Packager.add_application(test_app)
+        Packager.Packager.new_events.append(Packager.Event(
+            now() + 10,
+            b'log',
+            callback
+        ))
+        asyncio.run(Packager.Packager.work(use_modem_sleep=True))
+        logdiff = []
+        for i in range(1, len(log)):
+            logdiff.append(log[i] - log[i-1])
+        sub20s = [i for i in logdiff if i < 20]
+        over90s = [i for i in logdiff if i >= 90]
+        assert len(sub20s) == len(logdiff)
+        assert len(over90s) == 0
+        assert len(Packager.Packager.sleepskip) > 0
 
     def test_event_handling_in_work(self):
         now = int(time())

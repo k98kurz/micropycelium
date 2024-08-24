@@ -19,6 +19,13 @@ try:
 except ImportError:
     GeneratorType = type((lambda: (yield))())
 
+try:
+    from machine import lightsleep # type: ignore
+except ImportError:
+    from time import sleep
+    def lightsleep(ms):
+        sleep(ms/1000)
+
 if hasattr(asyncio, 'coroutines'):
     def iscoroutine(c):
         return asyncio.coroutines.iscoroutine(c)
@@ -40,7 +47,8 @@ class Flags:
     ask: bool
     ack: bool
     rtx: bool
-    reserved0: bool
+    rns: bool
+    nia: bool
     reserved1: bool
     reserved2: bool
     mode: bool
@@ -89,41 +97,68 @@ class Flags:
             self.state &= 0b11101111
 
     @property
-    def ask(self) -> bool:
-        return not self._bit2 and self._bit3
-    @ask.setter
-    def ask(self, val: bool):
-        if val:
-            self._bit2 = False
-            self._bit3 = True
-
-    @property
-    def ack(self) -> bool:
-        return self._bit2 and not self._bit3
-    @ack.setter
-    def ack(self, val: bool):
-        if val:
-            self._bit2 = True
-            self._bit3 = False
-
-    @property
-    def rtx(self) -> bool:
-        return self._bit2 and self._bit3
-    @rtx.setter
-    def rtx(self, val: bool):
-        if val:
-            self._bit2 = True
-            self._bit3 = True
-
-    @property
-    def reserved0(self) -> bool:
+    def _bit4(self) -> bool:
         return bool(self.state & 0b00001000)
-    @reserved0.setter
-    def reserved0(self, val):
+    @_bit4.setter
+    def _bit4(self, val):
         if val:
             self.state |= 0b00001000
         else:
             self.state &= 0b11110111
+
+    @property
+    def ask(self) -> bool:
+        return not self._bit2 and not self._bit3 and self._bit4
+    @ask.setter
+    def ask(self, val: bool):
+        self._bit2 = False
+        self._bit3 = False
+        self._bit4 = val
+
+    @property
+    def ack(self) -> bool:
+        return not self._bit2 and self._bit3 and not self._bit4
+    @ack.setter
+    def ack(self, val: bool):
+        self._bit2 = False
+        self._bit3 = val
+        self._bit4 = False
+
+    @property
+    def rtx(self) -> bool:
+        return not self._bit2 and self._bit3 and self._bit4
+    @rtx.setter
+    def rtx(self, val: bool):
+        self._bit2 = False
+        self._bit3 = val
+        self._bit4 = val
+
+    @property
+    def rns(self) -> bool:
+        return self._bit2 and not self._bit3 and not self._bit4
+    @rns.setter
+    def rns(self, val: bool):
+        self._bit2 = val
+        self._bit3 = False
+        self._bit4 = False
+
+    @property
+    def nia(self) -> bool:
+        return self._bit2 and not self._bit3 and self._bit4
+    @nia.setter
+    def nia(self, val: bool):
+        self._bit2 = val
+        self._bit3 = False
+        self._bit4 = val
+
+    @property
+    def encoded6(self) -> bool:
+        return self._bit2 and self._bit3 and self._bit4
+    @encoded6.setter
+    def encoded6(self, val: bool):
+        self._bit2 = val
+        self._bit3 = val
+        self._bit4 = val
 
     @property
     def reserved1(self) -> bool:
@@ -161,6 +196,7 @@ class Flags:
     def __repr__(self) -> str:
         return f'Flags(error={self.error}, throttle={self.throttle}, ' +\
             f'ask={self.ask}, ack={self.ack}, rtx={self.rtx}, ' +\
+            f'rns={self.rns}, nia={self.nia}, encoded6={self.encoded6}, ' +\
             f'reserved1={self.reserved1}, reserved2={self.reserved2}, mode={self.mode})'
 
     def __eq__(self, other: Flags) -> bool:
@@ -721,6 +757,7 @@ class Datagram:
 class Interface:
     name: str
     supported_schemas: list[int]
+    default_schema: Schema
     bitrate: int
     id: bytes
     inbox: deque[Datagram]
@@ -739,6 +776,9 @@ class Interface:
                  receive_func_async: Callable = None,
                  send_func_async: Callable = None,
                  broadcast_func_async: Callable = None) -> None:
+        """Initialize an Interface. Note that the 0th item in the
+            supported_schemas argument is used as the default Schema ID.
+        """
         self.inbox = deque()
         self.outbox = deque()
         self.castbox = deque()
@@ -746,6 +786,7 @@ class Interface:
         self._configure = configure
         self.bitrate = bitrate
         self.supported_schemas = supported_schemas
+        self.default_schema = get_schema(supported_schemas[0])
         self.id = sha256(
             name.encode() + bitrate.to_bytes(4, 'big') +
             b''.join([i.to_bytes(1, 'big') for i in supported_schemas])
@@ -837,7 +878,9 @@ class Peer:
     addrs: deque[Address]
     timeout: int # drop peers that turn off
     throttle: int # congestion control
-    last_tx: int
+    last_rx: int # timestamp of last received transmission
+    can_tx: bool
+    queue: deque[Datagram] # queue of Packets or seq_id to send
 
     def __init__(self, id: bytes, interfaces: list[tuple[bytes, Interface],]) -> None:
         self.id = id
@@ -845,12 +888,17 @@ class Peer:
         self.addrs = deque()
         self.timeout = 4
         self.throttle = 0
-        self.last_tx = 0
+        self.last_rx = int(time() * 1000)
+        self.queue = deque([], 10)
 
     def set_addr(self, addr: Address):
         self.addrs.append(addr)
         while len(self.addrs) > 2:
             self.addrs.popleft()
+
+    @property
+    def can_tx(self) -> bool:
+        return self.last_rx + 800 > int(time() * 1000)
 
 
 @native
@@ -923,6 +971,9 @@ class Event:
         self.handler = handler
         self.args = args
         self.kwargs = kwargs
+    def __repr__(self) -> str:
+        return f'Event(ts={self.ts}, id=0x{self.id.hex()}, ' + \
+            f'handler={self.handler}, args={self.args}, kwargs={self.kwargs})'
 
 
 @native
@@ -953,6 +1004,7 @@ class Packager:
     new_events: deque[Event] = deque([], 64)
     cancel_events: deque[bytes] = deque([], 64)
     running: bool = False
+    sleepskip: deque[bool] = deque([], 20)
 
     @classmethod
     def add_interface(cls, interface: Interface):
@@ -1071,8 +1123,8 @@ class Packager:
     def send(cls, app_id: bytes, blob: bytes, node_id: bytes, schema: int = None) -> bool:
         """Attempts to send a Package containing the app_id and blob to
             the specified node. Returns True if it can be sent and False
-            if it cannot (i.e. if it is a known peer or there is a known
-            route to the node).
+            if it cannot (i.e. if it is not a known peer and there is
+            not a known route to the node).
         """
         islocal = node_id in cls.peers
         if not islocal and node_id not in [r for a, r in cls.routes.items()]:
@@ -1116,24 +1168,27 @@ class Packager:
             seq = Sequence(schema, cls.seq_id, len(p))
             seq.set_data(p)
             for i in range(seq.seq_size):
-                intrfc[1].send(Datagram(
+                cls._send_datagram(Datagram(
                     seq.get_packet(i, Flags(0), fields).pack(),
                     intrfc[1].id,
                     intrfc[0]
-                ))
+                ), peer)
         else:
             fields['body'] = p
-            intrfc[1].send(Datagram(
+            cls._send_datagram(Datagram(
                 Packet(schema, Flags(0), fields).pack(),
                 intrfc[1].id,
                 intrfc[0]
-            ))
+            ), peer)
             cls.packet_id = (cls.packet_id + 1) % 256
+
+        return True
 
     @classmethod
     def get_interface(cls, node_id: bytes|None = None,
                              to_addr: Address|None = None,
-                             exclude: list[bytes,] = []) -> tuple[bytes, Interface]|None:
+                             exclude: list[bytes,] = []
+                             ) -> tuple[bytes|None, Interface|None, Peer|None]:
         """Get the proper Interface and MAC for direct transmission to
             the neighbor with the given node_id or for direct
             transmission to the best candidate for routing toward the
@@ -1142,11 +1197,11 @@ class Packager:
             passed, the Interfaces for those nodes with ids specified in
             the list will be excluded from consideration.
         """
-        if node_id in cls.peers:
+        if node_id in cls.peers and node_id not in exclude:
             # direct neighbors
             intrfcs = cls.peers[node_id].interfaces
             intrfcs.sort(key=lambda mi: mi[1].bitrate, reverse=True)
-            return intrfcs[0]
+            return (*intrfcs[0], cls.peers[node_id])
         elif node_id in (nid for _, nid in cls.routes.items()):
             # known node reachable via routing; find next hop
             # set to_addr
@@ -1166,11 +1221,63 @@ class Packager:
             addrs.sort(key=lambda _: randint(0, 255))
             addr = addrs[-1]
             peer_id = cls.routes[addr]
+            if peer_id in exclude:
+                return (None, None, None)
             intrfcs = cls.peers[peer_id].interfaces
             intrfcs.sort(key=lambda mi: mi[1].bitrate, reverse=True)
-            return intrfcs[0]
+            return (*intrfcs[0], cls.peers[peer_id])
         else:
-            return None
+            return (None, None, None)
+
+    @classmethod
+    def rns(cls, peer_id: bytes, intrfc_id: bytes, retries: int = 10):
+        """Send RNS if one has not been sent in the last 20 ms,
+            otherwise update the event.
+        """
+        eid = b'rns'+peer_id+intrfc_id
+        now = int(time()*1000)
+        if eid in [e.id for e in cls.new_events]:
+            return # do not add a duplicate event
+
+        if retries < 1:
+            # clear queue and drop the attempts
+            cls.peers[peer_id].queue.clear()
+            return
+
+        # queue event and send RNS
+        event = Event(now+20, eid, cls.rns, peer_id, intrfc_id, retries=retries-1)
+        cls.new_events.append(event)
+        flags = Flags(0)
+        flags.rns = True
+        intrfc = [i for i in cls.interfaces if i.id == intrfc_id][0]
+        mac = [
+            mac for mac, i in cls.peers[peer_id].interfaces
+            if i.id == intrfc_id
+        ][0]
+        intrfc.send(Datagram(
+            Packet(intrfc.default_schema, flags, {
+                'packet_id': cls.packet_id,
+                'body': b'',
+            }).pack(),
+            intrfc_id,
+            mac
+        ))
+        cls.packet_id = (cls.packet_id + 1) % 256
+
+    @classmethod
+    def _send_datagram(cls, dgram: Datagram, peer: Peer):
+        """Sends a Datagram on the appropriate interface. Raises
+            AssertionError if the interface ID is invalid.
+        """
+        cls.sleepskip.extend([True, True, True, True, True, True, True, True, True, True])
+        assert dgram.intrfc_id in [i.id for i in cls.interfaces]
+        intrfc = [i for i in cls.interfaces if i.id == dgram.intrfc_id][0]
+        if peer.can_tx:
+            intrfc.send(dgram)
+        else:
+            # queue the datagram and try sending RNS on the interface instead
+            peer.queue.append(dgram)
+            cls.rns(peer.id, intrfc.id)
 
     @classmethod
     def send_packet(cls, packet: Packet, node_id: bytes = None) -> bool:
@@ -1181,20 +1288,20 @@ class Packager:
         """
         if node_id in cls.peers:
             # direct neighbors
-            mac = cls.get_interface(node_id)
+            mac, intrfc, peer = cls.get_interface(node_id)
         elif node_id in (nid for _, nid in cls.routes.items()):
             # known node reachable via routing
-            mac = cls.get_interface(node_id)
+            mac, intrfc, peer = cls.get_interface(node_id)
         elif 'to_addr' in packet.fields and 'from_addr' in packet.fields:
             # this is an intermediate hop
             to_addr = Address(packet.fields['tree_state'], packet.fields['to_addr'])
             from_addr = packet.fields['from_addr']
             if packet.flags.error:
                 exclude = [cls.routes[to_addr]] if from_addr in cls.routes else []
-                mac = cls.get_interface(to_addr=from_addr, exclude=exclude)
+                mac, intrfc, peer = cls.get_interface(to_addr=from_addr, exclude=exclude)
             else:
                 exclude = [cls.routes[from_addr]] if from_addr in cls.routes else []
-                mac = cls.get_interface(to_addr=to_addr, exclude=exclude)
+                mac, intrfc, peer = cls.get_interface(to_addr=to_addr, exclude=exclude)
                 packet.fields['ttl'] -= 1
 
             if packet.fields['ttl'] <= 0:
@@ -1205,7 +1312,8 @@ class Packager:
 
         if not mac:
             return False
-        mac[1].send(Datagram(packet.pack(), mac[1].id, mac[0]))
+
+        cls._send_datagram(Datagram(packet.pack(), intrfc.id, mac), peer)
         return True
 
     @classmethod
@@ -1264,6 +1372,7 @@ class Packager:
             if that fails, set the error flag and transmit backwards
             through the route.
         """
+        cls.sleepskip.extend([True, True, True, True, True, True, True, True, True, True])
         src = b'' # source of Packet
         if 'to_addr' in p.fields:
             if p.fields['to_addr'] not in [a.address for a in cls.node_addrs]:
@@ -1323,6 +1432,28 @@ class Packager:
                     cls.sync_sequence,
                     seq_id
                 ))
+        elif p.flags.nia:
+            # peer responded to RNS: cancel event, update peer.last_rx
+            peer = cls.peers[src]
+            eid = b'rns'+peer.id+intrfc.id
+            cls.cancel_events.append(eid)
+            peer.last_rx = int(time()*1000)
+            return
+        elif p.flags.rns:
+            # peer sent RNS: send NIA
+            peer = cls.peers[src]
+            flags = Flags(0)
+            flags.nia = True
+            intrfc.send(Datagram(
+                Packet(intrfc.default_schema, flags, {
+                    'packet_id': cls.packet_id,
+                    'body': b'',
+                }).pack(),
+                intrfc.id,
+                mac
+            ))
+            cls.packet_id = (cls.packet_id + 1) % 256
+            return
         else:
             # parse and deliver the Package
             cls.deliver(Package.unpack(p.body))
@@ -1418,21 +1549,50 @@ class Packager:
                 t = event.handler(*event.args, **event.kwargs)
                 if iscoroutine(t):
                     cos.append(t)
-                ce.append((eid, event.ts))
+                ce.append(eid)
         if len(cos):
             await asyncio.gather(cos)
 
         # remove all processed events from the schedule
-        for eid, ts in ce:
+        for eid in ce:
             cls.schedule.pop(eid)
 
+        # send queued datagrams for reachable peers
+        for _, peer in cls.peers.items():
+            if peer.can_tx:
+                while len(peer.queue):
+                    dgram = peer.queue.popleft()
+                    intrfc = [
+                        i for _, i in peer.interfaces
+                        if i.id == dgram.intrfc_id
+                    ][0]
+                    intrfc.send(dgram)
+
     @classmethod
-    async def work(cls, interval_ms: int = 100):
-        """Runs the process method in a loop."""
+    async def work(cls, interval_ms: int = 1, use_modem_sleep: bool = False,
+                   modem_sleep_ms: int = 90, modem_active_ms: int = 40):
+        """Runs the process method in a loop. If use_modem_sleep is True,
+            lightsleep(modem_sleep_ms) will be called periodically to
+            save battery, then the method will continue for at least
+            modem_active_ms. If the sleepskip queue is not empty and the
+            process is eligible for a sleep cycle, an item will be
+            popped off the queue and the cycle will be skipped.
+        """
         cls.running = True
+        modem_cycle = 0
+        ts = int(time()*1000)
         while cls.running:
             await cls.process()
             await asyncio.sleep(interval_ms / 1000)
+            if use_modem_sleep:
+                if len(cls.sleepskip):
+                    cls.sleepskip.popleft()
+                    continue
+                modem_cycle = int(time()*1000) - ts
+                if modem_cycle > modem_active_ms:
+                    modem_cycle = 0
+                    lightsleep(modem_sleep_ms)
+                    ts = int(time()*1000)
 
     @classmethod
     def stop(cls):
