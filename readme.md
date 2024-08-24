@@ -28,7 +28,9 @@ discover each other
 - [ ] VOUTE-based routing: common prefix length routing (flags.mode=1)
 - [ ] Cache management
 - [ ] Refactor: Store class to save RAM with Sequence handling
+- [ ] Error propagation
 - [ ] Peer throttling/congestion control
+- [x] Modem sleep mode for power saving: Request Node Status/Node Is Active before tx
 - [ ] RYLR-998 plugin
 - [ ] UDP/IP
 - [ ] Bluetooth plugin

@@ -13,6 +13,7 @@ The primary encapsulation model is application message blobs within Packages
 within Packet(s). Additionally, applications will be able to encapsulate each
 other's Packages, e.g. to add a layer of encryption or use gossip for pub/sub.
 
+<pre>
 |-- Packet/sequence of packets --------|
 |  |-- Package ---------------------|  |
 |  |      app_id: 16                |  |
@@ -22,6 +23,7 @@ other's Packages, e.g. to add a layer of encryption or use gossip for pub/sub.
 |  |  |--------------------------|  |  |
 |  |------------------------------- |  |
 |--------------------------------------|
+</pre>
 
 
 # Packager Operations
@@ -155,8 +157,7 @@ which fields are used in the packet.
 The `flags` field will be 8 bits (bits 0-7):
 - Bit 0: error - set in response as a generic error notification
 - Bit 1: throttle - set when a responding node is experiencing congestion
-- Bits 2-3: encoded, mutually exclusive flags
-- Bits 4: reserved0
+- Bits 2-4: encoded, mutually exclusive flags
 - Bits 5: reserved1
 - Bits 6: reserved2
 - Bit 7: mode - set to switch the mode of a schema-specific feature
@@ -164,13 +165,16 @@ The `flags` field will be 8 bits (bits 0-7):
 Bits 2 and 3 are used to encode mutually-exclusive flags, which the `Flags`
 class exposes as attributes:
 
-- 0b01 - ask: set when a transmitting node wants an ack for the packet
-- 0b10 - ack: set when the transmitting node is responding to an ask
-- 0b11 - rtx: set when requesting a packet retransmission
+- 0b001 - ask: set when a transmitting node wants an ack for the packet
+- 0b010 - ack: set when the transmitting node is responding to an ask
+- 0b011 - rtx: set when requesting a packet retransmission
+- 0b100 - rns: set when requesting a node's status
+- 0b101 - nia: set to indicate node status response (i.e. the node is active)
 
-The mutually exclusive flag 0b00 is a no-op value. Bits 4-6 can be added to the
-encoded flags field to increase the number of mutually exclusive flags if
-necessary for future developments.
+The mutually exclusive flag 0b000 is a no-op value, and 0b111 is reserved and is
+currently a no-op (`flags.encoded6`). Bits 5-6 can be added to the encoded flags
+field to increase the number of mutually exclusive flags if necessary for future
+developments.
 
 ## packet_id
 
@@ -788,6 +792,28 @@ When a node receives a Beacon from a peer, it sets the peer timeout value to 4.
 After a node sends out its periodic Beacon, it will decrement the timeout for
 each peer in its peer list; if the timeout for a peer reaches 0, the peer is
 removed from the peer list.
+
+
+# Modem Sleep
+
+To save battery power, the `Packager.work` method will use `machine.lightsleep`
+if it is available and the `use_modem_sleep` param is set to `True`. It will
+enter light sleep for `modem_sleep_ms` (default 90) and then stay active for a
+minimum of `modem_active_ms` (default 40).
+
+## RNS / NIA
+
+When a node wants to transmit to another node, since it could be in modem sleep,
+it will first send a packet with `flags.rns=1` (Request Node Status) to test if
+the node is active. An active node that receives such a packet will respond with
+`flags.nia=1` (Node Is Active). Anytime a node receives or tries to send a
+datagram, it will queue skipping 10 modem sleep cycles, and that queue will have
+capacity for a maximum of 20 skips.
+
+The RNS will be sent 10 times with a 20 ms delay between, after which all
+datagrams queued for the peer will be cleared if no NIA has been received. Upon
+receiving NIA, `peer.last_rx` will be updated, and thus datagrams will begin
+transmitting to that peer; the scheduled RNS event will also be canceled.
 
 
 # Gossip (Application Discovery)
