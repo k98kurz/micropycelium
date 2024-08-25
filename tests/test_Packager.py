@@ -1043,12 +1043,33 @@ class TestPackager(unittest.TestCase):
 
 
 class TestBeaconApplication(unittest.TestCase):
+    def setUp(self) -> None:
+        Packager.Packager.apps.clear()
+        Packager.Packager.interfaces.clear()
+        Packager.Packager.peers.clear()
+        mock_interface1.castbox.clear()
+        castbox.clear()
+        return super().setUp()
+
     def tearDown(self) -> None:
         Packager.Packager.apps.clear()
         Packager.Packager.interfaces.clear()
         Packager.Packager.peers.clear()
-        Packager.Packager.add_interface(Packager.InterAppInterface)
+        mock_interface1.castbox.clear()
+        castbox.clear()
         return super().tearDown()
+
+    def test_invoke_broadcast(self):
+        Packager.Packager.add_interface(mock_interface1)
+        assert len(Packager.Packager.peers) == 0
+        assert len(mock_interface1.castbox) == 0
+        Packager.Packager.add_application(Beacon.Beacon)
+        Beacon.Beacon.invoke('broadcast')
+        assert len(mock_interface1.castbox) == 1
+        assert len(castbox) == 0
+        asyncio.run(Packager.Packager.process())
+        assert len(mock_interface1.castbox) == 0
+        assert len(castbox) == 1
 
     def test_receive_adds_peer_and_sends_response(self):
         Packager.Packager.add_interface(Packager.InterAppInterface)
