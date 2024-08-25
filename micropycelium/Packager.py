@@ -1,13 +1,12 @@
-from __future__ import annotations
 from binascii import crc32
 from collections import namedtuple, deque
 from hashlib import sha256
 from math import ceil
-from micropython import native, _const
 from random import randint
 from struct import pack, unpack
 from time import time
 import asyncio
+import micropython
 
 try:
     from typing import Callable
@@ -34,13 +33,13 @@ else:
         return isinstance(c, GeneratorType)
 
 
-VERSION = _const(0)
+VERSION = micropython._const(0)
 
 
 Field = namedtuple("Field", ["name", "length", "type", "max_length"], defaults=(0,))
 
 
-@native
+@micropython.native
 class Flags:
     error: bool
     throttle: bool
@@ -199,11 +198,11 @@ class Flags:
             f'rns={self.rns}, nia={self.nia}, encoded6={self.encoded6}, ' +\
             f'reserved1={self.reserved1}, reserved2={self.reserved2}, mode={self.mode})'
 
-    def __eq__(self, other: Flags) -> bool:
+    def __eq__(self, other: 'Flags') -> bool:
         return self.state == other.state
 
 
-@native
+@micropython.native
 class Schema:
     """Describes a packet schema."""
     version: int
@@ -282,7 +281,7 @@ class Schema:
         """Returns the max blob size the Schema can support transmitting."""
         return self.max_seq * self.max_body
 
-@native
+@micropython.native
 def get_schema(id: int) -> Schema:
     """Get the Schema definition with the given id."""
     if id == 0:
@@ -506,12 +505,12 @@ def get_schema(id: int) -> Schema:
             Field('body', 0, bytes, 193),
         ])
 
-@native
+@micropython.native
 def get_schemas(ids: list[int]) -> list[Schema]:
     """Get a list of Schema definitions with the given ids."""
     return [get_schema(i) for i in ids]
 
-@native
+@micropython.native
 def schema_supports_sequence(schema: Schema) -> bool:
     """Determine if a Schema supports sequencing."""
     return len([True for field in schema.fields if field.name == 'packet_id']) == 1 \
@@ -519,7 +518,7 @@ def schema_supports_sequence(schema: Schema) -> bool:
         and len([True for field in schema.fields if field.name == 'seq_size'])  == 1 \
         and len([True for field in schema.fields if field.name == 'body'])  == 1
 
-@native
+@micropython.native
 def schema_supports_routing(schema: Schema) -> bool:
     """Determine if a Schema supports routing."""
     return len([True for f in schema.fields if f.name == 'ttl']) == 1
@@ -540,7 +539,7 @@ SCHEMA_IDS_SUPPORT_CHECKSUM: list[int] = [
 ]
 
 
-@native
+@micropython.native
 class Packet:
     schema: Schema
     id: int
@@ -555,7 +554,7 @@ class Packet:
         self.fields = fields
 
     @classmethod
-    def unpack(cls, data: bytes|bytearray) -> Packet:
+    def unpack(cls, data: bytes|bytearray) -> 'Packet':
         version, reserved, schema_id, flags, _ = unpack(f'!BBBB{len(data)-4}s', data)
         assert version <= VERSION, 'unsupported version encountered'
         schema = get_schema(schema_id)
@@ -594,7 +593,7 @@ class Packet:
             f'flags={self.flags}, body={self.body.hex()})'
 
 
-@native
+@micropython.native
 class Sequence:
     schema: Schema
     id: int
@@ -700,7 +699,7 @@ class Sequence:
         return set() if self.seq_size is None else set([i for i in range(self.seq_size)]).difference(self.packets)
 
 
-@native
+@micropython.native
 class Package:
     app_id: bytes|bytearray|memoryview
     half_sha256: bytes|bytearray|memoryview
@@ -719,13 +718,13 @@ class Package:
         return sha256(self.blob).digest()[:16] == self.half_sha256
 
     @classmethod
-    def from_blob(cls, app_id: bytes|bytearray, blob: bytes|bytearray) -> Package:
+    def from_blob(cls, app_id: bytes|bytearray, blob: bytes|bytearray) -> 'Package':
         """Generate a Package using an app_id and a blob."""
         half_sha256 = sha256(blob).digest()[:16]
         return cls(app_id, half_sha256, blob)
 
     @classmethod
-    def from_sequence(cls, seq: Sequence) -> Package:
+    def from_sequence(cls, seq: Sequence) -> 'Package':
         """Generate a Package using a completed sequence. Raises
             AssertionError if the sequence is missing packets.
         """
@@ -737,13 +736,13 @@ class Package:
         return pack(f'!16s16s{len(self.blob)}s', self.app_id, self.half_sha256, self.blob)
 
     @classmethod
-    def unpack(cls, data: bytes) -> Package:
+    def unpack(cls, data: bytes) -> 'Package':
         """Deserialize a Package from bytes."""
         app_id, half_sha256, blob = unpack(f'!16s16s{len(data)-32}s', data)
         return cls(app_id, half_sha256, blob)
 
 
-@native
+@micropython.native
 class Datagram:
     data: bytes
     intrfc_id: bytes|None
@@ -754,7 +753,7 @@ class Datagram:
         self.addr = addr
 
 
-@native
+@micropython.native
 class Interface:
     name: str
     supported_schemas: list[int]
@@ -858,7 +857,7 @@ class Interface:
         return True
 
 
-@native
+@micropython.native
 class Address:
     tree_state: bytes
     address: bytes
@@ -868,7 +867,7 @@ class Address:
         self.address = address
 
 
-@native
+@micropython.native
 class Peer:
     """Class for tracking local peer connectivity info. Peer id should
         be a public key, and interfaces must be a dict mapping MAC
@@ -902,7 +901,7 @@ class Peer:
         return self.last_rx + 800 > int(time() * 1000)
 
 
-@native
+@micropython.native
 class Node:
     """Class for tracking nodes and the apps they support."""
     id: bytes
@@ -913,7 +912,7 @@ class Node:
         self.apps = apps
 
 
-@native
+@micropython.native
 class Application:
     name: str
     description: str
@@ -958,7 +957,7 @@ class Application:
         return (self.callbacks[name](self, *args, **kwargs)) if name in self.callbacks else None
 
 
-@native
+@micropython.native
 class Event:
     ts: int # in milliseconds
     id: bytes
@@ -977,7 +976,7 @@ class Event:
             f'handler={self.handler}, args={self.args}, kwargs={self.kwargs})'
 
 
-@native
+@micropython.native
 class InSequence:
     seq: Sequence
     src: bytes|Address
@@ -990,7 +989,7 @@ class InSequence:
         self.retry = 2
 
 
-@native
+@micropython.native
 class Packager:
     interfaces: list[Interface] = []
     seq_id: int = 0
