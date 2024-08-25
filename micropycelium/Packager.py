@@ -1,12 +1,15 @@
 from binascii import crc32
 from collections import namedtuple, deque
 from hashlib import sha256
+from machine import unique_id
 from math import ceil
 from random import randint
 from struct import pack, unpack
 from time import time
 import asyncio
+import espnow
 import micropython
+import network
 
 try:
     from typing import Callable
