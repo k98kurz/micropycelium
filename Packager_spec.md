@@ -70,10 +70,11 @@ This will be called by an asynchronous task that monitors network interfaces.
 
 ## Deliver
 
-Takes a Package and attempts to deliver it to the Application. Invoked by the
-Receive operation, but can also be invoked through the Packager API directly.
-Directly invoking the Deliver operation may be useful for bootstrapping an
-Application or for inter-Application communication.
+Takes a Package, originating Interface, and originating MAC address, then
+attempts to deliver the Package blob, Interface, and MAC to the Application.
+Invoked by the Receive operation, but can also be invoked through the Packager
+API directly. Directly invoking the Deliver operation may be useful for
+bootstrapping an Application or for inter-Application communication.
 
 ## Add Application
 
@@ -105,8 +106,10 @@ a coroutine.
 
 ## Receive
 
-This method takes in a blob of bytes representing an application message and
-invokes the callback, passing self and blob.
+This method takes in a blob of bytes representing an application message, the
+interface on which it was received, and the MAC address from which it was
+received. It then invokes the callback, passing self, blob, the Interface, and
+the MAC.
 
 ## Available
 

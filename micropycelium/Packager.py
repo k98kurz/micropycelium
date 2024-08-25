@@ -937,9 +937,9 @@ class Application:
         self.receive_func = receive_func
         self.callbacks = callbacks
 
-    def receive(self, blob: bytes):
-        """Passes self and blob to the receive_func callback."""
-        self.receive_func(self, blob)
+    def receive(self, blob: bytes, intrfc: Interface, mac: bytes):
+        """Passes self, blob, and intrfc to the receive_func callback."""
+        self.receive_func(self, blob, intrfc, mac)
 
     def available(self, name: str|None = None) -> list[str]|bool:
         """If name is passed, returns True if there is a callback with
@@ -981,9 +981,11 @@ class InSequence:
     seq: Sequence
     src: bytes|Address
     retry: int
-    def __init__(self, seq: Sequence, src: bytes|Address) -> None:
+    intrfc: Interface
+    def __init__(self, seq: Sequence, src: bytes|Address, intrfc: Interface) -> None:
         self.seq = seq
         self.src = src
+        self.intrfc = intrfc
         self.retry = 2
 
 
@@ -1024,7 +1026,11 @@ class Packager:
         """Adds a peer to the local peer list. Packager will be able to
             send Packages to all such peers.
         """
-        cls.peers[peer_id] = Peer(peer_id, interfaces)
+        if peer_id not in cls.peers:
+            cls.peers[peer_id] = Peer(peer_id, interfaces)
+        for mac, intrfc in interfaces:
+            if mac not in (i[0] for i in cls.peers[peer_id].interfaces):
+                cls.peers[peer_id].interfaces[mac] = intrfc
 
     @classmethod
     def remove_peer(cls, peer_id: bytes):
@@ -1417,12 +1423,13 @@ class Packager:
             if seq_id not in cls.in_seqs:
                 cls.in_seqs[seq_id] = InSequence(
                     Sequence(p.schema, seq_id, seq_size=p.fields['seq_size']+1),
-                    src
+                    src,
+                    intrfc
                 )
             seq = cls.in_seqs[seq_id]
             seq.retry = 3 # reset retries because the originator is reachable
             if seq.seq.add_packet(p):
-                cls.deliver(Package.unpack(seq.seq.data))
+                cls.deliver(Package.unpack(seq.seq.data), intrfc, mac)
                 cls.in_seqs.pop(seq_id)
             else:
                 # schedule sequence sync event
@@ -1456,7 +1463,7 @@ class Packager:
             return
         else:
             # parse and deliver the Package
-            cls.deliver(Package.unpack(p.body))
+            cls.deliver(Package.unpack(p.body), intrfc)
 
         if p.flags.ask:
             # send ack
@@ -1477,7 +1484,7 @@ class Packager:
             ), src)
 
     @classmethod
-    def deliver(cls, p: Package) -> bool:
+    def deliver(cls, p: Package, i: Interface, m: bytes) -> bool:
         """Attempt to deliver a Package. Returns False if the Package
             half_sha256 is invalid for the blob, or if the Application
             was not registered, or if the Application's receive method
@@ -1486,7 +1493,7 @@ class Packager:
         if p.half_sha256 != sha256(p.blob).digest()[:16] or p.app_id not in cls.apps:
             return False
         try:
-            cls.apps[p.app_id].receive(p.blob)
+            cls.apps[p.app_id].receive(p.blob, i, m)
             return True
         except:
             return False
@@ -1598,3 +1605,20 @@ class Packager:
     def stop(cls):
         """Sets cls.running to False for graceful shutdown of worker."""
         cls.running = False
+
+
+# Interface for inter-Application communication.
+_iai_box: deque[Datagram] = deque([], 10)
+_iai_config = {}
+
+InterAppInterface = Interface(
+    name='InterAppInterface',
+    bitrate=1_000_000_000,
+    configure=lambda _, d: _iai_config.update(d),
+    supported_schemas=SCHEMA_IDS,
+    receive_func=lambda _: _iai_box.popleft() if len(_iai_box) else None,
+    send_func=lambda d: _iai_box.append(d),
+    broadcast_func=lambda d: _iai_box.append(d),
+)
+
+Packager.add_interface(InterAppInterface)

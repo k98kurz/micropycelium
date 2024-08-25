@@ -356,7 +356,7 @@ test_app = Packager.Application(
     'test',
     'test',
     0,
-    lambda _, blob: app_blobs.append(blob),
+    lambda _P, blob, _i, _m: app_blobs.append(blob),
     {
         'hello': lambda _: 'world',
     }
@@ -377,7 +377,7 @@ class TestApplication(unittest.TestCase):
 
     def test_receive(self):
         assert len(app_blobs) == 0
-        test_app.receive(b'hello world')
+        test_app.receive(b'hello world', mock_interface1, b'mac0')
         assert len(app_blobs) == 1
         assert app_blobs[0] == b'hello world'
 
@@ -849,7 +849,7 @@ class TestPackager(unittest.TestCase):
         package = Packager.Package.from_blob(test_app.id, b'hello world')
         Packager.Packager.add_application(test_app)
         assert len(app_blobs) == 0
-        Packager.Packager.deliver(package)
+        Packager.Packager.deliver(package, mock_interface1, b'mac0')
         assert len(app_blobs) == 1
 
     def test_sequence_synchronization_e2e_success(self):
