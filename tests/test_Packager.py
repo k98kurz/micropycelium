@@ -1,8 +1,7 @@
 import asyncio
 from binascii import crc32
 from collections import deque
-from context import Packager
-from hashlib import sha256
+from context import Packager, Beacon
 from time import time, sleep
 import unittest
 
@@ -1042,6 +1041,37 @@ class TestPackager(unittest.TestCase):
         asyncio.run(Packager.Packager.process())
         assert len(Packager.Packager.in_seqs.keys()) == 0
 
+
+class TestBeaconApplication(unittest.TestCase):
+    def tearDown(self) -> None:
+        Packager.Packager.apps.clear()
+        Packager.Packager.interfaces.clear()
+        Packager.Packager.peers.clear()
+        Packager.Packager.add_interface(Packager.InterAppInterface)
+        return super().tearDown()
+
+    def test_receive_adds_peer_and_sends_response(self):
+        Packager.Packager.add_interface(Packager.InterAppInterface)
+        assert len(Packager.Packager.peers) == 0
+        assert len(Packager.InterAppInterface.outbox) == 0
+        Packager.Packager.add_application(Beacon.Beacon)
+        bmsgs = [
+            Packager.Package.from_blob(
+                Beacon.Beacon.id,
+                Beacon.Beacon.invoke('serialize', bm),
+            )
+            for bm in Beacon.Beacon.invoke('get_bmsgs', b'\x00')
+        ]
+        Packager.Packager.node_id = b'changed for testing'
+        assert len(Packager.InterAppInterface.outbox) == 0
+        asyncio.run(Packager.Packager.process())
+        for bm in bmsgs:
+            Packager.Packager.deliver(bm, Packager.InterAppInterface, b'mac0')
+        asyncio.run(Packager.Packager.process())
+        assert len(Packager.Packager.peers) == 1
+        assert len(Packager._iai_box) == 1
+        asyncio.run(Packager.Packager.process())
+        assert len(Packager._iai_box) == 0
 
 if __name__ == '__main__':
     unittest.main()

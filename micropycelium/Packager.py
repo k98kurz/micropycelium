@@ -1463,7 +1463,7 @@ class Packager:
             return
         else:
             # parse and deliver the Package
-            cls.deliver(Package.unpack(p.body), intrfc)
+            cls.deliver(Package.unpack(p.body), intrfc, mac)
 
         if p.flags.ask:
             # send ack
@@ -1620,5 +1620,3 @@ InterAppInterface = Interface(
     send_func=lambda d: _iai_box.append(d),
     broadcast_func=lambda d: _iai_box.append(d),
 )
-
-Packager.add_interface(InterAppInterface)
