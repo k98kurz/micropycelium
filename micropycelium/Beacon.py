@@ -1,18 +1,19 @@
 try:
-    from Packager import Packager, Application, Interface
+    from Packager import Packager, Application, Interface, Event
 except ImportError:
-    from .Packager import Packager, Application, Interface
+    from .Packager import Packager, Application, Interface, Event
 from collections import deque, namedtuple
 from hashlib import sha256
 from machine import unique_id
+from time import time
 
 
+now = lambda: int(time()*1000)
 Packager.node_id = sha256(sha256(unique_id()).digest()).digest()
 BeaconMessage = namedtuple("BeaconMessage", ['op', 'peer_id', 'apps'])
 seen: deque[BeaconMessage] = deque([], 10)
 sent: deque[BeaconMessage] = deque([], 10)
 app_id = b''
-
 
 
 def serialize(bmsg: BeaconMessage):
@@ -61,7 +62,6 @@ def get_bmsgs(op: bytes):
         ))
     return bmsgs
 
-
 def send(pid: bytes):
     bmsgs = get_bmsgs(b'\x01')
     for bm in bmsgs:
@@ -74,6 +74,27 @@ def broadcast():
         # broadcast the BeaconMessage in a Package
         Packager.broadcast(app_id, serialize(bm))
 
+def periodic(count: int):
+    """Broadcasts count times with a 30ms delay between."""
+    if count <= 0:
+        return schedule()
+    broadcast()
+    Packager.new_events.append(Event(
+        now() + 30,
+        app_id,
+        periodic,
+        count - 1
+    ))
+
+def schedule():
+    """Schedules the periodic event to begin broadcasting after 60s."""
+    Packager.new_events.append(Event(
+        now() + 60_000,
+        app_id,
+        periodic,
+        10
+    ))
+
 Beacon = Application(
     name='Beacon',
     description='Dev Beacon App',
@@ -85,8 +106,7 @@ Beacon = Application(
         'get_bmsgs': lambda _, op: get_bmsgs(op),
         'serialize': lambda _, bm: serialize(bm),
         'deserialize': lambda _, blob: deserialize(blob),
+        'start': lambda _: periodic(10),
     }
 )
 app_id = Beacon.id
-
-Packager.add_application(Beacon)

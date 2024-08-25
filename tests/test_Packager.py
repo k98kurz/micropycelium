@@ -1094,5 +1094,23 @@ class TestBeaconApplication(unittest.TestCase):
         asyncio.run(Packager.Packager.process())
         assert len(Packager._iai_box) == 0
 
+    def test_start_broadcasts_and_schedules_event(self):
+        Packager.Packager.add_interface(Packager.InterAppInterface)
+        assert len(Packager.InterAppInterface.castbox) == 0
+        assert len(Packager.Packager.new_events) == 0
+        Packager.Packager.add_application(Beacon.Beacon)
+        # should queue a broadcast on the interface and queue new event
+        Beacon.Beacon.invoke('start')
+        assert len(Packager.InterAppInterface.castbox) == 1
+        assert len(Packager.Packager.schedule.keys()) == 0
+        assert len(Packager.Packager.new_events) == 1
+        # should send the broadcast then schedule the event
+        asyncio.run(Packager.Packager.process())
+        assert len(Packager.InterAppInterface.castbox) == 0
+        assert len(Packager.Packager.new_events) == 0
+        assert len(Packager.Packager.schedule.keys()) == 1
+        assert list(Packager.Packager.schedule.keys())[0] == Beacon.Beacon.id
+
+
 if __name__ == '__main__':
     unittest.main()
