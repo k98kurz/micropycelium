@@ -529,6 +529,22 @@ datagram queued for broadcast using one of the `broadcast_` callbacks. The
 `receive_` callback must accept the Interface as its sole argument. The `send_`
 and `broadcast_` callbacks must accept a Datagram as their sole argument.
 
+## InterAppInterface
+
+A logical loopback Interface is provided so that apps can communicate with each
+other locally. It is not excluded from Packager operations, but it will not be
+used by `Packager.send` without first adding the local node as its own peer:
+`Packager.add_peer(Packager.node_id, InterAppInterface, b'mac')`; calling
+`Packager.send(Packager.node_id, app_id, blob)` would then use the
+InterAppInterface to logically transmit the Package to the Application. It is
+more efficient to use `Packager.deliver` for local inter-App communication, but
+this Interface is left as an option. Any Package send with `Packager.broadcast`
+will loopback and be received by the local Application.
+
+To enable this broadcast loopback functionality, execute
+`Packager.add_interface(InterAppInterface)`. The intended use case is testing
+Applications during development.
+
 
 # Packet Protocol
 
