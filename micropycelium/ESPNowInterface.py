@@ -4,11 +4,13 @@ import espnow
 
 
 _config = {}
-sta_if = network.WLAN(0)
-sta_if.disconnect()
-sta_if.config(channel=0)
+sta_if = network.WLAN(network.STA_IF)
+# sta_if.disconnect()
 sta_if.active(True)
+sta_if.config(channel=14)
 e = espnow.ESPNow()
+e.active(True)
+e.add_peer(b'\xff\xff\xff\xff\xff\xff')
 
 def config(intrfc: Interface, data: dict):
     for k,v in data.items():

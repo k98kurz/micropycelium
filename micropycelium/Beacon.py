@@ -1,4 +1,7 @@
-from .Packager import Packager, Application, Interface
+try:
+    from Packager import Packager, Application, Interface
+except ImportError:
+    from .Packager import Packager, Application, Interface
 from collections import deque, namedtuple
 from hashlib import sha256
 from machine import unique_id
@@ -85,3 +88,5 @@ Beacon = Application(
     }
 )
 app_id = Beacon.id
+
+Packager.add_application(Beacon)

@@ -33,13 +33,13 @@ else:
         return isinstance(c, GeneratorType)
 
 
-VERSION = micropython._const(0)
+VERSION = micropython.const(0)
 
 
-Field = namedtuple("Field", ["name", "length", "type", "max_length"], defaults=(0,))
+Field = namedtuple("Field", ["name", "length", "type", "max_length"])
 
 
-@micropython.native
+# @micropython.native
 class Flags:
     error: bool
     throttle: bool
@@ -202,7 +202,7 @@ class Flags:
         return self.state == other.state
 
 
-@micropython.native
+# @micropython.native
 class Schema:
     """Describes a packet schema."""
     version: int
@@ -281,236 +281,236 @@ class Schema:
         """Returns the max blob size the Schema can support transmitting."""
         return self.max_seq * self.max_body
 
-@micropython.native
+# @micropython.native
 def get_schema(id: int) -> Schema:
     """Get the Schema definition with the given id."""
     if id == 0:
         # ESP-NOW; 245 B max Package size
         return Schema(0, 0, [
-            Field('packet_id', 1, int),
+            Field('packet_id', 1, int, 0),
             Field('body', 0, bytes, 245),
         ])
     if id == 1:
         # ESP-NOW; 241 B max Package size
         return Schema(0, 1, [
-            Field('packet_id', 1, int),
-            Field('checksum', 4, bytes),
+            Field('packet_id', 1, int, 0),
+            Field('checksum', 4, bytes, 0),
             Field('body', 0, bytes, 241),
         ])
     if id == 2:
         # ESP-NOW; 256 max sequence size; 60.75 KiB max Package size
         return Schema(0, 2, [
-            Field('packet_id', 1, int),
-            Field('seq_id', 1, int),
-            Field('seq_size', 1, int),
+            Field('packet_id', 1, int, 0),
+            Field('seq_id', 1, int, 0),
+            Field('seq_size', 1, int, 0),
             Field('body', 0, bytes, 243),
         ])
     if id == 3:
         # ESP-NOW; 256 max sequence size; 59.75 KiB max Package size
         return Schema(0, 3, [
-            Field('packet_id', 1, int),
-            Field('seq_id', 1, int),
-            Field('seq_size', 1, int),
-            Field('checksum', 4, bytes),
+            Field('packet_id', 1, int, 0),
+            Field('seq_id', 1, int, 0),
+            Field('seq_size', 1, int, 0),
+            Field('checksum', 4, bytes, 0),
             Field('body', 0, bytes, 239),
         ])
     if id == 4:
         # ESP-NOW; 65536 max sequence size; 14.8125 MiB max Package size
         return Schema(0, 4, [
-            Field('packet_id', 2, int),
-            Field('seq_id', 1, int),
-            Field('seq_size', 2, int),
-            Field('checksum', 4, bytes),
+            Field('packet_id', 2, int, 0),
+            Field('seq_id', 1, int, 0),
+            Field('seq_size', 2, int, 0),
+            Field('checksum', 4, bytes, 0),
             Field('body', 0, bytes, 237),
         ])
     if id == 5:
         # ESP-NOW; 211 B max Package size
         return Schema(0, 5, [
-            Field('packet_id', 1, int),
-            Field('ttl', 1, int),
-            Field('tree_state', 1, int),
-            Field('to_addr', 16, bytes),
-            Field('from_addr', 16, bytes),
+            Field('packet_id', 1, int, 0),
+            Field('ttl', 1, int, 0),
+            Field('tree_state', 1, int, 0),
+            Field('to_addr', 16, bytes, 0),
+            Field('from_addr', 16, bytes, 0),
             Field('body', 0, bytes, 211),
         ])
     if id == 6:
         # ESP-NOW; 207 B max Package size
         return Schema(0, 6, [
-            Field('packet_id', 1, int),
-            Field('ttl', 1, int),
-            Field('checksum', 4, bytes),
-            Field('tree_state', 1, int),
-            Field('to_addr', 16, bytes),
-            Field('from_addr', 16, bytes),
+            Field('packet_id', 1, int, 0),
+            Field('ttl', 1, int, 0),
+            Field('checksum', 4, bytes, 0),
+            Field('tree_state', 1, int, 0),
+            Field('to_addr', 16, bytes, 0),
+            Field('from_addr', 16, bytes, 0),
             Field('body', 0, bytes, 207),
         ])
     if id == 7:
         # ESP-NOW; 256 max sequence size; 52.75 KiB max Package size
         return Schema(0, 7, [
-            Field('packet_id', 1, int),
-            Field('seq_id', 1, int),
-            Field('seq_size', 1, int),
-            Field('ttl', 1, int),
-            Field('tree_state', 1, int),
-            Field('to_addr', 16, bytes),
-            Field('from_addr', 16, bytes),
+            Field('packet_id', 1, int, 0),
+            Field('seq_id', 1, int, 0),
+            Field('seq_size', 1, int, 0),
+            Field('ttl', 1, int, 0),
+            Field('tree_state', 1, int, 0),
+            Field('to_addr', 16, bytes, 0),
+            Field('from_addr', 16, bytes, 0),
             Field('body', 0, bytes, 209),
         ])
     if id == 8:
         # ESP-NOW; 256 max sequence size; 51.25 KiB max Package size
         return Schema(0, 8, [
-            Field('packet_id', 1, int),
-            Field('seq_id', 1, int),
-            Field('seq_size', 1, int),
-            Field('ttl', 1, int),
-            Field('checksum', 4, bytes),
-            Field('tree_state', 1, int),
-            Field('to_addr', 16, bytes),
-            Field('from_addr', 16, bytes),
+            Field('packet_id', 1, int, 0),
+            Field('seq_id', 1, int, 0),
+            Field('seq_size', 1, int, 0),
+            Field('ttl', 1, int, 0),
+            Field('checksum', 4, bytes, 0),
+            Field('tree_state', 1, int, 0),
+            Field('to_addr', 16, bytes, 0),
+            Field('from_addr', 16, bytes, 0),
             Field('body', 0, bytes, 205),
         ])
     if id == 9:
         # ESP-NOW; 65536 max sequence size; 12.9375 MiB max Package size
         return Schema(0, 9, [
-            Field('packet_id', 2, int),
-            Field('seq_id', 1, int),
-            Field('seq_size', 2, int),
-            Field('ttl', 1, int),
-            Field('tree_state', 1, int),
-            Field('to_addr', 16, bytes),
-            Field('from_addr', 16, bytes),
+            Field('packet_id', 2, int, 0),
+            Field('seq_id', 1, int, 0),
+            Field('seq_size', 2, int, 0),
+            Field('ttl', 1, int, 0),
+            Field('tree_state', 1, int, 0),
+            Field('to_addr', 16, bytes, 0),
+            Field('from_addr', 16, bytes, 0),
             Field('body', 0, bytes, 207),
         ])
     if id == 10:
         # ESP-NOW; 65536 max sequence size; 12.6875 MiB max Package size
         return Schema(0, 10, [
-            Field('packet_id', 2, int),
-            Field('seq_id', 1, int),
-            Field('seq_size', 2, int),
-            Field('ttl', 1, int),
-            Field('checksum', 4, bytes),
-            Field('tree_state', 1, int),
-            Field('to_addr', 16, bytes),
-            Field('from_addr', 16, bytes),
+            Field('packet_id', 2, int, 0),
+            Field('seq_id', 1, int, 0),
+            Field('seq_size', 2, int, 0),
+            Field('ttl', 1, int, 0),
+            Field('checksum', 4, bytes, 0),
+            Field('tree_state', 1, int, 0),
+            Field('to_addr', 16, bytes, 0),
+            Field('from_addr', 16, bytes, 0),
             Field('body', 0, bytes, 203),
         ])
     if id == 20:
         # RYLR-998; 235 B max Package size
         return Schema(0, 20, [
-            Field('packet_id', 1, int),
+            Field('packet_id', 1, int, 0),
             Field('body', 0, bytes, 235),
         ])
     if id == 21:
         # RYLR-998; 231 B max Package size
         return Schema(0, 21, [
-            Field('packet_id', 1, int),
-            Field('checksum', 4, bytes),
+            Field('packet_id', 1, int, 0),
+            Field('checksum', 4, bytes, 0),
             Field('body', 0, bytes, 231),
         ])
     if id == 22:
         # RYLR-998; 256 max sequence size; 53.25 KiB max Package size
         return Schema(0, 22, [
-            Field('packet_id', 1, int),
-            Field('seq_id', 1, int),
-            Field('seq_size', 1, int),
+            Field('packet_id', 1, int, 0),
+            Field('seq_id', 1, int, 0),
+            Field('seq_size', 1, int, 0),
             Field('body', 0, bytes, 233),
         ])
     if id == 23:
         # RYLR-998; 256 max sequence size; 57.25 KiB max Package size
         return Schema(0, 23, [
-            Field('packet_id', 1, int),
-            Field('seq_id', 1, int),
-            Field('seq_size', 1, int),
-            Field('checksum', 4, bytes),
+            Field('packet_id', 1, int, 0),
+            Field('seq_id', 1, int, 0),
+            Field('seq_size', 1, int, 0),
+            Field('checksum', 4, bytes, 0),
             Field('body', 0, bytes, 229),
         ])
     if id == 24:
         # RYLR-998; 65536 max sequence size; 14.1875 MiB max Package size
         return Schema(0, 24, [
-            Field('packet_id', 2, int),
-            Field('seq_id', 1, int),
-            Field('seq_size', 2, int),
-            Field('checksum', 4, bytes),
+            Field('packet_id', 2, int, 0),
+            Field('seq_id', 1, int, 0),
+            Field('seq_size', 2, int, 0),
+            Field('checksum', 4, bytes, 0),
             Field('body', 0, bytes, 227),
         ])
     if id == 25:
         # RYLR-998; 201 B max Package size
         return Schema(0, 25, [
-            Field('packet_id', 1, int),
-            Field('ttl', 1, int),
-            Field('tree_state', 1, int),
-            Field('to_addr', 16, bytes),
-            Field('from_addr', 16, bytes),
+            Field('packet_id', 1, int, 0),
+            Field('ttl', 1, int, 0),
+            Field('tree_state', 1, int, 0),
+            Field('to_addr', 16, bytes, 0),
+            Field('from_addr', 16, bytes, 0),
             Field('body', 0, bytes, 201),
         ])
     if id == 26:
         # RYLR-998; 197 B max Package size
         return Schema(0, 26, [
-            Field('packet_id', 1, int),
-            Field('ttl', 1, int),
-            Field('checksum', 4, bytes),
-            Field('tree_state', 1, int),
-            Field('to_addr', 16, bytes),
-            Field('from_addr', 16, bytes),
+            Field('packet_id', 1, int, 0),
+            Field('ttl', 1, int, 0),
+            Field('checksum', 4, bytes, 0),
+            Field('tree_state', 1, int, 0),
+            Field('to_addr', 16, bytes, 0),
+            Field('from_addr', 16, bytes, 0),
             Field('body', 0, bytes, 197),
         ])
     if id == 27:
         # RYLR-998; 256 max sequence size; 49.75 KiB max Package size
         return Schema(0, 27, [
-            Field('packet_id', 1, int),
-            Field('seq_id', 1, int),
-            Field('seq_size', 1, int),
-            Field('ttl', 1, int),
-            Field('tree_state', 1, int),
-            Field('to_addr', 16, bytes),
-            Field('from_addr', 16, bytes),
+            Field('packet_id', 1, int, 0),
+            Field('seq_id', 1, int, 0),
+            Field('seq_size', 1, int, 0),
+            Field('ttl', 1, int, 0),
+            Field('tree_state', 1, int, 0),
+            Field('to_addr', 16, bytes, 0),
+            Field('from_addr', 16, bytes, 0),
             Field('body', 0, bytes, 199),
         ])
     if id == 28:
         # RYLR-998; 256 max sequence size; 48.75 KiB max Package size
         return Schema(0, 28, [
-            Field('packet_id', 1, int),
-            Field('seq_id', 1, int),
-            Field('seq_size', 1, int),
-            Field('ttl', 1, int),
-            Field('checksum', 4, bytes),
-            Field('tree_state', 1, int),
-            Field('to_addr', 16, bytes),
-            Field('from_addr', 16, bytes),
+            Field('packet_id', 1, int, 0),
+            Field('seq_id', 1, int, 0),
+            Field('seq_size', 1, int, 0),
+            Field('ttl', 1, int, 0),
+            Field('checksum', 4, bytes, 0),
+            Field('tree_state', 1, int, 0),
+            Field('to_addr', 16, bytes, 0),
+            Field('from_addr', 16, bytes, 0),
             Field('body', 0, bytes, 195),
         ])
     if id == 29:
         # RYLR-998; 65536 max sequence size; 12.3125 MiB max Package size
         return Schema(0, 29, [
-            Field('packet_id', 2, int),
-            Field('seq_id', 1, int),
-            Field('seq_size', 2, int),
-            Field('ttl', 1, int),
-            Field('tree_state', 1, int),
-            Field('to_addr', 16, bytes),
-            Field('from_addr', 16, bytes),
+            Field('packet_id', 2, int, 0),
+            Field('seq_id', 1, int, 0),
+            Field('seq_size', 2, int, 0),
+            Field('ttl', 1, int, 0),
+            Field('tree_state', 1, int, 0),
+            Field('to_addr', 16, bytes, 0),
+            Field('from_addr', 16, bytes, 0),
             Field('body', 0, bytes, 197),
         ])
     if id == 30:
         # RYLR-998; 65536 max sequence size; 12.0625 MiB max Package size
         return Schema(0, 30, [
-            Field('packet_id', 2, int),
-            Field('seq_id', 1, int),
-            Field('seq_size', 2, int),
-            Field('ttl', 1, int),
-            Field('checksum', 4, bytes),
-            Field('tree_state', 1, int),
-            Field('to_addr', 16, bytes),
-            Field('from_addr', 16, bytes),
+            Field('packet_id', 2, int, 0),
+            Field('seq_id', 1, int, 0),
+            Field('seq_size', 2, int, 0),
+            Field('ttl', 1, int, 0),
+            Field('checksum', 4, bytes, 0),
+            Field('tree_state', 1, int, 0),
+            Field('to_addr', 16, bytes, 0),
+            Field('from_addr', 16, bytes, 0),
             Field('body', 0, bytes, 193),
         ])
 
-@micropython.native
+# @micropython.native
 def get_schemas(ids: list[int]) -> list[Schema]:
     """Get a list of Schema definitions with the given ids."""
     return [get_schema(i) for i in ids]
 
-@micropython.native
+# @micropython.native
 def schema_supports_sequence(schema: Schema) -> bool:
     """Determine if a Schema supports sequencing."""
     return len([True for field in schema.fields if field.name == 'packet_id']) == 1 \
@@ -518,7 +518,7 @@ def schema_supports_sequence(schema: Schema) -> bool:
         and len([True for field in schema.fields if field.name == 'seq_size'])  == 1 \
         and len([True for field in schema.fields if field.name == 'body'])  == 1
 
-@micropython.native
+# @micropython.native
 def schema_supports_routing(schema: Schema) -> bool:
     """Determine if a Schema supports routing."""
     return len([True for f in schema.fields if f.name == 'ttl']) == 1
@@ -539,7 +539,7 @@ SCHEMA_IDS_SUPPORT_CHECKSUM: list[int] = [
 ]
 
 
-@micropython.native
+# @micropython.native
 class Packet:
     schema: Schema
     id: int
@@ -593,7 +593,7 @@ class Packet:
             f'flags={self.flags}, body={self.body.hex()})'
 
 
-@micropython.native
+# @micropython.native
 class Sequence:
     schema: Schema
     id: int
@@ -699,7 +699,7 @@ class Sequence:
         return set() if self.seq_size is None else set([i for i in range(self.seq_size)]).difference(self.packets)
 
 
-@micropython.native
+# @micropython.native
 class Package:
     app_id: bytes|bytearray|memoryview
     half_sha256: bytes|bytearray|memoryview
@@ -742,7 +742,7 @@ class Package:
         return cls(app_id, half_sha256, blob)
 
 
-@micropython.native
+# @micropython.native
 class Datagram:
     data: bytes
     intrfc_id: bytes|None
@@ -753,7 +753,7 @@ class Datagram:
         self.addr = addr
 
 
-@micropython.native
+# @micropython.native
 class Interface:
     name: str
     supported_schemas: list[int]
@@ -779,9 +779,9 @@ class Interface:
         """Initialize an Interface. Note that the 0th item in the
             supported_schemas argument is used as the default Schema ID.
         """
-        self.inbox = deque()
-        self.outbox = deque()
-        self.castbox = deque()
+        self.inbox = deque([], 256)
+        self.outbox = deque([], 256)
+        self.castbox = deque([], 256)
         self.name = name
         self._configure = configure
         self.bitrate = bitrate
@@ -857,7 +857,7 @@ class Interface:
         return True
 
 
-@micropython.native
+# @micropython.native
 class Address:
     tree_state: bytes
     address: bytes
@@ -867,7 +867,7 @@ class Address:
         self.address = address
 
 
-@micropython.native
+# @micropython.native
 class Peer:
     """Class for tracking local peer connectivity info. Peer id should
         be a public key, and interfaces must be a dict mapping MAC
@@ -885,7 +885,7 @@ class Peer:
     def __init__(self, id: bytes, interfaces: list[tuple[bytes, Interface],]) -> None:
         self.id = id
         self.interfaces = interfaces
-        self.addrs = deque()
+        self.addrs = deque([], 2)
         self.timeout = 4
         self.throttle = 0
         self.last_rx = int(time() * 1000)
@@ -901,7 +901,7 @@ class Peer:
         return self.last_rx + 800 > int(time() * 1000)
 
 
-@micropython.native
+# @micropython.native
 class Node:
     """Class for tracking nodes and the apps they support."""
     id: bytes
@@ -912,7 +912,7 @@ class Node:
         self.apps = apps
 
 
-@micropython.native
+# @micropython.native
 class Application:
     name: str
     description: str
@@ -957,7 +957,7 @@ class Application:
         return (self.callbacks[name](self, *args, **kwargs)) if name in self.callbacks else None
 
 
-@micropython.native
+# @micropython.native
 class Event:
     ts: int # in milliseconds
     id: bytes
@@ -976,7 +976,7 @@ class Event:
             f'handler={self.handler}, args={self.args}, kwargs={self.kwargs})'
 
 
-@micropython.native
+# @micropython.native
 class InSequence:
     seq: Sequence
     src: bytes|Address
@@ -1000,7 +1000,7 @@ class Packager:
     peers: dict[bytes, Peer] = {}
     routes: dict[Address, bytes] = {}
     node_id: bytes = b''
-    node_addrs: deque[Address] = deque()
+    node_addrs: deque[Address] = deque([], 2)
     apps: dict[bytes, Application] = {}
     schedule: dict[bytes, Event] = {}
     new_events: deque[Event] = deque([], 64)

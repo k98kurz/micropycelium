@@ -3,5 +3,5 @@
 def native(fn):
     return fn
 
-def _const(anything):
+def const(anything):
     return anything

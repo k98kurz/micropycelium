@@ -1,7 +1,7 @@
 """Mock for micropython network module."""
 
 STA_IF = 0
-STA_AP = 1
+AP_IF = 1
 
 class WLAN:
     def __init__(self, id: int = 0) -> None:
