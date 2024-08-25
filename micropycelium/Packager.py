@@ -285,227 +285,226 @@ class Schema:
 @native
 def get_schema(id: int) -> Schema:
     """Get the Schema definition with the given id."""
-    match id:
-        case 0:
-            # ESP-NOW; 245 B max Package size
-            return Schema(0, 0, [
-                Field('packet_id', 1, int),
-                Field('body', 0, bytes, 245),
-            ])
-        case 1:
-            # ESP-NOW; 241 B max Package size
-            return Schema(0, 1, [
-                Field('packet_id', 1, int),
-                Field('checksum', 4, bytes),
-                Field('body', 0, bytes, 241),
-            ])
-        case 2:
-            # ESP-NOW; 256 max sequence size; 60.75 KiB max Package size
-            return Schema(0, 2, [
-                Field('packet_id', 1, int),
-                Field('seq_id', 1, int),
-                Field('seq_size', 1, int),
-                Field('body', 0, bytes, 243),
-            ])
-        case 3:
-            # ESP-NOW; 256 max sequence size; 59.75 KiB max Package size
-            return Schema(0, 3, [
-                Field('packet_id', 1, int),
-                Field('seq_id', 1, int),
-                Field('seq_size', 1, int),
-                Field('checksum', 4, bytes),
-                Field('body', 0, bytes, 239),
-            ])
-        case 4:
-            # ESP-NOW; 65536 max sequence size; 14.8125 MiB max Package size
-            return Schema(0, 4, [
-                Field('packet_id', 2, int),
-                Field('seq_id', 1, int),
-                Field('seq_size', 2, int),
-                Field('checksum', 4, bytes),
-                Field('body', 0, bytes, 237),
-            ])
-        case 5:
-            # ESP-NOW; 211 B max Package size
-            return Schema(0, 5, [
-                Field('packet_id', 1, int),
-                Field('ttl', 1, int),
-                Field('tree_state', 1, int),
-                Field('to_addr', 16, bytes),
-                Field('from_addr', 16, bytes),
-                Field('body', 0, bytes, 211),
-            ])
-        case 6:
-            # ESP-NOW; 207 B max Package size
-            return Schema(0, 6, [
-                Field('packet_id', 1, int),
-                Field('ttl', 1, int),
-                Field('checksum', 4, bytes),
-                Field('tree_state', 1, int),
-                Field('to_addr', 16, bytes),
-                Field('from_addr', 16, bytes),
-                Field('body', 0, bytes, 207),
-            ])
-        case 7:
-            # ESP-NOW; 256 max sequence size; 52.75 KiB max Package size
-            return Schema(0, 7, [
-                Field('packet_id', 1, int),
-                Field('seq_id', 1, int),
-                Field('seq_size', 1, int),
-                Field('ttl', 1, int),
-                Field('tree_state', 1, int),
-                Field('to_addr', 16, bytes),
-                Field('from_addr', 16, bytes),
-                Field('body', 0, bytes, 209),
-            ])
-        case 8:
-            # ESP-NOW; 256 max sequence size; 51.25 KiB max Package size
-            return Schema(0, 8, [
-                Field('packet_id', 1, int),
-                Field('seq_id', 1, int),
-                Field('seq_size', 1, int),
-                Field('ttl', 1, int),
-                Field('checksum', 4, bytes),
-                Field('tree_state', 1, int),
-                Field('to_addr', 16, bytes),
-                Field('from_addr', 16, bytes),
-                Field('body', 0, bytes, 205),
-            ])
-        case 9:
-            # ESP-NOW; 65536 max sequence size; 12.9375 MiB max Package size
-            return Schema(0, 9, [
-                Field('packet_id', 2, int),
-                Field('seq_id', 1, int),
-                Field('seq_size', 2, int),
-                Field('ttl', 1, int),
-                Field('tree_state', 1, int),
-                Field('to_addr', 16, bytes),
-                Field('from_addr', 16, bytes),
-                Field('body', 0, bytes, 207),
-            ])
-        case 10:
-            # ESP-NOW; 65536 max sequence size; 12.6875 MiB max Package size
-            return Schema(0, 10, [
-                Field('packet_id', 2, int),
-                Field('seq_id', 1, int),
-                Field('seq_size', 2, int),
-                Field('ttl', 1, int),
-                Field('checksum', 4, bytes),
-                Field('tree_state', 1, int),
-                Field('to_addr', 16, bytes),
-                Field('from_addr', 16, bytes),
-                Field('body', 0, bytes, 203),
-            ])
-        case 20:
-            # RYLR-998; 235 B max Package size
-            return Schema(0, 20, [
-                Field('packet_id', 1, int),
-                Field('body', 0, bytes, 235),
-            ])
-        case 21:
-            # RYLR-998; 231 B max Package size
-            return Schema(0, 21, [
-                Field('packet_id', 1, int),
-                Field('checksum', 4, bytes),
-                Field('body', 0, bytes, 231),
-            ])
-        case 22:
-            # RYLR-998; 256 max sequence size; 53.25 KiB max Package size
-            return Schema(0, 22, [
-                Field('packet_id', 1, int),
-                Field('seq_id', 1, int),
-                Field('seq_size', 1, int),
-                Field('body', 0, bytes, 233),
-            ])
-        case 23:
-            # RYLR-998; 256 max sequence size; 57.25 KiB max Package size
-            return Schema(0, 23, [
-                Field('packet_id', 1, int),
-                Field('seq_id', 1, int),
-                Field('seq_size', 1, int),
-                Field('checksum', 4, bytes),
-                Field('body', 0, bytes, 229),
-            ])
-        case 24:
-            # RYLR-998; 65536 max sequence size; 14.1875 MiB max Package size
-            return Schema(0, 24, [
-                Field('packet_id', 2, int),
-                Field('seq_id', 1, int),
-                Field('seq_size', 2, int),
-                Field('checksum', 4, bytes),
-                Field('body', 0, bytes, 227),
-            ])
-        case 25:
-            # RYLR-998; 201 B max Package size
-            return Schema(0, 25, [
-                Field('packet_id', 1, int),
-                Field('ttl', 1, int),
-                Field('tree_state', 1, int),
-                Field('to_addr', 16, bytes),
-                Field('from_addr', 16, bytes),
-                Field('body', 0, bytes, 201),
-            ])
-        case 26:
-            # RYLR-998; 197 B max Package size
-            return Schema(0, 26, [
-                Field('packet_id', 1, int),
-                Field('ttl', 1, int),
-                Field('checksum', 4, bytes),
-                Field('tree_state', 1, int),
-                Field('to_addr', 16, bytes),
-                Field('from_addr', 16, bytes),
-                Field('body', 0, bytes, 197),
-            ])
-        case 27:
-            # RYLR-998; 256 max sequence size; 49.75 KiB max Package size
-            return Schema(0, 27, [
-                Field('packet_id', 1, int),
-                Field('seq_id', 1, int),
-                Field('seq_size', 1, int),
-                Field('ttl', 1, int),
-                Field('tree_state', 1, int),
-                Field('to_addr', 16, bytes),
-                Field('from_addr', 16, bytes),
-                Field('body', 0, bytes, 199),
-            ])
-        case 28:
-            # RYLR-998; 256 max sequence size; 48.75 KiB max Package size
-            return Schema(0, 28, [
-                Field('packet_id', 1, int),
-                Field('seq_id', 1, int),
-                Field('seq_size', 1, int),
-                Field('ttl', 1, int),
-                Field('checksum', 4, bytes),
-                Field('tree_state', 1, int),
-                Field('to_addr', 16, bytes),
-                Field('from_addr', 16, bytes),
-                Field('body', 0, bytes, 195),
-            ])
-        case 29:
-            # RYLR-998; 65536 max sequence size; 12.3125 MiB max Package size
-            return Schema(0, 29, [
-                Field('packet_id', 2, int),
-                Field('seq_id', 1, int),
-                Field('seq_size', 2, int),
-                Field('ttl', 1, int),
-                Field('tree_state', 1, int),
-                Field('to_addr', 16, bytes),
-                Field('from_addr', 16, bytes),
-                Field('body', 0, bytes, 197),
-            ])
-        case 30:
-            # RYLR-998; 65536 max sequence size; 12.0625 MiB max Package size
-            return Schema(0, 30, [
-                Field('packet_id', 2, int),
-                Field('seq_id', 1, int),
-                Field('seq_size', 2, int),
-                Field('ttl', 1, int),
-                Field('checksum', 4, bytes),
-                Field('tree_state', 1, int),
-                Field('to_addr', 16, bytes),
-                Field('from_addr', 16, bytes),
-                Field('body', 0, bytes, 193),
-            ])
+    if id == 0:
+        # ESP-NOW; 245 B max Package size
+        return Schema(0, 0, [
+            Field('packet_id', 1, int),
+            Field('body', 0, bytes, 245),
+        ])
+    if id == 1:
+        # ESP-NOW; 241 B max Package size
+        return Schema(0, 1, [
+            Field('packet_id', 1, int),
+            Field('checksum', 4, bytes),
+            Field('body', 0, bytes, 241),
+        ])
+    if id == 2:
+        # ESP-NOW; 256 max sequence size; 60.75 KiB max Package size
+        return Schema(0, 2, [
+            Field('packet_id', 1, int),
+            Field('seq_id', 1, int),
+            Field('seq_size', 1, int),
+            Field('body', 0, bytes, 243),
+        ])
+    if id == 3:
+        # ESP-NOW; 256 max sequence size; 59.75 KiB max Package size
+        return Schema(0, 3, [
+            Field('packet_id', 1, int),
+            Field('seq_id', 1, int),
+            Field('seq_size', 1, int),
+            Field('checksum', 4, bytes),
+            Field('body', 0, bytes, 239),
+        ])
+    if id == 4:
+        # ESP-NOW; 65536 max sequence size; 14.8125 MiB max Package size
+        return Schema(0, 4, [
+            Field('packet_id', 2, int),
+            Field('seq_id', 1, int),
+            Field('seq_size', 2, int),
+            Field('checksum', 4, bytes),
+            Field('body', 0, bytes, 237),
+        ])
+    if id == 5:
+        # ESP-NOW; 211 B max Package size
+        return Schema(0, 5, [
+            Field('packet_id', 1, int),
+            Field('ttl', 1, int),
+            Field('tree_state', 1, int),
+            Field('to_addr', 16, bytes),
+            Field('from_addr', 16, bytes),
+            Field('body', 0, bytes, 211),
+        ])
+    if id == 6:
+        # ESP-NOW; 207 B max Package size
+        return Schema(0, 6, [
+            Field('packet_id', 1, int),
+            Field('ttl', 1, int),
+            Field('checksum', 4, bytes),
+            Field('tree_state', 1, int),
+            Field('to_addr', 16, bytes),
+            Field('from_addr', 16, bytes),
+            Field('body', 0, bytes, 207),
+        ])
+    if id == 7:
+        # ESP-NOW; 256 max sequence size; 52.75 KiB max Package size
+        return Schema(0, 7, [
+            Field('packet_id', 1, int),
+            Field('seq_id', 1, int),
+            Field('seq_size', 1, int),
+            Field('ttl', 1, int),
+            Field('tree_state', 1, int),
+            Field('to_addr', 16, bytes),
+            Field('from_addr', 16, bytes),
+            Field('body', 0, bytes, 209),
+        ])
+    if id == 8:
+        # ESP-NOW; 256 max sequence size; 51.25 KiB max Package size
+        return Schema(0, 8, [
+            Field('packet_id', 1, int),
+            Field('seq_id', 1, int),
+            Field('seq_size', 1, int),
+            Field('ttl', 1, int),
+            Field('checksum', 4, bytes),
+            Field('tree_state', 1, int),
+            Field('to_addr', 16, bytes),
+            Field('from_addr', 16, bytes),
+            Field('body', 0, bytes, 205),
+        ])
+    if id == 9:
+        # ESP-NOW; 65536 max sequence size; 12.9375 MiB max Package size
+        return Schema(0, 9, [
+            Field('packet_id', 2, int),
+            Field('seq_id', 1, int),
+            Field('seq_size', 2, int),
+            Field('ttl', 1, int),
+            Field('tree_state', 1, int),
+            Field('to_addr', 16, bytes),
+            Field('from_addr', 16, bytes),
+            Field('body', 0, bytes, 207),
+        ])
+    if id == 10:
+        # ESP-NOW; 65536 max sequence size; 12.6875 MiB max Package size
+        return Schema(0, 10, [
+            Field('packet_id', 2, int),
+            Field('seq_id', 1, int),
+            Field('seq_size', 2, int),
+            Field('ttl', 1, int),
+            Field('checksum', 4, bytes),
+            Field('tree_state', 1, int),
+            Field('to_addr', 16, bytes),
+            Field('from_addr', 16, bytes),
+            Field('body', 0, bytes, 203),
+        ])
+    if id == 20:
+        # RYLR-998; 235 B max Package size
+        return Schema(0, 20, [
+            Field('packet_id', 1, int),
+            Field('body', 0, bytes, 235),
+        ])
+    if id == 21:
+        # RYLR-998; 231 B max Package size
+        return Schema(0, 21, [
+            Field('packet_id', 1, int),
+            Field('checksum', 4, bytes),
+            Field('body', 0, bytes, 231),
+        ])
+    if id == 22:
+        # RYLR-998; 256 max sequence size; 53.25 KiB max Package size
+        return Schema(0, 22, [
+            Field('packet_id', 1, int),
+            Field('seq_id', 1, int),
+            Field('seq_size', 1, int),
+            Field('body', 0, bytes, 233),
+        ])
+    if id == 23:
+        # RYLR-998; 256 max sequence size; 57.25 KiB max Package size
+        return Schema(0, 23, [
+            Field('packet_id', 1, int),
+            Field('seq_id', 1, int),
+            Field('seq_size', 1, int),
+            Field('checksum', 4, bytes),
+            Field('body', 0, bytes, 229),
+        ])
+    if id == 24:
+        # RYLR-998; 65536 max sequence size; 14.1875 MiB max Package size
+        return Schema(0, 24, [
+            Field('packet_id', 2, int),
+            Field('seq_id', 1, int),
+            Field('seq_size', 2, int),
+            Field('checksum', 4, bytes),
+            Field('body', 0, bytes, 227),
+        ])
+    if id == 25:
+        # RYLR-998; 201 B max Package size
+        return Schema(0, 25, [
+            Field('packet_id', 1, int),
+            Field('ttl', 1, int),
+            Field('tree_state', 1, int),
+            Field('to_addr', 16, bytes),
+            Field('from_addr', 16, bytes),
+            Field('body', 0, bytes, 201),
+        ])
+    if id == 26:
+        # RYLR-998; 197 B max Package size
+        return Schema(0, 26, [
+            Field('packet_id', 1, int),
+            Field('ttl', 1, int),
+            Field('checksum', 4, bytes),
+            Field('tree_state', 1, int),
+            Field('to_addr', 16, bytes),
+            Field('from_addr', 16, bytes),
+            Field('body', 0, bytes, 197),
+        ])
+    if id == 27:
+        # RYLR-998; 256 max sequence size; 49.75 KiB max Package size
+        return Schema(0, 27, [
+            Field('packet_id', 1, int),
+            Field('seq_id', 1, int),
+            Field('seq_size', 1, int),
+            Field('ttl', 1, int),
+            Field('tree_state', 1, int),
+            Field('to_addr', 16, bytes),
+            Field('from_addr', 16, bytes),
+            Field('body', 0, bytes, 199),
+        ])
+    if id == 28:
+        # RYLR-998; 256 max sequence size; 48.75 KiB max Package size
+        return Schema(0, 28, [
+            Field('packet_id', 1, int),
+            Field('seq_id', 1, int),
+            Field('seq_size', 1, int),
+            Field('ttl', 1, int),
+            Field('checksum', 4, bytes),
+            Field('tree_state', 1, int),
+            Field('to_addr', 16, bytes),
+            Field('from_addr', 16, bytes),
+            Field('body', 0, bytes, 195),
+        ])
+    if id == 29:
+        # RYLR-998; 65536 max sequence size; 12.3125 MiB max Package size
+        return Schema(0, 29, [
+            Field('packet_id', 2, int),
+            Field('seq_id', 1, int),
+            Field('seq_size', 2, int),
+            Field('ttl', 1, int),
+            Field('tree_state', 1, int),
+            Field('to_addr', 16, bytes),
+            Field('from_addr', 16, bytes),
+            Field('body', 0, bytes, 197),
+        ])
+    if id == 30:
+        # RYLR-998; 65536 max sequence size; 12.0625 MiB max Package size
+        return Schema(0, 30, [
+            Field('packet_id', 2, int),
+            Field('seq_id', 1, int),
+            Field('seq_size', 2, int),
+            Field('ttl', 1, int),
+            Field('checksum', 4, bytes),
+            Field('tree_state', 1, int),
+            Field('to_addr', 16, bytes),
+            Field('from_addr', 16, bytes),
+            Field('body', 0, bytes, 193),
+        ])
 
 @native
 def get_schemas(ids: list[int]) -> list[Schema]:
@@ -669,7 +668,9 @@ class Sequence:
         offset = id * self.max_body
         size = len(self.data)
         bs = self.max_body if offset + self.max_body <= len(self.data) else size - offset
-        fields = {**fields}
+        fields = {
+            k:v for k,v in fields.items()
+        }
         fields['body'] = memoryview(self.data)[offset:offset+bs]
         fields['packet_id'] = id
         fields['seq_id'] = self.id
@@ -1165,11 +1166,11 @@ class Packager:
         fields = {'body':p, 'packet_id': cls.packet_id, 'seq_id': cls.seq_id, 'seq_size': 1}
         if not islocal:
             fields = {
-                **fields,
-                'to_addr': addr.address,
-                'from_addr': cls.node_addrs[-1].address,
-                'tree_state': addr.tree_state,
+                k:v for k,v in fields.items()
             }
+            fields['to_addr'] = addr.address
+            fields['from_addr'] = cls.node_addrs[-1].address
+            fields['tree_state'] = addr.tree_state
         if schema.max_blob > schema.max_body:
             seq = Sequence(schema, cls.seq_id, len(p))
             seq.set_data(p)
@@ -1207,7 +1208,7 @@ class Packager:
             # direct neighbors
             intrfcs = cls.peers[node_id].interfaces
             intrfcs.sort(key=lambda mi: mi[1].bitrate, reverse=True)
-            return (*intrfcs[0], cls.peers[node_id])
+            return (intrfcs[0][0], intrfcs[0][1], cls.peers[node_id])
         elif node_id in (nid for _, nid in cls.routes.items()):
             # known node reachable via routing; find next hop
             # set to_addr
@@ -1231,7 +1232,7 @@ class Packager:
                 return (None, None, None)
             intrfcs = cls.peers[peer_id].interfaces
             intrfcs.sort(key=lambda mi: mi[1].bitrate, reverse=True)
-            return (*intrfcs[0], cls.peers[peer_id])
+            return (intrfcs[0][0], intrfcs[0][1], cls.peers[peer_id])
         else:
             return (None, None, None)
 
@@ -1352,13 +1353,11 @@ class Packager:
             seq.src = cls.routes[seq.src]
 
         for pid in seq.seq.get_missing():
+            fields['packet_id'] = pid
             cls.send_packet(Packet(
                 seq.seq.schema,
                 flags,
-                {
-                    'packet_id': pid,
-                    **fields
-                }
+                fields
             ), seq.src)
 
         # decrement retry counter and schedule event
