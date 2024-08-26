@@ -78,7 +78,7 @@ def periodic_beacon(count: int):
     """Broadcasts count times with a 30ms delay between."""
     if count <= 0:
         return schedule_beacon()
-    broadcast_beacon()
+    Beacon.invoke('broadcast')
     Packager.new_events.append(Event(
         now() + 30,
         app_id,
