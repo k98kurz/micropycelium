@@ -7,9 +7,9 @@ def write_file(fname: str, data: str):
     with open(f'/{fname}', 'w') as f:
         f.write(data)
 
-def read_file(fname: str):
+def read_file(fname: str) -> str:
     with open(f'/{fname}', 'r') as f:
-        print(f.read())
+        return f.read()
 
 try:
     # LEDs specific to my breadboard

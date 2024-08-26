@@ -1010,6 +1010,8 @@ class Application:
         """
         if 'invoke' in self.hooks:
             self.hooks['invoke'](self, name, *args, **kwargs)
+        if name in self.hooks:
+            self.hooks[name](self, *args, **kwargs)
         return (self.callbacks[name](self, *args, **kwargs)) if name in self.callbacks else None
 
 
