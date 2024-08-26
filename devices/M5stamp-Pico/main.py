@@ -30,7 +30,10 @@ try:
             await sleep_ms(1)
     def recv_hook(*args, **kwargs):
         bq19.append(1)
+    def send_hook(*args, **kwargs):
+        bq18.append(1)
     Beacon.add_hook('receive', recv_hook)
+    Beacon.add_hook('send', send_hook)
     hooked = True
 except BaseException:
     hooked = False

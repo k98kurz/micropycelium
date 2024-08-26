@@ -40,7 +40,7 @@ def receive_bm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
 
         if bmsg.op == b'\x00':
             # respond
-            send_beacon(bmsg.peer_id)
+            Beacon.invoke('send', bmsg.peer_id)
 
 def get_bmsgs(op: bytes):
     # cache values in local scope
