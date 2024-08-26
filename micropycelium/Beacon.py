@@ -16,11 +16,11 @@ sent: deque[BeaconMessage] = deque([], 10)
 app_id = b''
 
 
-def serialize(bmsg: BeaconMessage):
+def serialize_bm(bmsg: BeaconMessage):
     apps = b''.join([aid for aid in bmsg.apps])
     return bmsg.op + bmsg.peer_id + apps
 
-def deserialize(blob: bytes) -> BeaconMessage:
+def deserialize_bm(blob: bytes) -> BeaconMessage:
     op = blob[:1]
     pid = blob[1:33]
     apps = []
@@ -31,8 +31,8 @@ def deserialize(blob: bytes) -> BeaconMessage:
             app_ids = app_ids[16:]
     return BeaconMessage(op, pid, apps)
 
-def receive(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
-    bmsg = deserialize(blob)
+def receive_bm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
+    bmsg = deserialize_bm(blob)
     seen.append(bmsg)
     node_id = Packager.node_id
     if bmsg.peer_id != node_id:
@@ -40,7 +40,7 @@ def receive(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
 
         if bmsg.op == b'\x00':
             # respond
-            send(bmsg.peer_id)
+            send_beacon(bmsg.peer_id)
 
 def get_bmsgs(op: bytes):
     # cache values in local scope
@@ -62,36 +62,38 @@ def get_bmsgs(op: bytes):
         ))
     return bmsgs
 
-def send(pid: bytes):
+def send_beacon(pid: bytes):
     bmsgs = get_bmsgs(b'\x01')
     for bm in bmsgs:
         # send the BeaconMessage in a Package
-        Packager.send(app_id, serialize(bm), pid)
+        Packager.send(app_id, serialize_bm(bm), pid)
 
-def broadcast():
+def broadcast_beacon():
     bmsgs = get_bmsgs(b'\x00')
     for bm in bmsgs:
         # broadcast the BeaconMessage in a Package
-        Packager.broadcast(app_id, serialize(bm))
+        Packager.broadcast(app_id, serialize_bm(bm))
 
-def periodic(count: int):
+def periodic_beacon(count: int):
     """Broadcasts count times with a 30ms delay between."""
     if count <= 0:
-        return schedule()
-    broadcast()
+        return schedule_beacon()
+    broadcast_beacon()
     Packager.new_events.append(Event(
         now() + 30,
         app_id,
-        periodic,
+        periodic_beacon,
         count - 1
     ))
 
-def schedule():
-    """Schedules the periodic event to begin broadcasting after 60s."""
+def schedule_beacon():
+    """Schedules the periodic_beacon event to begin broadcasting after
+        60s.
+    """
     Packager.new_events.append(Event(
         now() + 60_000,
         app_id,
-        periodic,
+        periodic_beacon,
         10
     ))
 
@@ -99,14 +101,16 @@ Beacon = Application(
     name='Beacon',
     description='Dev Beacon App',
     version=0,
-    receive_func=receive,
+    receive_func=receive_bm,
     callbacks={
-        'broadcast': lambda _: broadcast(),
-        'send': lambda _, pid: send(pid),
+        'broadcast': lambda _: broadcast_beacon(),
+        'send': lambda _, pid: send_beacon(pid),
         'get_bmsgs': lambda _, op: get_bmsgs(op),
-        'serialize': lambda _, bm: serialize(bm),
-        'deserialize': lambda _, blob: deserialize(blob),
-        'start': lambda _: periodic(10),
+        'serialize': lambda _, bm: serialize_bm(bm),
+        'deserialize': lambda _, blob: deserialize_bm(blob),
+        'start': lambda _: periodic_beacon(10),
     }
 )
 app_id = Beacon.id
+
+Packager.add_application(Beacon)

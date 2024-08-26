@@ -37,7 +37,50 @@ else:
 
 
 VERSION = micropython.const(0)
+DEBUG = False
 
+def debug(msg: str):
+    if DEBUG:
+        print(msg)
+
+def trace(cls_or_fn, prefix: str = ''):
+    if type(cls_or_fn) is type:
+        class Wrapped(cls_or_fn):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                for name in dir(self):
+                    if len(name) >= 2 and name[:2] == '__':
+                        continue
+                    if type(getattr(self, name)) is type:
+                        continue
+                    if callable(getattr(self, name)):
+                        setattr(self, name, trace(getattr(self, name), f'{cls_or_fn.__name__}.'))
+        for name in dir(cls_or_fn):
+            if len(name) >= 2 and name[:2] == '__':
+                continue
+            if type(getattr(cls_or_fn, name)) is type:
+                continue
+            if callable(getattr(cls_or_fn, name)):
+                setattr(cls_or_fn, name, trace(getattr(cls_or_fn, name), f'{cls_or_fn.__name__}.'))
+        try:
+            if hasattr(Wrapped, '__name__') and hasattr(cls_or_fn, '__name__'):
+                setattr(Wrapped, '__name__', getattr(cls_or_fn, '__name__'))
+        except:
+            ...
+        try:
+            if hasattr(Wrapped, '__module__') and hasattr(cls_or_fn, '__module__'):
+                setattr(Wrapped, '__module__', getattr(cls_or_fn, '__module__'))
+        except:
+            ...
+        return Wrapped
+    elif callable(cls_or_fn):
+        def wrap(*args, **kwargs):
+            if DEBUG:
+                print(f'{prefix}{cls_or_fn.__name__}: {args=} {kwargs=}')
+            return cls_or_fn(*args, **kwargs)
+        return wrap
+    else:
+        return cls_or_fn
 
 Field = namedtuple("Field", ["name", "length", "type", "max_length"])
 
@@ -270,13 +313,10 @@ class Schema:
                 val = val.to_bytes(field.length, 'big')
             parts.append(bytes(val))
 
-            if field.length == 1:
-                format_str += 'c'
+            if field.max_length:
+                format_str += f'{len(val)}s'
             else:
-                if field.max_length:
-                    format_str += f'{len(val)}s'
-                else:
-                    format_str += f'{field.length}s'
+                format_str += f'{field.length}s'
         return pack(format_str, *parts)
 
     @property
@@ -822,19 +862,23 @@ class Interface:
         if self.receive_func:
             datagram = self.receive_func(self)
             if datagram:
+                debug(f'Interface({self.name}).process:receive')
                 self.inbox.append(datagram)
         elif self.receive_func_async:
             datagram = await self.receive_func_async(self)
             if datagram:
+                debug(f'Interface({self.name}).process:receive_async')
                 self.inbox.append(datagram)
 
         if len(self.outbox):
+            debug(f'Interface({self.name}).process:send')
             if self.send_func:
                 self.send_func(self.outbox.popleft())
             elif self.send_func_async:
                 await self.send_func_async(self.outbox.popleft())
 
         if len(self.castbox):
+            debug(f'Interface({self.name}).process:broadcast')
             if self.broadcast_func:
                 self.broadcast_func(self.castbox.popleft())
             elif self.broadcast_func_async:
@@ -923,6 +967,7 @@ class Application:
     id: bytes
     receive_func: Callable
     callbacks: dict[str, Callable]
+    hooks: dict[str, Callable]
 
     def __init__(self, name: str, description: str, version: int,
                  receive_func: Callable, callbacks: dict = {}) -> None:
@@ -939,9 +984,15 @@ class Application:
         )).digest()[:16]
         self.receive_func = receive_func
         self.callbacks = callbacks
+        self.hooks = {}
+
+    def add_hook(self, name: str, callback: Callable):
+        self.hooks[name] = callback
 
     def receive(self, blob: bytes, intrfc: Interface, mac: bytes):
         """Passes self, blob, and intrfc to the receive_func callback."""
+        if 'receive' in self.hooks:
+            self.hooks['receive'](self, blob, intrfc, mac)
         self.receive_func(self, blob, intrfc, mac)
 
     def available(self, name: str|None = None) -> list[str]|bool:
@@ -957,6 +1008,8 @@ class Application:
             result of the function call. If the callback is async, a
             coroutine will be returned.
         """
+        if 'invoke' in self.hooks:
+            self.hooks['invoke'](self, name, *args, **kwargs)
         return (self.callbacks[name](self, *args, **kwargs)) if name in self.callbacks else None
 
 
@@ -992,7 +1045,7 @@ class InSequence:
         self.retry = 2
 
 
-@micropython.native
+# @micropython.native
 class Packager:
     interfaces: list[Interface] = []
     seq_id: int = 0
@@ -1029,11 +1082,14 @@ class Packager:
         """Adds a peer to the local peer list. Packager will be able to
             send Packages to all such peers.
         """
+        debug(f'Packager.add_peer: {peer_id.hex()=}')
         if peer_id not in cls.peers:
             cls.peers[peer_id] = Peer(peer_id, interfaces)
+        peer = cls.peers[peer_id]
         for mac, intrfc in interfaces:
-            if mac not in (i[0] for i in cls.peers[peer_id].interfaces):
-                cls.peers[peer_id].interfaces[mac] = intrfc
+            if mac not in (i[0] for i in peer.interfaces):
+                peer.interfaces[mac] = intrfc
+        peer.last_rx = int(time()*1000)
 
     @classmethod
     def remove_peer(cls, peer_id: bytes):
@@ -1111,7 +1167,7 @@ class Packager:
         p1 = Packet(schema, fl, fields)
         # try to send as a single packet if possible
         try:
-            if len(p1.pack()) <= schema.max_body:
+            if len(p) <= schema.max_body:
                 packets = [p1]
             else:
                 raise ValueError()
@@ -1250,7 +1306,9 @@ class Packager:
 
         if retries < 1:
             # clear queue and drop the attempts
-            cls.peers[peer_id].queue.clear()
+            q = cls.peers[peer_id].queue
+            while len(q):
+                q.popleft()
             return
 
         # queue event and send RNS
@@ -1408,11 +1466,10 @@ class Packager:
                         flags,
                         fields
                     ))
-        else:
-            for nid, peer in cls.peers.items():
-                if mac in (i[0] for i in peer.interfaces if i[1] is intrfc):
-                    src = nid
-                    break
+        for nid, peer in cls.peers.items():
+            if mac in (i[0] for i in peer.interfaces if i[1] is intrfc):
+                src = nid
+                break
 
         if 'seq_id' in p.fields:
             # try to reconstitute the sequence
@@ -1440,14 +1497,14 @@ class Packager:
                     cls.sync_sequence,
                     seq_id
                 ))
-        elif p.flags.nia:
+        elif p.flags.nia and len(src):
             # peer responded to RNS: cancel event, update peer.last_rx
             peer = cls.peers[src]
             eid = b'rns'+peer.id+intrfc.id
             cls.cancel_events.append(eid)
             peer.last_rx = int(time()*1000)
             return
-        elif p.flags.rns:
+        elif p.flags.rns and len(src):
             # peer sent RNS: send NIA
             peer = cls.peers[src]
             flags = Flags(0)
@@ -1530,7 +1587,8 @@ class Packager:
         # remove all canceled events from the schedule
         while len(cls.cancel_events):
             eid = cls.cancel_events.popleft()
-            cls.schedule.pop(eid)
+            if eid in cls.schedule:
+                cls.schedule.pop(eid)
 
         # process interface actions
         tasks = []
@@ -1542,11 +1600,15 @@ class Packager:
         for intrfc in cls.interfaces:
             while len(intrfc.inbox):
                 dgram = intrfc.inbox.popleft()
-                cls.receive(
-                    Packet.unpack(dgram.data),
-                    [i for i in cls.interfaces if i.id == dgram.intrfc_id][0],
-                    dgram.addr
-                )
+                if dgram:
+                    try:
+                        cls.receive(
+                            Packet.unpack(dgram.data),
+                            intrfc,
+                            dgram.addr
+                        )
+                    except BaseException:
+                        ...
 
         # handle scheduled events
         ce = []
