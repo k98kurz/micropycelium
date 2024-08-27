@@ -23,4 +23,10 @@ for i in range(len(espnowintrfc_src)):
         last_import = i
 espnowintrfc_src = espnowintrfc_src[last_import+1:]
 
+# turn on debug
+for i in range(len(packager_src)):
+    if packager_src[i][:5] == 'DEBUG':
+        packager_src[i] = packager_src[i].replace('False', 'True')
+        break
+
 print(''.join([*packager_src, *beacon_src, *espnowintrfc_src]))

@@ -27,7 +27,7 @@ Packager.node_id = sha256(sha256(unique_id()).digest()).digest()
 BeaconMessage = namedtuple("BeaconMessage", ['op', 'peer_id', 'apps'])
 seen: deque[BeaconMessage] = deque([], 10)
 sent: deque[BeaconMessage] = deque([], 10)
-app_id = b''
+beacon_app_id = b''
 
 
 def serialize_bm(bmsg: BeaconMessage):
@@ -80,13 +80,13 @@ def send_beacon(pid: bytes):
     bmsgs = get_bmsgs(b'\x01')
     for bm in bmsgs:
         # send the BeaconMessage in a Package
-        Packager.send(app_id, serialize_bm(bm), pid)
+        Packager.send(beacon_app_id, serialize_bm(bm), pid)
 
 def broadcast_beacon():
     bmsgs = get_bmsgs(b'\x00')
     for bm in bmsgs:
         # broadcast the BeaconMessage in a Package
-        Packager.broadcast(app_id, serialize_bm(bm))
+        Packager.broadcast(beacon_app_id, serialize_bm(bm))
 
 def periodic_beacon(count: int):
     """Broadcasts count times with a 30ms delay between."""
@@ -95,7 +95,7 @@ def periodic_beacon(count: int):
     Beacon.invoke('broadcast')
     Packager.new_events.append(Event(
         now() + MODEM_INTERSECT_INTERVAL,
-        app_id,
+        beacon_app_id,
         periodic_beacon,
         count - 1
     ))
@@ -106,7 +106,7 @@ def schedule_beacon():
     """
     Packager.new_events.append(Event(
         now() + 60_000,
-        app_id,
+        beacon_app_id,
         periodic_beacon,
         MODEM_INTERSECT_RTX_TIMES
     ))
@@ -122,9 +122,9 @@ Beacon = Application(
         'get_bmsgs': lambda _, op: get_bmsgs(op),
         'serialize': lambda _, bm: serialize_bm(bm),
         'deserialize': lambda _, blob: deserialize_bm(blob),
-        'start': lambda _: periodic_beacon(10),
+        'start': lambda _: periodic_beacon(MODEM_INTERSECT_RTX_TIMES),
     }
 )
-app_id = Beacon.id
+beacon_app_id = Beacon.id
 
 Packager.add_application(Beacon)
