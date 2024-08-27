@@ -38,6 +38,12 @@ else:
 
 VERSION = micropython.const(0)
 DEBUG = False
+MODEM_SLEEP_MS = micropython.const(90)
+MODEM_WAKE_MS = micropython.const(40)
+MODEM_INTERSECT_INTERVAL = micropython.const(int(0.8 * MODEM_WAKE_MS))
+MODEM_INTERSECT_RTX_TIMES = micropython.const(
+    int((MODEM_SLEEP_MS+MODEM_WAKE_MS)/MODEM_INTERSECT_INTERVAL) + 1
+)
 
 def debug(msg: str):
     if DEBUG:
@@ -1297,7 +1303,8 @@ class Packager:
             return (None, None, None)
 
     @classmethod
-    def rns(cls, peer_id: bytes, intrfc_id: bytes, retries: int = 10):
+    def rns(cls, peer_id: bytes, intrfc_id: bytes,
+            retries: int = MODEM_INTERSECT_RTX_TIMES):
         """Send RNS if one has not been sent in the last 20 ms,
             otherwise update the event.
         """
@@ -1314,7 +1321,14 @@ class Packager:
             return
 
         # queue event and send RNS
-        event = Event(now+20, eid, cls.rns, peer_id, intrfc_id, retries=retries-1)
+        event = Event(
+            now + MODEM_INTERSECT_INTERVAL,
+            eid,
+            cls.rns,
+            peer_id,
+            intrfc_id,
+            retries=retries-1
+        )
         cls.new_events.append(event)
         flags = Flags(0)
         flags.rns = True
@@ -1642,7 +1656,8 @@ class Packager:
 
     @classmethod
     async def work(cls, interval_ms: int = 1, use_modem_sleep: bool = False,
-                   modem_sleep_ms: int = 90, modem_active_ms: int = 40):
+                   modem_sleep_ms: int = MODEM_SLEEP_MS,
+                   modem_active_ms: int = MODEM_WAKE_MS):
         """Runs the process method in a loop. If use_modem_sleep is True,
             lightsleep(modem_sleep_ms) will be called periodically to
             save battery, then the method will continue for at least

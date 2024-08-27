@@ -644,10 +644,11 @@ class TestPackager(unittest.TestCase):
         eid = b'rnspeer0' + mock_interface1.id
         assert eid in Packager.Packager.schedule
         event = Packager.Packager.schedule[eid]
-        assert event.kwargs['retries'] == 9, event
+        assert event.kwargs['retries'] == Packager.MODEM_INTERSECT_RTX_TIMES-1, \
+            event
 
-        # wait 30 ms and process again; it should resend the RNS
-        sleep(0.03)
+        # wait MODEM_INTERSECT_INTERVAL and process again; it should resend the RNS
+        sleep(Packager.MODEM_INTERSECT_INTERVAL/1000)
         asyncio.run(Packager.Packager.process())
         assert len(mock_interface1.outbox) == 1
         dgram = mock_interface1.outbox.popleft()
@@ -661,7 +662,8 @@ class TestPackager(unittest.TestCase):
         eid = b'rnspeer0' + mock_interface1.id
         assert eid in Packager.Packager.schedule
         event = Packager.Packager.schedule[eid]
-        assert event.kwargs['retries'] == 8, event
+        assert event.kwargs['retries'] == Packager.MODEM_INTERSECT_RTX_TIMES-2, \
+            event
 
         # simulate sending NIA
         flags = Packager.Flags(0)

@@ -1,7 +1,21 @@
 try:
-    from Packager import Packager, Application, Interface, Event
+    from Packager import (
+        Packager,
+        Application,
+        Interface,
+        Event,
+        MODEM_INTERSECT_INTERVAL,
+        MODEM_INTERSECT_RTX_TIMES,
+    )
 except ImportError:
-    from .Packager import Packager, Application, Interface, Event
+    from .Packager import (
+        Packager,
+        Application,
+        Interface,
+        Event,
+        MODEM_INTERSECT_INTERVAL,
+        MODEM_INTERSECT_RTX_TIMES,
+    )
 from collections import deque, namedtuple
 from hashlib import sha256
 from machine import unique_id
@@ -80,7 +94,7 @@ def periodic_beacon(count: int):
         return schedule_beacon()
     Beacon.invoke('broadcast')
     Packager.new_events.append(Event(
-        now() + 30,
+        now() + MODEM_INTERSECT_INTERVAL,
         app_id,
         periodic_beacon,
         count - 1
@@ -94,7 +108,7 @@ def schedule_beacon():
         now() + 60_000,
         app_id,
         periodic_beacon,
-        10
+        MODEM_INTERSECT_RTX_TIMES
     ))
 
 Beacon = Application(
