@@ -40,7 +40,7 @@ VERSION = micropython.const(0)
 DEBUG = False
 MODEM_SLEEP_MS = micropython.const(90)
 MODEM_WAKE_MS = micropython.const(40)
-MODEM_INTERSECT_INTERVAL = micropython.const(int(0.8 * MODEM_WAKE_MS))
+MODEM_INTERSECT_INTERVAL = micropython.const(int(0.9 * MODEM_WAKE_MS))
 MODEM_INTERSECT_RTX_TIMES = micropython.const(
     int((MODEM_SLEEP_MS+MODEM_WAKE_MS)/MODEM_INTERSECT_INTERVAL) + 1
 )
