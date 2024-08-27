@@ -34,10 +34,10 @@ async def blink(p: Pin, ms: int):
     p.value(not v)
     await sleep_ms(ms)
     p.value(v)
-async def bloop(bq: deque, p: Pin):
+async def bloop(q: deque, p: Pin):
     while True:
-        while len(bq):
-            bq.popleft()
+        while len(q):
+            q.popleft()
             await blink(p, 100)
         await sleep_ms(1)
 async def monitor_btn(p: Pin, q: deque, debounce_ms: int):
