@@ -1127,6 +1127,7 @@ class Packager:
             if mac not in (i[0] for i in peer.interfaces):
                 peer.interfaces[mac] = intrfc
         peer.last_rx = int(time()*1000)
+        peer.timeout = 4
 
     @classmethod
     def remove_peer(cls, peer_id: bytes):

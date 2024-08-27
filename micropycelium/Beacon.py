@@ -88,9 +88,19 @@ def broadcast_beacon():
         # broadcast the BeaconMessage in a Package
         Packager.broadcast(beacon_app_id, serialize_bm(bm))
 
+def timeout_peers():
+    tdc = []
+    for pid, peer in Packager.peers.items():
+        peer.timeout -= 1
+        if peer.timeout <= 0:
+            tdc.append(pid)
+    for pid in tdc:
+        Packager.remove_peer(pid)
+
 def periodic_beacon(count: int):
     """Broadcasts count times with a 30ms delay between."""
     if count <= 0:
+        timeout_peers()
         return schedule_beacon()
     Beacon.invoke('broadcast')
     Packager.new_events.append(Event(
