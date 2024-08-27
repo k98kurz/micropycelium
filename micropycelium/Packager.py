@@ -45,9 +45,9 @@ MODEM_INTERSECT_RTX_TIMES = micropython.const(
     int((MODEM_SLEEP_MS+MODEM_WAKE_MS)/MODEM_INTERSECT_INTERVAL) + 1
 )
 
-def debug(msg: str):
+def debug(*args):
     if DEBUG:
-        print(msg)
+        print(*args)
 
 def trace(cls_or_fn, prefix: str = ''):
     if type(cls_or_fn) is type:
@@ -818,6 +818,7 @@ class Interface:
     send_func_async: Callable|None
     broadcast_func: Callable|None
     broadcast_func_async: Callable|None
+    _hooks: dict[str, Callable]
 
     def __init__(self, name: str, bitrate: int, configure: Callable,
                  supported_schemas: list[int], receive_func: Callable = None,
@@ -846,55 +847,64 @@ class Interface:
         self.receive_func_async = receive_func_async
         self.send_func_async = send_func_async
         self.broadcast_func_async = broadcast_func_async
+        self._hooks = {}
 
     def configure(self, data: dict) -> None:
         """Call the configure callback, passing self and data."""
+        self.call_hook('configure', self, data)
         self._configure(self, data)
 
     def receive(self) -> Datagram|None:
         """Returns a datagram if there is one or None."""
+        self.call_hook('receive', self)
         return self.inbox.popleft() if len(self.inbox) else None
 
     def send(self, datagram: Datagram) -> None:
         """Puts a datagram into the outbox."""
+        self.call_hook('send', self, datagram)
         self.outbox.append(datagram)
 
     def broadcast(self, datagram: Datagram) -> None:
         """Puts a datagram into the castbox."""
+        self.call_hook('broadcast', datagram)
         self.castbox.append(datagram)
 
     async def process(self):
         """Process Interface actions."""
+        self.call_hook('process')
         if self.receive_func:
             datagram = self.receive_func(self)
             if datagram:
-                debug(f'Interface({self.name}).process:receive')
+                self.call_hook('process:receive', datagram)
                 self.inbox.append(datagram)
         elif self.receive_func_async:
             datagram = await self.receive_func_async(self)
             if datagram:
-                debug(f'Interface({self.name}).process:receive_async')
+                self.call_hook('process:receive_async', datagram)
                 self.inbox.append(datagram)
 
         if len(self.outbox):
-            debug(f'Interface({self.name}).process:send')
+            datagram = self.outbox.popleft()
+            self.call_hook('process:send', datagram)
             if self.send_func:
-                self.send_func(self.outbox.popleft())
+                self.send_func(datagram)
             elif self.send_func_async:
-                await self.send_func_async(self.outbox.popleft())
+                await self.send_func_async(datagram)
 
         if len(self.castbox):
-            debug(f'Interface({self.name}).process:broadcast')
+            datagram = self.castbox.popleft()
+            self.call_hook('process:broadcast', datagram)
             if self.broadcast_func:
-                self.broadcast_func(self.castbox.popleft())
+                self.broadcast_func(datagram)
             elif self.broadcast_func_async:
-                await self.broadcast_func_async(self.castbox.popleft())
+                await self.broadcast_func_async(datagram)
 
     def validate(self) -> bool:
         """Returns False if the interface does not have all required methods
             and attributes, or if they are not the proper types. Otherwise
             returns True.
         """
+        self.call_hook('validate', self)
         if not hasattr(self, 'supported_schemas') or \
             type(self.supported_schemas) is not list or \
             not all([type(i) is int for i in self.supported_schemas]):
@@ -908,6 +918,13 @@ class Interface:
         if not callable(self.broadcast_func) and not callable(self.broadcast_func_async):
             return False
         return True
+
+    def add_hook(self, name: str, hook: Callable):
+        self._hooks[name] = hook
+
+    def call_hook(self, name: str, *args, **kwargs):
+        if name in self._hooks:
+            self._hooks[name](self, *args, **kwargs)
 
 
 # @micropython.native
@@ -973,7 +990,7 @@ class Application:
     id: bytes
     receive_func: Callable
     callbacks: dict[str, Callable]
-    hooks: dict[str, Callable]
+    _hooks: dict[str, Callable]
 
     def __init__(self, name: str, description: str, version: int,
                  receive_func: Callable, callbacks: dict = {}) -> None:
@@ -990,15 +1007,15 @@ class Application:
         )).digest()[:16]
         self.receive_func = receive_func
         self.callbacks = callbacks
-        self.hooks = {}
+        self._hooks = {}
 
     def add_hook(self, name: str, callback: Callable):
-        self.hooks[name] = callback
+        self._hooks[name] = callback
 
     def receive(self, blob: bytes, intrfc: Interface, mac: bytes):
         """Passes self, blob, and intrfc to the receive_func callback."""
-        if 'receive' in self.hooks:
-            self.hooks['receive'](self, blob, intrfc, mac)
+        if 'receive' in self._hooks:
+            self._hooks['receive'](self, blob, intrfc, mac)
         self.receive_func(self, blob, intrfc, mac)
 
     def available(self, name: str|None = None) -> list[str]|bool:
@@ -1014,10 +1031,10 @@ class Application:
             result of the function call. If the callback is async, a
             coroutine will be returned.
         """
-        if 'invoke' in self.hooks:
-            self.hooks['invoke'](self, name, *args, **kwargs)
-        if name in self.hooks:
-            self.hooks[name](self, *args, **kwargs)
+        if 'invoke' in self._hooks:
+            self._hooks['invoke'](self, name, *args, **kwargs)
+        if name in self._hooks:
+            self._hooks[name](self, *args, **kwargs)
         return (self.callbacks[name](self, *args, **kwargs)) if name in self.callbacks else None
 
 
@@ -1071,18 +1088,30 @@ class Packager:
     cancel_events: deque[bytes] = deque([], 64)
     running: bool = False
     sleepskip: deque[bool] = deque([], 20)
+    _hooks: dict[str, Callable] = {}
+
+    @classmethod
+    def add_hook(cls, name: str, hook: Callable):
+        cls._hooks[name] = hook
+
+    @classmethod
+    def call_hook(cls, name: str, *args, **kwargs):
+        if name in cls._hooks:
+            cls._hooks[name](cls, *args, **kwargs)
 
     @classmethod
     def add_interface(cls, interface: Interface):
         """Adds an interface. Raises AssertionError if it does not meet
             the requirements for a network interface.
         """
+        cls.call_hook('add_interface', cls, interface)
         assert interface.validate()
         cls.interfaces.append(interface)
 
     @classmethod
     def remove_interface(cls, interface: Interface):
         """Removes a network interface."""
+        cls.call_hook('remove_interface', cls, interface)
         cls.interfaces.remove(interface)
 
     @classmethod
@@ -1090,7 +1119,7 @@ class Packager:
         """Adds a peer to the local peer list. Packager will be able to
             send Packages to all such peers.
         """
-        debug(f'Packager.add_peer: {peer_id.hex()=}')
+        cls.call_hook('add_peer', cls, peer_id, interfaces)
         if peer_id not in cls.peers:
             cls.peers[peer_id] = Peer(peer_id, interfaces)
         peer = cls.peers[peer_id]
@@ -1104,6 +1133,7 @@ class Packager:
         """Removes a peer from the local peer list. Packager will be
             unable to send Packages to this peer.
         """
+        cls.call_hook('remove_peer', cls, peer_id)
         if peer_id in cls.peers:
             peer = cls.peers.pop(peer_id)
             for addr in peer.addrs:
@@ -1116,6 +1146,7 @@ class Packager:
             Address for the peer to maintain routability during tree
             state transitions.
         """
+        cls.call_hook('add_route', cls, node_id, address)
         if node_id in cls.peers:
             addrs = cls.peers[node_id].addrs
             if len(addrs) > 1 and address not in addrs:
@@ -1127,6 +1158,7 @@ class Packager:
     @classmethod
     def remove_route(cls, address: Address):
         """Removes the route to the peer with the given address."""
+        cls.call_hook('remove_route', cls, address)
         if address in cls.routes:
             cls.routes.pop(address)
 
@@ -1136,6 +1168,7 @@ class Packager:
             preserving the previous address to maintain routability
             between tree state transitions.
         """
+        cls.call_hook('set_addr', cls, addr)
         cls.node_addrs.append(addr)
         while len(cls.node_addrs) > 2:
             cls.node_addrs.popleft()
@@ -1147,6 +1180,7 @@ class Packager:
             by all interfaces. Returns False if no schemas could be
             found that are supported by all interfaces.
         """
+        cls.call_hook('broadcast', cls, app_id, blob, interface)
         schema: Schema
         chosen_intrfcs: list[Interface]
         if interface:
@@ -1199,6 +1233,7 @@ class Packager:
             if it cannot (i.e. if it is not a known peer and there is
             not a known route to the node).
         """
+        cls.call_hook('send', cls, app_id, blob, node_id, schema)
         islocal = node_id in cls.peers
         if not islocal and node_id not in [r for a, r in cls.routes.items()]:
             return False
@@ -1270,6 +1305,7 @@ class Packager:
             passed, the Interfaces for those nodes with ids specified in
             the list will be excluded from consideration.
         """
+        cls.call_hook('get_interface', cls, node_id, to_addr, exclude)
         if node_id in cls.peers and node_id not in exclude:
             # direct neighbors
             intrfcs = cls.peers[node_id].interfaces
@@ -1308,6 +1344,7 @@ class Packager:
         """Send RNS if one has not been sent in the last 20 ms,
             otherwise update the event.
         """
+        cls.call_hook('rns', cls, peer_id, intrfc_id, retries)
         eid = b'rns'+peer_id+intrfc_id
         now = int(time()*1000)
         if eid in [e.id for e in cls.new_events]:
@@ -1352,6 +1389,7 @@ class Packager:
         """Sends a Datagram on the appropriate interface. Raises
             AssertionError if the interface ID is invalid.
         """
+        cls.call_hook('_send_datagram', cls, dgram, peer)
         cls.sleepskip.extend([True, True, True, True, True, True, True, True, True, True])
         assert dgram.intrfc_id in [i.id for i in cls.interfaces]
         intrfc = [i for i in cls.interfaces if i.id == dgram.intrfc_id][0]
@@ -1369,6 +1407,7 @@ class Packager:
             send toward the from_addr field (no ttl decrement). Returns
             False if it cannot be sent.
         """
+        cls.call_hook('send_packet', cls, packet, node_id)
         if node_id in cls.peers:
             # direct neighbors
             mac, intrfc, peer = cls.get_interface(node_id)
@@ -1402,6 +1441,7 @@ class Packager:
     @classmethod
     def sync_sequence(cls, seq_id: int):
         """Requests retransmission of any missing packets."""
+        cls.call_hook('sync_sequence', cls, seq_id)
         seq = cls.in_seqs[seq_id]
         if seq.retry <= 0:
             # drop sequence because the originator is not responding to rtx
@@ -1453,6 +1493,7 @@ class Packager:
             if that fails, set the error flag and transmit backwards
             through the route.
         """
+        cls.call_hook('receive', cls, p, intrfc, mac)
         cls.sleepskip.extend([True, True, True, True, True, True, True, True, True, True])
         src = b'' # source of Packet
         if 'to_addr' in p.fields:
@@ -1564,6 +1605,7 @@ class Packager:
             was not registered, or if the Application's receive method
             errors. Otherwise returns True.
         """
+        cls.call_hook('deliver', cls, p, i, m)
         if p.half_sha256 != sha256(p.blob).digest()[:16] or p.app_id not in cls.apps:
             return False
         try:
@@ -1575,11 +1617,13 @@ class Packager:
     @classmethod
     def add_application(cls, app: Application):
         """Registers an Application to accept Package delivery."""
+        cls.call_hook('add_application', cls, app)
         cls.apps[app.id] = app
 
     @classmethod
     def remove_appliation(cls, app: Application|bytes):
         """Deregisters an Application to no longer accept Package delivery."""
+        cls.call_hook('remove_application', cls, app)
         if isinstance(app, Application):
             app = app.id
         cls.apps.pop(app)
@@ -1590,11 +1634,13 @@ class Packager:
             will be added to the schedule, overwriting any event with
             the same ID.
         """
+        cls.call_hook('queue_event', cls, event)
         cls.new_events.append(event)
 
     @classmethod
     async def process(cls):
         """Process interface actions, then process Packager actions."""
+        cls.call_hook('process', cls)
         # schedule new events
         while len(cls.new_events):
             event = cls.new_events.popleft()
@@ -1665,6 +1711,7 @@ class Packager:
             process is eligible for a sleep cycle, an item will be
             popped off the queue and the cycle will be skipped.
         """
+        cls.call_hook('work', cls, interval_ms, use_modem_sleep, modem_sleep_ms, modem_active_ms)
         cls.running = True
         modem_cycle = 0
         ts = int(time()*1000)
@@ -1684,6 +1731,7 @@ class Packager:
     @classmethod
     def stop(cls):
         """Sets cls.running to False for graceful shutdown of worker."""
+        cls.call_hook('stop', cls)
         cls.running = False
 
 
