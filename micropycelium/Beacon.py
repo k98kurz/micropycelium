@@ -114,6 +114,8 @@ def schedule_beacon():
     """Schedules the periodic_beacon event to begin broadcasting after
         60s.
     """
+    if beacon_app_id in Packager.schedule:
+        return
     Packager.new_events.append(Event(
         now() + 60_000,
         beacon_app_id,

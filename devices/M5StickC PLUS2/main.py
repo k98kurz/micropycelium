@@ -36,8 +36,9 @@ async def bloop(q: deque, p: Pin):
         await sleep_ms(1)
 async def monitor_btn(p: Pin, q: deque, debounce_ms: int):
     while True:
-        if p.value():
+        if not p.value():
             q.appendleft(1)
+            Beacon.invoke('start')
             await sleep_ms(debounce_ms)
         await sleep_ms(1)
 
@@ -72,6 +73,6 @@ Packager.add_hook('remove_peer', debug_name('Packager.remove_peer'))
 Beacon.invoke('start')
 
 def start():
-    run(gather(Packager.work(), bloop(led26q, led26), monitor_btn(btnA, btnAq, 200), monitor_btn(btnB, btnBq, 200)))
+    run(gather(Packager.work(), bloop(led26q, led26), monitor_btn(btnA, btnAq, 800), monitor_btn(btnB, btnBq, 200)))
 
 start()

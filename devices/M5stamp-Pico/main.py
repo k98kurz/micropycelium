@@ -22,13 +22,13 @@ async def rloop():
         rgb.write()
         await sleep_ms(100 if any(r) else 1)
 
-# LED and button specific to my breadboard
+# LED specific to my breadboard
 # p18 = Pin(18, Pin.OUT)
-p19 = Pin(19, Pin.OUT)
-p26 = Pin(26, Pin.IN)
-# bq18 = deque([], 10)
-bq19 = deque([], 10)
-bq26 = deque([], 10)
+led19 = Pin(19, Pin.OUT)
+btn = Pin(39, Pin.IN)
+# p18q = deque([], 10)
+led19q = deque([], 10)
+btnq = deque([], 5)
 async def blink(p: Pin, ms: int):
     v = p.value()
     p.value(not v)
@@ -42,8 +42,9 @@ async def bloop(q: deque, p: Pin):
         await sleep_ms(1)
 async def monitor_btn(p: Pin, q: deque, debounce_ms: int):
     while True:
-        if p.value():
+        if not p.value():
             q.appendleft(1)
+            Beacon.invoke('start')
             await sleep_ms(debounce_ms)
         await sleep_ms(1)
 
@@ -83,6 +84,6 @@ Packager.add_hook('remove_peer', debug_name('Packager.remove_peer'))
 Beacon.invoke('start')
 
 def start():
-    run(gather(Packager.work(), monitor_btn(p26, bq26, 200), bloop(bq19, p19), rloop()))
+    run(gather(Packager.work(), monitor_btn(btn, btnq, 800), bloop(led19q, led19), rloop()))
 
 start()
