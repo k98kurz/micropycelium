@@ -22,11 +22,11 @@ async def rloop():
         rgb.write()
         await sleep_ms(100 if any(r) else 1)
 
-# LEDs specific to my breadboard
-p18 = Pin(18, Pin.OUT)
+# LED and button specific to my breadboard
+# p18 = Pin(18, Pin.OUT)
 p19 = Pin(19, Pin.OUT)
-p26 = Pin(26, Pin.OUT)
-bq18 = deque([], 10)
+p26 = Pin(26, Pin.IN)
+# bq18 = deque([], 10)
 bq19 = deque([], 10)
 bq26 = deque([], 10)
 async def blink(p: Pin, ms: int):
@@ -40,6 +40,13 @@ async def bloop(bq: deque, p: Pin):
             bq.popleft()
             await blink(p, 100)
         await sleep_ms(1)
+async def monitor_btn(p: Pin, q: deque, debounce_ms: int):
+    while True:
+        if p.value():
+            q.appendleft(1)
+            await sleep_ms(debounce_ms)
+        await sleep_ms(1)
+
 def recv_hook(*args, **kwargs):
     rq.append((0, 0, 255))
 def brdcst_hook(*args, **kwargs):
@@ -53,5 +60,5 @@ Beacon.add_hook('send', send_hook)
 Packager.add_application(Beacon)
 Packager.add_interface(ESPNowInterface)
 Beacon.invoke('start')
-# run(gather(Packager.work(), bloop(bq18, p18), bloop(bq19, p19), bloop(bq26, p26)))
-run(gather(Packager.work(), rloop()))
+run(gather(Packager.work(), monitor_btn(p26, bq26, 200), bloop(bq19, p19), rloop()))
+# run(gather(Packager.work(), rloop()))
