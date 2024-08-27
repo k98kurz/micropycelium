@@ -36,4 +36,8 @@ Packager.add_hook('add_peer', debug_name('Packager.add_peer'))
 Packager.add_hook('remove_peer', debug_name('Packager.remove_peer'))
 
 Beacon.invoke('start')
-run(Packager.work())
+
+def start():
+    run(Packager.work())
+
+start()

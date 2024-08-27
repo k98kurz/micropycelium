@@ -81,5 +81,8 @@ Packager.add_hook('add_peer', debug_name('Packager.add_peer'))
 Packager.add_hook('remove_peer', debug_name('Packager.remove_peer'))
 
 Beacon.invoke('start')
-run(gather(Packager.work(), monitor_btn(p26, bq26, 200), bloop(bq19, p19), rloop()))
-# run(gather(Packager.work(), rloop()))
+
+def start():
+    run(gather(Packager.work(), monitor_btn(p26, bq26, 200), bloop(bq19, p19), rloop()))
+
+start()
