@@ -1,7 +1,7 @@
 from asyncio import sleep_ms, run, gather
 from collections import deque
 from machine import Pin
-from micropycelium import Packager, ESPNowInterface, Beacon
+from micropycelium import Packager, debug, ESPNowInterface, Beacon
 from neopixel import NeoPixel
 
 def write_file(fname: str, data: str):
@@ -47,18 +47,39 @@ async def monitor_btn(p: Pin, q: deque, debounce_ms: int):
             await sleep_ms(debounce_ms)
         await sleep_ms(1)
 
+# add some hooks
 def recv_hook(*args, **kwargs):
+    debug('Beacon.receive')
     rq.append((0, 0, 255))
 def brdcst_hook(*args, **kwargs):
+    debug('Beacon.broadcast')
     rq.append((255, 0, 0))
 def send_hook(*args, **kwargs):
+    debug('Beacon.send')
     rq.append((126, 126, 126))
+
 Beacon.add_hook('receive', recv_hook)
 Beacon.add_hook('broadcast', brdcst_hook)
 Beacon.add_hook('send', send_hook)
 
-Packager.add_application(Beacon)
-Packager.add_interface(ESPNowInterface)
+def debug_name(name: str):
+    def inner(*args):
+        debug(name)
+    return inner
+
+ESPNowInterface.add_hook('process:receive', debug_name(f'Interface({ESPNowInterface.name}).process:receive'))
+ESPNowInterface.add_hook('process:send', debug_name(f'Interface({ESPNowInterface.name}).process:send'))
+ESPNowInterface.add_hook('process:broadcast', debug_name(f'Interface({ESPNowInterface.name}).process:broadcast'))
+Packager.add_hook('send', debug_name('Packager.send'))
+Packager.add_hook('broadcast', debug_name('Packager.broadcast'))
+Packager.add_hook('receive', debug_name('Packager.receive'))
+Packager.add_hook('rns', debug_name('Packager.rns'))
+Packager.add_hook('send_packet', debug_name('Packager.send_packet'))
+Packager.add_hook('_send_datagram', debug_name('Packager._send_datagram'))
+Packager.add_hook('deliver', debug_name('Packager.deliver'))
+Packager.add_hook('add_peer', debug_name('Packager.add_peer'))
+Packager.add_hook('remove_peer', debug_name('Packager.remove_peer'))
+
 Beacon.invoke('start')
 run(gather(Packager.work(), monitor_btn(p26, bq26, 200), bloop(bq19, p19), rloop()))
 # run(gather(Packager.work(), rloop()))
