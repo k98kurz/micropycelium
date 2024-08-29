@@ -1576,6 +1576,7 @@ class Packager:
                 ))
         elif p.flags.nia and len(src):
             # peer responded to RNS: cancel event, update peer.last_rx
+            cls.call_hook('receive:nia', cls, p, intrfc, mac)
             peer = cls.peers[src]
             eid = b'rns'+peer.id+intrfc.id
             cls.cancel_events.append(eid)
@@ -1583,6 +1584,7 @@ class Packager:
             return
         elif p.flags.rns and len(src):
             # peer sent RNS: send NIA
+            cls.call_hook('receive:rns', cls, p, intrfc, mac)
             peer = cls.peers[src]
             flags = Flags(0)
             flags.nia = True
