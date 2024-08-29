@@ -1,14 +1,14 @@
 import asyncio
 from binascii import crc32
 from collections import deque
-from context import Packager, Beacon
+from context import *
 from time import time, sleep
 import unittest
 
 
 class TestFlags(unittest.TestCase):
     def test_byte_values(self):
-        flags = Packager.Flags(0)
+        flags = Flags(0)
         assert not flags.error
         assert not flags.throttle
         assert not flags.ask
@@ -87,13 +87,13 @@ class TestFlags(unittest.TestCase):
 
 class TestSchema(unittest.TestCase):
     def test_SCHEMA_IDS(self):
-        all_schemas = Packager.SCHEMA_IDS
+        all_schemas = SCHEMA_IDS
         assert type(all_schemas) is list
         assert all([type(s) is int for s in all_schemas])
-        sequence_schemas = Packager.SCHEMA_IDS_SUPPORT_SEQUENCE
+        sequence_schemas = SCHEMA_IDS_SUPPORT_SEQUENCE
         assert type(sequence_schemas) is list
         assert all([type(s) is int for s in sequence_schemas])
-        routing_schemas = Packager.SCHEMA_IDS_SUPPORT_ROUTING
+        routing_schemas = SCHEMA_IDS_SUPPORT_ROUTING
         assert type(routing_schemas) is list
         assert all([type(s) is int for s in routing_schemas])
 
@@ -103,20 +103,20 @@ class TestSchema(unittest.TestCase):
         assert all([i in all_schemas for i in routing_schemas])
 
     def test_get_schema(self):
-        schema = Packager.get_schema(0)
-        assert isinstance(schema, Packager.Schema)
+        schema = get_schema(0)
+        assert isinstance(schema, Schema)
 
     def test_get_schemas(self):
-        ids = Packager.SCHEMA_IDS
-        schemas = Packager.get_schemas(ids)
+        ids = SCHEMA_IDS
+        schemas = get_schemas(ids)
         assert type(schemas) is list
         for s in schemas:
-            assert type(s) is Packager.Schema, s
+            assert type(s) is Schema, s
 
     def test_pack_and_unpack_schema0(self):
-        schema = Packager.get_schema(0)
+        schema = get_schema(0)
         body = b'hello world'
-        data = schema.pack(Packager.Flags(0), {
+        data = schema.pack(Flags(0), {
             'packet_id': b'\x00',
             'body': body,
         })
@@ -128,10 +128,10 @@ class TestSchema(unittest.TestCase):
 
 class TestPacket(unittest.TestCase):
     def test_setting_properties_then_pack_unpack_e2e(self):
-        schema = Packager.get_schema(0)
-        packet = Packager.Packet(
+        schema = get_schema(0)
+        packet = Packet(
             schema,
-            Packager.Flags(0),
+            Flags(0),
             {
                 'packet_id': 0,
                 'body': b'hello world',
@@ -142,18 +142,18 @@ class TestPacket(unittest.TestCase):
 
         packed = packet.pack()
         assert type(packed) is bytes
-        unpacked = Packager.Packet.unpack(packed)
-        assert isinstance(unpacked, Packager.Packet)
+        unpacked = Packet.unpack(packed)
+        assert isinstance(unpacked, Packet)
         assert unpacked.body == packet.body
         assert unpacked.schema.id == packet.schema.id
         assert unpacked.flags == packet.flags, (unpacked.flags, packet.flags)
 
     def test_set_checksum(self):
-        schema = Packager.get_schema(Packager.SCHEMA_IDS_SUPPORT_CHECKSUM[0])
+        schema = get_schema(SCHEMA_IDS_SUPPORT_CHECKSUM[0])
         data = b'doo doodoo bitcoin something doodoo doo'
-        packet = Packager.Packet(
+        packet = Packet(
             schema,
-            Packager.Flags(0),
+            Flags(0),
             {
                 'packet_id': 0,
                 'body': data
@@ -186,13 +186,13 @@ def xor_diff(b1: bytes, b2: bytes) -> tuple[str, str]:
 class TestSequence(unittest.TestCase):
     def test_set_data_and_get_packet(self):
         with self.assertRaises(AssertionError) as e:
-            Packager.Sequence(Packager.get_schema(0), 1)
+            Sequence(get_schema(0), 1)
         assert 'schema must include' in str(e.exception)
 
-        schema = Packager.get_schema(Packager.SCHEMA_IDS_SUPPORT_SEQUENCE[0])
+        schema = get_schema(SCHEMA_IDS_SUPPORT_SEQUENCE[0])
         data = b''.join([(i%256).to_bytes(1, 'big') for i in range(1200)])
-        flags = Packager.Flags(0)
-        sequence = Packager.Sequence(schema, 0, len(data))
+        flags = Flags(0)
+        sequence = Sequence(schema, 0, len(data))
         sequence.set_data(data)
         assert sequence.data == data
         assert len(sequence.get_missing()) == 0, sequence.get_missing()
@@ -203,21 +203,21 @@ class TestSequence(unittest.TestCase):
 
     def test_e2e(self):
         with self.assertRaises(AssertionError) as e:
-            Packager.Sequence(Packager.get_schema(0), 1)
+            Sequence(get_schema(0), 1)
         assert 'schema must include' in str(e.exception)
 
-        schema = Packager.get_schema(Packager.SCHEMA_IDS_SUPPORT_SEQUENCE[0])
+        schema = get_schema(SCHEMA_IDS_SUPPORT_SEQUENCE[0])
         data = b''.join([(i%256).to_bytes(1, 'big') for i in range(1221)])
-        flags = Packager.Flags(0)
-        sequence = Packager.Sequence(schema, 0, len(data))
+        flags = Flags(0)
+        sequence = Sequence(schema, 0, len(data))
         sequence.set_data(data)
-        seq2 = Packager.Sequence(schema, 0, seq_size=sequence.seq_size)
+        seq2 = Sequence(schema, 0, seq_size=sequence.seq_size)
         assert len(sequence.get_missing()) == 0, sequence.get_missing()
         assert len(seq2.get_missing()) > 0
 
         for i in range(sequence.seq_size):
             packet = sequence.get_packet(i, flags, {})
-            assert isinstance(packet, Packager.Packet)
+            assert isinstance(packet, Packet)
             if i % 5:
                 assert not seq2.add_packet(packet)
 
@@ -231,51 +231,57 @@ class TestSequence(unittest.TestCase):
              xor_diff(seq2.data, data))
 
 
-outbox: deque[Packager.Datagram] = deque()
-inbox: deque[Packager.Datagram] = deque()
-castbox: deque[Packager.Datagram] = deque()
-config = {}
+outbox: deque[Datagram] = deque()
+inbox: deque[Datagram] = deque()
+castbox: deque[Datagram] = deque()
+config = {
+    'awake': True,
+}
 
-def configure(_: Packager.Interface, data: dict):
+def configure(_: Interface, data: dict):
     for key, value in data.items():
         config[key] = value
 
-def receive1(intrfc: Packager.Interface):
+def wake(i: Interface):
+    configure(i, {'awake': True})
+
+def receive1(intrfc: Interface):
     return inbox.popleft() if len(inbox) else None
 
-def receive12(intrfc: Packager.Interface):
+def receive12(intrfc: Interface):
     return inbox.popleft() if len(inbox) else castbox.popleft() if len(castbox) else None
 
-def receive2(intrfc: Packager.Interface):
+def receive2(intrfc: Interface):
     return outbox.popleft() if len(outbox) else None
 
-def receive22(intrfc: Packager.Interface):
+def receive22(intrfc: Interface):
     return outbox.popleft() if len(outbox) else castbox.popleft() if len(castbox) else None
 
-def send1(datagram: Packager.Datagram):
+def send1(datagram: Datagram):
     outbox.append(datagram)
 
-def send2(datagram: Packager.Datagram):
+def send2(datagram: Datagram):
     inbox.append(datagram)
 
-def broadcast(datagram: Packager.Datagram):
+def broadcast(datagram: Datagram):
     castbox.append(datagram)
 
-mock_interface1 = Packager.Interface(
+mock_interface1 = Interface(
     'mock1',
     1200,
     configure,
-    Packager.SCHEMA_IDS,
+    SCHEMA_IDS,
     receive1,
     send1,
-    broadcast
+    broadcast,
+    wake_func=wake,
 )
 
-mock_interface2 = Packager.Interface(
+mock_interface2 = Interface(
     'mock1',
     1200,
     configure,
-    Packager.SCHEMA_IDS,
+    SCHEMA_IDS,
     receive2,
     send2,
     broadcast
@@ -301,7 +307,7 @@ class TestInterface(unittest.TestCase):
 
     def test_receive_process(self):
         assert len(inbox) == 0
-        dgram = Packager.Datagram(b'hello', mock_interface1.id, b'mac address')
+        dgram = Datagram(b'hello', mock_interface1.id, b'mac address')
         inbox.append(dgram)
         assert len(mock_interface1.inbox) == 0
         asyncio.run(mock_interface1.process())
@@ -312,7 +318,7 @@ class TestInterface(unittest.TestCase):
 
     def test_send_process(self):
         assert len(outbox) == 0
-        dgram = Packager.Datagram(b'hello', mock_interface1.id, b'mac address')
+        dgram = Datagram(b'hello', mock_interface1.id, b'mac address')
         assert len(mock_interface1.outbox) == 0
         mock_interface1.send(dgram)
         assert len(mock_interface1.outbox) == 1
@@ -324,7 +330,7 @@ class TestInterface(unittest.TestCase):
 
     def test_broadcast_process(self):
         assert len(castbox) == 0
-        dgram = Packager.Datagram(b'hello', mock_interface1.id, b'mac address')
+        dgram = Datagram(b'hello', mock_interface1.id, b'mac address')
         assert len(mock_interface1.castbox) == 0
         mock_interface1.broadcast(dgram)
         assert len(mock_interface1.castbox) == 1
@@ -337,13 +343,13 @@ class TestInterface(unittest.TestCase):
 
 class TestPeer(unittest.TestCase):
     def test_e2e(self):
-        peer = Packager.Peer(b'123', {b'mac': mock_interface1})
+        peer = Peer(b'123', {b'mac': mock_interface1})
         assert len(peer.addrs) == 0
-        peer.set_addr(Packager.Address(b'\x00', b'\x00\x00\x00'))
+        peer.set_addr(Address(b'\x00', b'\x00\x00\x00'))
         assert len(peer.addrs) == 1
-        peer.set_addr(Packager.Address(b'\x01', b'\x01\x00\x00'))
+        peer.set_addr(Address(b'\x01', b'\x01\x00\x00'))
         assert len(peer.addrs) == 2
-        peer.set_addr(Packager.Address(b'\x02', b'\x02\x00\x00'))
+        peer.set_addr(Address(b'\x02', b'\x02\x00\x00'))
         assert len(peer.addrs) == 2
         assert peer.addrs[0].tree_state == b'\x01'
         assert peer.addrs[1].tree_state == b'\x02'
@@ -351,7 +357,7 @@ class TestPeer(unittest.TestCase):
 
 app_blobs = []
 
-test_app = Packager.Application(
+test_app = Application(
     'test',
     'test',
     0,
@@ -403,16 +409,16 @@ class TestPackager(unittest.TestCase):
         mock_interface1.inbox.clear()
         mock_interface1.outbox.clear()
         mock_interface1.castbox.clear()
-        Packager.Packager.interfaces.clear()
-        Packager.Packager.node_addrs.clear()
-        Packager.Packager.peers.clear()
-        Packager.Packager.routes.clear()
-        Packager.Packager.apps.clear()
-        Packager.Packager.in_seqs.clear()
-        Packager.Packager.schedule.clear()
-        Packager.Packager.new_events.clear()
-        Packager.Packager.cancel_events.clear()
-        Packager.Packager.sleepskip.clear()
+        Packager.interfaces.clear()
+        Packager.node_addrs.clear()
+        Packager.peers.clear()
+        Packager.routes.clear()
+        Packager.apps.clear()
+        Packager.in_seqs.clear()
+        Packager.schedule.clear()
+        Packager.new_events.clear()
+        Packager.cancel_events.clear()
+        Packager.sleepskip.clear()
         return super().setUp()
 
     def tearDown(self) -> None:
@@ -423,189 +429,189 @@ class TestPackager(unittest.TestCase):
         mock_interface1.inbox.clear()
         mock_interface1.outbox.clear()
         mock_interface1.castbox.clear()
-        Packager.Packager.interfaces.clear()
-        Packager.Packager.node_addrs.clear()
-        Packager.Packager.peers.clear()
-        Packager.Packager.routes.clear()
-        Packager.Packager.apps.clear()
-        Packager.Packager.in_seqs.clear()
-        Packager.Packager.schedule.clear()
-        Packager.Packager.new_events.clear()
-        Packager.Packager.cancel_events.clear()
-        Packager.Packager.sleepskip.clear()
+        Packager.interfaces.clear()
+        Packager.node_addrs.clear()
+        Packager.peers.clear()
+        Packager.routes.clear()
+        Packager.apps.clear()
+        Packager.in_seqs.clear()
+        Packager.schedule.clear()
+        Packager.new_events.clear()
+        Packager.cancel_events.clear()
+        Packager.sleepskip.clear()
         return super().tearDown()
 
     def test_add_interface_remove_interface_e2e(self):
-        assert len(Packager.Packager.interfaces) == 0
-        Packager.Packager.add_interface(mock_interface1)
-        assert len(Packager.Packager.interfaces) == 1
-        Packager.Packager.remove_interface(mock_interface1)
-        assert len(Packager.Packager.interfaces) == 0
+        assert len(Packager.interfaces) == 0
+        Packager.add_interface(mock_interface1)
+        assert len(Packager.interfaces) == 1
+        Packager.remove_interface(mock_interface1)
+        assert len(Packager.interfaces) == 0
 
     def test_add_peer_remove_peer(self):
-        assert len(Packager.Packager.peers.keys()) == 0
-        Packager.Packager.add_peer(b'peer0', [(b'macpeer0', mock_interface1)])
-        assert len(Packager.Packager.peers.keys()) == 1
-        Packager.Packager.remove_peer(b'peer0')
-        assert len(Packager.Packager.peers.keys()) == 0
+        assert len(Packager.peers.keys()) == 0
+        Packager.add_peer(b'peer0', [(b'macpeer0', mock_interface1)])
+        assert len(Packager.peers.keys()) == 1
+        Packager.remove_peer(b'peer0')
+        assert len(Packager.peers.keys()) == 0
 
     def test_add_route_remove_route(self):
-        assert len(Packager.Packager.routes.keys()) == 0
-        addr = Packager.Address(b'\x00', b'12345')
-        Packager.Packager.add_peer(b'peer0', [(b'macpeer0', mock_interface1)])
-        Packager.Packager.add_route(b'peer0', addr)
-        assert len(Packager.Packager.routes.keys()) == 1
-        Packager.Packager.remove_route(addr)
-        assert len(Packager.Packager.routes.keys()) == 0
+        assert len(Packager.routes.keys()) == 0
+        addr = Address(b'\x00', b'12345')
+        Packager.add_peer(b'peer0', [(b'macpeer0', mock_interface1)])
+        Packager.add_route(b'peer0', addr)
+        assert len(Packager.routes.keys()) == 1
+        Packager.remove_route(addr)
+        assert len(Packager.routes.keys()) == 0
 
     def test_set_addr(self):
-        assert len(Packager.Packager.node_addrs) == 0
-        Packager.Packager.set_addr(Packager.Address(b'\x00', b'local node addr 0'))
-        assert len(Packager.Packager.node_addrs) == 1
-        Packager.Packager.set_addr(Packager.Address(b'\x01', b'local node addr 1'))
-        assert len(Packager.Packager.node_addrs) == 2
-        Packager.Packager.set_addr(Packager.Address(b'\x02', b'local node addr 2'))
-        assert len(Packager.Packager.node_addrs) == 2
-        assert Packager.Packager.node_addrs[0].tree_state == b'\x01'
-        assert Packager.Packager.node_addrs[1].tree_state == b'\x02'
+        assert len(Packager.node_addrs) == 0
+        Packager.set_addr(Address(b'\x00', b'local node addr 0'))
+        assert len(Packager.node_addrs) == 1
+        Packager.set_addr(Address(b'\x01', b'local node addr 1'))
+        assert len(Packager.node_addrs) == 2
+        Packager.set_addr(Address(b'\x02', b'local node addr 2'))
+        assert len(Packager.node_addrs) == 2
+        assert Packager.node_addrs[0].tree_state == b'\x01'
+        assert Packager.node_addrs[1].tree_state == b'\x02'
 
     def test_broadcast_small(self):
-        Packager.Packager.add_interface(mock_interface1)
-        assert len(Packager.Packager.interfaces) == 1
+        Packager.add_interface(mock_interface1)
+        assert len(Packager.interfaces) == 1
         assert len(castbox) == 0
-        Packager.Packager.broadcast(b'app 9659b56ae1d8', b'test')
-        asyncio.run(Packager.Packager.process())
+        Packager.broadcast(b'app 9659b56ae1d8', b'test')
+        asyncio.run(Packager.process())
         assert len(castbox) == 1, castbox
 
     def test_broadcast_large(self):
-        Packager.Packager.add_interface(mock_interface1)
+        Packager.add_interface(mock_interface1)
         assert len(castbox) == 0
         app_id = b'app 9659b56ae1d8'
         blob = b''.join([(i%256).to_bytes(1, 'big') for i in range(300)])
-        Packager.Packager.broadcast(app_id, blob)
-        asyncio.run(Packager.Packager.process())
-        asyncio.run(Packager.Packager.process())
-        asyncio.run(Packager.Packager.process())
+        Packager.broadcast(app_id, blob)
+        asyncio.run(Packager.process())
+        asyncio.run(Packager.process())
+        asyncio.run(Packager.process())
         assert len(castbox) == 2, (len(castbox), len(castbox[0].data))
-        packet = Packager.Packet.unpack(castbox.popleft().data)
-        sequence = Packager.Sequence(
+        packet = Packet.unpack(castbox.popleft().data)
+        sequence = Sequence(
             packet.schema,
             packet.fields['seq_id'],
             seq_size=packet.fields['seq_size']+1
         )
         sequence.add_packet(packet)
         while len(castbox):
-            packet = Packager.Packet.unpack(castbox.popleft().data)
+            packet = Packet.unpack(castbox.popleft().data)
             sequence.add_packet(packet)
         assert len(sequence.get_missing()) == 0, sequence.get_missing()
-        package = Packager.Package.from_sequence(sequence)
+        package = Package.from_sequence(sequence)
         assert package.app_id == app_id, (app_id, package.app_id)
         assert package.blob == blob
 
     def test_send_local_small(self):
-        Packager.Packager.add_interface(mock_interface1)
-        assert len(Packager.Packager.interfaces) == 1
+        Packager.add_interface(mock_interface1)
+        assert len(Packager.interfaces) == 1
         assert len(outbox) == 0
-        Packager.Packager.add_peer(b'123', [(b'macpeer0', mock_interface1)])
-        assert Packager.Packager.send(b'app 9659b56ae1d8', b'test', b'123')
-        asyncio.run(Packager.Packager.process())
+        Packager.add_peer(b'123', [(b'macpeer0', mock_interface1)])
+        assert Packager.send(b'app 9659b56ae1d8', b'test', b'123')
+        asyncio.run(Packager.process())
         assert len(outbox) == 1, outbox
 
     def test_send_local_large(self):
-        Packager.Packager.add_interface(mock_interface1)
-        assert len(Packager.Packager.interfaces) == 1
+        Packager.add_interface(mock_interface1)
+        assert len(Packager.interfaces) == 1
         assert len(outbox) == 0
         app_id = b'app 9659b56ae1d8'
         blob = b''.join([(i%256).to_bytes(1, 'big') for i in range(300)])
         node_id = b'123'
-        Packager.Packager.add_peer(node_id, [(b'macpeer0', mock_interface1)])
-        assert Packager.Packager.send(app_id, blob, node_id)
-        asyncio.run(Packager.Packager.process())
-        asyncio.run(Packager.Packager.process())
-        asyncio.run(Packager.Packager.process())
+        Packager.add_peer(node_id, [(b'macpeer0', mock_interface1)])
+        assert Packager.send(app_id, blob, node_id)
+        asyncio.run(Packager.process())
+        asyncio.run(Packager.process())
+        asyncio.run(Packager.process())
         assert len(outbox) == 2, (len(outbox), len(outbox[0].data))
-        packet = Packager.Packet.unpack(outbox.popleft().data)
-        sequence = Packager.Sequence(
+        packet = Packet.unpack(outbox.popleft().data)
+        sequence = Sequence(
             packet.schema,
             packet.fields['seq_id'],
             seq_size=packet.fields['seq_size']+1
         )
         sequence.add_packet(packet)
         while len(outbox):
-            packet = Packager.Packet.unpack(outbox.popleft().data)
+            packet = Packet.unpack(outbox.popleft().data)
             sequence.add_packet(packet)
         assert len(sequence.get_missing()) == 0, sequence.get_missing()
-        package = Packager.Package.from_sequence(sequence)
+        package = Package.from_sequence(sequence)
         assert package.app_id == app_id, (app_id, package.app_id)
         assert package.blob == blob
 
     def test_send_route_small(self):
-        Packager.Packager.add_interface(mock_interface1)
-        assert len(Packager.Packager.interfaces) == 1
+        Packager.add_interface(mock_interface1)
+        assert len(Packager.interfaces) == 1
         assert len(outbox) == 0
         app_id = b'app 9659b56ae1d8'
         blob = b'test'
         peer_id = b'123'
-        peer_addr = Packager.Address(b'\x00', b'123')
+        peer_addr = Address(b'\x00', b'123')
         node_id = b'321'
-        node_addr = Packager.Address(b'\x00', b'321')
-        Packager.Packager.set_addr(Packager.Address(b'\x00', b'node0'))
-        Packager.Packager.add_peer(peer_id, [(b'macpeer0', mock_interface1)])
-        Packager.Packager.add_route(peer_id, peer_addr)
-        Packager.Packager.add_route(node_id, node_addr)
-        assert Packager.Packager.send(app_id, blob, node_id)
-        asyncio.run(Packager.Packager.process())
+        node_addr = Address(b'\x00', b'321')
+        Packager.set_addr(Address(b'\x00', b'node0'))
+        Packager.add_peer(peer_id, [(b'macpeer0', mock_interface1)])
+        Packager.add_route(peer_id, peer_addr)
+        Packager.add_route(node_id, node_addr)
+        assert Packager.send(app_id, blob, node_id)
+        asyncio.run(Packager.process())
         assert len(outbox) == 1, outbox
 
     def test_send_route_large(self):
-        Packager.Packager.add_interface(mock_interface1)
-        assert len(Packager.Packager.interfaces) == 1
+        Packager.add_interface(mock_interface1)
+        assert len(Packager.interfaces) == 1
         assert len(outbox) == 0
         app_id = b'app 9659b56ae1d8'
         blob = b''.join([(i%256).to_bytes(1, 'big') for i in range(300)])
         peer_id = b'123'
-        peer_addr = Packager.Address(b'\x00', b'123')
+        peer_addr = Address(b'\x00', b'123')
         node_id = b'321'
-        node_addr = Packager.Address(b'\x00', b'321')
-        Packager.Packager.set_addr(Packager.Address(b'\x00', b'node0'))
-        Packager.Packager.add_peer(peer_id, [(b'macpeer0', mock_interface1)])
-        Packager.Packager.add_route(peer_id, peer_addr)
-        Packager.Packager.add_route(node_id, node_addr)
-        assert Packager.Packager.send(app_id, blob, node_id)
-        asyncio.run(Packager.Packager.process())
-        asyncio.run(Packager.Packager.process())
-        asyncio.run(Packager.Packager.process())
+        node_addr = Address(b'\x00', b'321')
+        Packager.set_addr(Address(b'\x00', b'node0'))
+        Packager.add_peer(peer_id, [(b'macpeer0', mock_interface1)])
+        Packager.add_route(peer_id, peer_addr)
+        Packager.add_route(node_id, node_addr)
+        assert Packager.send(app_id, blob, node_id)
+        asyncio.run(Packager.process())
+        asyncio.run(Packager.process())
+        asyncio.run(Packager.process())
         assert len(outbox) == 2, (len(outbox), len(outbox[0].data))
-        packet = Packager.Packet.unpack(outbox.popleft().data)
-        sequence = Packager.Sequence(
+        packet = Packet.unpack(outbox.popleft().data)
+        sequence = Sequence(
             packet.schema,
             packet.fields['seq_id'],
             seq_size=packet.fields['seq_size']+1
         )
         sequence.add_packet(packet)
         while len(outbox):
-            packet = Packager.Packet.unpack(outbox.popleft().data)
+            packet = Packet.unpack(outbox.popleft().data)
             sequence.add_packet(packet)
         assert len(sequence.get_missing()) == 0, sequence.get_missing()
-        package = Packager.Package.from_sequence(sequence)
+        package = Package.from_sequence(sequence)
         assert package.app_id == app_id, (app_id, package.app_id)
         assert package.blob == blob
 
     def test_get_interface_and_send_packet(self):
-        Packager.Packager.add_interface(mock_interface1)
-        Packager.Packager.add_interface(mock_interface2)
-        assert len(Packager.Packager.interfaces) == 2
-        Packager.Packager.add_peer(b'123', [(b'macpeer0', mock_interface1)])
-        intrfc = Packager.Packager.get_interface(b'123')
+        Packager.add_interface(mock_interface1)
+        Packager.add_interface(mock_interface2)
+        assert len(Packager.interfaces) == 2
+        Packager.add_peer(b'123', [(b'macpeer0', mock_interface1)])
+        intrfc = Packager.get_interface(b'123')
         assert type(intrfc) is tuple
         assert len(intrfc) == 3
         assert intrfc[0] == b'macpeer0'
         assert intrfc[1] == mock_interface1
-        assert type(intrfc[2]) is Packager.Peer
+        assert type(intrfc[2]) is Peer
 
-        packet = Packager.Packet(
-            Packager.get_schema(Packager.SCHEMA_IDS[0]),
-            Packager.Flags(0),
+        packet = Packet(
+            get_schema(SCHEMA_IDS[0]),
+            Flags(0),
             {
                 'body': b'test',
                 'packet_id': 0,
@@ -613,63 +619,63 @@ class TestPackager(unittest.TestCase):
         )
         assert len(outbox) == 0
         # prevent mock_interface2 from receiving the datagram
-        Packager.Packager.remove_interface(mock_interface2)
-        assert Packager.Packager.send_packet(packet, b'123')
-        asyncio.run(Packager.Packager.process())
+        Packager.remove_interface(mock_interface2)
+        assert Packager.send_packet(packet, b'123')
+        asyncio.run(Packager.process())
         assert len(outbox) == 1, outbox
 
-    def test_send_when_not_Peer_can_tx_queues_datagram(self):
+    def test_send_when_not_Peer_can_tx_queues_datagram_sends_RNS(self):
         # add application, network interface, and peer
-        Packager.Packager.add_application(test_app)
-        Packager.Packager.add_interface(mock_interface1)
-        Packager.Packager.add_peer(b'peer0', [(b'mac0', mock_interface1)])
-        peer = list(Packager.Packager.peers.items())[0][1]
+        Packager.add_application(test_app)
+        Packager.add_interface(mock_interface1)
+        Packager.add_peer(b'peer0', [(b'mac0', mock_interface1)])
+        peer = list(Packager.peers.items())[0][1]
         # disable direct transmission
         peer.last_rx = int(time()-1) * 1000
 
         # try to send a Package, but it should queue the packet and send RNS
         assert len(peer.queue) == 0
         assert len(mock_interface1.outbox) == 0
-        assert Packager.Packager.send(test_app.id, b'test', b'peer0')
+        assert Packager.send(test_app.id, b'test', b'peer0')
         assert len(mock_interface1.outbox) == 1
         dgram = mock_interface1.outbox.popleft()
-        packet = Packager.Packet.unpack(dgram.data)
+        packet = Packet.unpack(dgram.data)
         assert packet.flags.rns, (packet.flags, packet.body)
         assert len(peer.queue) == 1
 
-        # event to resend RNS should be queued with a retry of 9
-        assert len(Packager.Packager.new_events) == 1
-        asyncio.run(Packager.Packager.process())
-        assert len(Packager.Packager.new_events) == 0
+        # event to resend RNS should be queued with retry of MODEM_INTERSECT_RTX_TIMES-1
+        assert len(Packager.new_events) == 1
+        asyncio.run(Packager.process())
+        assert len(Packager.new_events) == 0
         eid = b'rnspeer0' + mock_interface1.id
-        assert eid in Packager.Packager.schedule
-        event = Packager.Packager.schedule[eid]
-        assert event.kwargs['retries'] == Packager.MODEM_INTERSECT_RTX_TIMES-1, \
+        assert eid in Packager.schedule
+        event = Packager.schedule[eid]
+        assert event.kwargs['retries'] == MODEM_INTERSECT_RTX_TIMES-1, \
             event
 
         # wait MODEM_INTERSECT_INTERVAL and process again; it should resend the RNS
-        sleep(Packager.MODEM_INTERSECT_INTERVAL/1000)
-        asyncio.run(Packager.Packager.process())
+        sleep(MODEM_INTERSECT_INTERVAL/1000)
+        asyncio.run(Packager.process())
         assert len(mock_interface1.outbox) == 1
         dgram = mock_interface1.outbox.popleft()
-        packet = Packager.Packet.unpack(dgram.data)
+        packet = Packet.unpack(dgram.data)
         assert packet.flags.rns, (packet.flags, packet.body)
 
-        # event to resend RNS should be queued with a retry of 8
-        assert len(Packager.Packager.new_events) == 1
-        asyncio.run(Packager.Packager.process())
-        assert len(Packager.Packager.new_events) == 0
+        # event to resend RNS should be queued with retry of MODEM_INTERSECT_RTX_TIMES-2
+        assert len(Packager.new_events) == 1
+        asyncio.run(Packager.process())
+        assert len(Packager.new_events) == 0
         eid = b'rnspeer0' + mock_interface1.id
-        assert eid in Packager.Packager.schedule
-        event = Packager.Packager.schedule[eid]
-        assert event.kwargs['retries'] == Packager.MODEM_INTERSECT_RTX_TIMES-2, \
+        assert eid in Packager.schedule
+        event = Packager.schedule[eid]
+        assert event.kwargs['retries'] == MODEM_INTERSECT_RTX_TIMES-2, \
             event
 
         # simulate sending NIA
-        flags = Packager.Flags(0)
+        flags = Flags(0)
         flags.nia = True
-        dgram = Packager.Datagram(
-            Packager.Packet(
+        dgram = Datagram(
+            Packet(
                 mock_interface1.default_schema,
                 flags,
                 {
@@ -682,24 +688,32 @@ class TestPackager(unittest.TestCase):
         )
         inbox.append(dgram)
         # receiving via process should set can_tx to True and send the packet
-        asyncio.run(Packager.Packager.process())
+        assert eid in Packager.schedule
+        asyncio.run(Packager.process())
         assert peer.can_tx
         assert len(mock_interface1.outbox) == 1
-        asyncio.run(Packager.Packager.process())
+        asyncio.run(Packager.process())
+        assert eid not in Packager.schedule # RNS schedule dropped
+        assert len(Packager.new_events) == 0
         assert len(mock_interface1.outbox) == 0
         assert len(outbox) == 1
+        dgram = outbox.popleft()
+        packet = Packet.unpack(dgram.data)
+        assert not packet.flags.rns, (packet.flags, packet.body)
+        assert len(packet.body) == 36 and packet.body[-4:] == b'test', \
+            (len(packet.body), packet.body)
 
     def test_receive_RNS_sends_NIA(self):
         # add application, network interface, and peer
-        Packager.Packager.add_application(test_app)
-        Packager.Packager.add_interface(mock_interface1)
-        Packager.Packager.add_peer(b'peer0', [(b'mac0', mock_interface1)])
+        Packager.add_application(test_app)
+        Packager.add_interface(mock_interface1)
+        Packager.add_peer(b'peer0', [(b'mac0', mock_interface1)])
 
         # simulate sending RNS from the peer
-        flags = Packager.Flags(0)
+        flags = Flags(0)
         flags.rns = True
-        inbox.append(Packager.Datagram(
-            Packager.Packet(
+        inbox.append(Datagram(
+            Packet(
                 mock_interface1.default_schema,
                 flags,
                 {
@@ -711,17 +725,21 @@ class TestPackager(unittest.TestCase):
             b'mac0'
         ))
         assert len(mock_interface1.outbox) == 0
-        asyncio.run(Packager.Packager.process())
+        asyncio.run(Packager.process())
         assert len(mock_interface1.outbox) == 1
         assert len(outbox) == 0
-        asyncio.run(Packager.Packager.process())
+        asyncio.run(Packager.process())
         assert len(mock_interface1.outbox) == 0
         assert len(outbox) == 1
         dgram = outbox.popleft()
         assert dgram.intrfc_id == mock_interface1.id
         assert dgram.addr == b'mac0'
-        p = Packager.Packet.unpack(dgram.data)
+        p = Packet.unpack(dgram.data)
         assert p.flags.nia
+
+    def test_receive_NIA_prevents_RNS(self):
+        # add application
+        ...
 
     def test_modem_sleep_basic(self):
         # set up a logging event that shuts down after collecting 6 timestamps
@@ -730,19 +748,19 @@ class TestPackager(unittest.TestCase):
         def callback():
             log.append(now())
             if len(log) > 5:
-                return Packager.Packager.stop()
-            Packager.Packager.new_events.append(Packager.Event(
+                return Packager.stop()
+            Packager.new_events.append(Event(
                 now() + 10,
                 b'log',
                 callback
             ))
 
-        Packager.Packager.new_events.append(Packager.Event(
+        Packager.new_events.append(Event(
             now() + 10,
             b'log',
             callback
         ))
-        asyncio.run(Packager.Packager.work(use_modem_sleep=True))
+        asyncio.run(Packager.work(use_modem_sleep=True))
         logdiff = []
         for i in range(1, len(log)):
             logdiff.append(log[i] - log[i-1])
@@ -760,23 +778,23 @@ class TestPackager(unittest.TestCase):
         def callback():
             log.append(now())
             if len(log) > 5:
-                return Packager.Packager.stop()
-            Packager.Packager.new_events.append(Packager.Event(
+                return Packager.stop()
+            Packager.new_events.append(Event(
                 now() + 10,
                 b'log',
                 callback
             ))
-            Packager.Packager.send(test_app.id, b'hello world', peer_id)
+            Packager.send(test_app.id, b'hello world', peer_id)
 
-        Packager.Packager.add_interface(mock_interface1)
-        Packager.Packager.add_peer(peer_id, [(peer_mac, mock_interface1)])
-        Packager.Packager.add_application(test_app)
-        Packager.Packager.new_events.append(Packager.Event(
+        Packager.add_interface(mock_interface1)
+        Packager.add_peer(peer_id, [(peer_mac, mock_interface1)])
+        Packager.add_application(test_app)
+        Packager.new_events.append(Event(
             now() + 10,
             b'log',
             callback
         ))
-        asyncio.run(Packager.Packager.work(use_modem_sleep=True))
+        asyncio.run(Packager.work(use_modem_sleep=True))
         logdiff = []
         for i in range(1, len(log)):
             logdiff.append(log[i] - log[i-1])
@@ -784,7 +802,19 @@ class TestPackager(unittest.TestCase):
         over90s = [i for i in logdiff if i >= 90]
         assert len(sub20s) == len(logdiff)
         assert len(over90s) == 0
-        assert len(Packager.Packager.sleepskip) > 0
+        assert len(Packager.sleepskip) > 0
+
+    def test_modem_sleep_wake_interfaces(self):
+        mock_interface1.configure({'awake': False})
+        assert config['awake'] is False
+        mock_interface1.wake()
+        assert config['awake'] is True
+
+        Packager.add_interface(mock_interface1)
+        mock_interface1.configure({'awake': False})
+        mock_interface1.add_hook('wake', lambda *_, **__: Packager.stop())
+        asyncio.run(Packager.work(use_modem_sleep=True))
+        assert config['awake'] is True
 
     def test_event_handling_in_work(self):
         now = int(time())
@@ -793,36 +823,36 @@ class TestPackager(unittest.TestCase):
             log.append(int(time()*1000))
             if count > 1:
                 return
-            event = Packager.Event(
+            event = Event(
                 (now-1)*1000,
                 b'log',
                 logcallback,
                 count+1
             )
-            Packager.Packager.queue_event(event)
+            Packager.queue_event(event)
 
-        Packager.Packager.queue_event(Packager.Event(
+        Packager.queue_event(Event(
             (now+1)*1000,
             b'test',
-            Packager.Packager.stop,
+            Packager.stop,
         ))
-        Packager.Packager.queue_event(Packager.Event(
+        Packager.queue_event(Event(
             (now-1)*1000,
             b'log',
             logcallback,
             0
         ))
         assert len(log) == 0
-        assert not Packager.Packager.running
-        asyncio.run(Packager.Packager.work())
-        assert not Packager.Packager.running
+        assert not Packager.running
+        asyncio.run(Packager.work())
+        assert not Packager.running
         assert now < int(time()) <= now + 2
         assert len(log) >= 2, len(log) # async is somewhat random
-        assert len(Packager.Packager.schedule.keys()) == 0
+        assert len(Packager.schedule.keys()) == 0
 
         # test event cancellation
         def cancelcallback(eid: bytes):
-            Packager.Packager.cancel_events.append(eid)
+            Packager.cancel_events.append(eid)
 
         def logcallback2(count: int):
             logcallback(count)
@@ -830,288 +860,288 @@ class TestPackager(unittest.TestCase):
 
         log.clear()
         now = int(time())
-        Packager.Packager.queue_event(Packager.Event(
+        Packager.queue_event(Event(
             (now+1)*1000,
             b'test',
-            Packager.Packager.stop,
+            Packager.stop,
         ))
-        Packager.Packager.queue_event(Packager.Event(
+        Packager.queue_event(Event(
             (now-1)*1000,
             b'log',
             logcallback2,
             0
         ))
-        asyncio.run(Packager.Packager.work())
+        asyncio.run(Packager.work())
         assert now < int(time()) <= now + 2
         assert len(log) == 1, log # the recurring event should have been canceled
-        assert len(Packager.Packager.schedule.keys()) == 0
+        assert len(Packager.schedule.keys()) == 0
 
     def test_deliver(self):
-        package = Packager.Package.from_blob(test_app.id, b'hello world')
-        Packager.Packager.add_application(test_app)
+        package = Package.from_blob(test_app.id, b'hello world')
+        Packager.add_application(test_app)
         assert len(app_blobs) == 0
-        Packager.Packager.deliver(package, mock_interface1, b'mac0')
+        Packager.deliver(package, mock_interface1, b'mac0')
         assert len(app_blobs) == 1
 
     def test_sequence_synchronization_e2e_success(self):
         # prepare the sequence
         blob = b''.join([(i%256).to_bytes(1, 'big') for i in range(400)])
-        package = Packager.Package.from_blob(test_app.id, blob).pack()
-        schema_ids = list(set(Packager.SCHEMA_IDS_SUPPORT_SEQUENCE).difference(
-            Packager.SCHEMA_IDS_SUPPORT_ROUTING
-        ).difference(Packager.SCHEMA_IDS_SUPPORT_CHECKSUM))
-        schemas = Packager.get_schemas(schema_ids)
+        package = Package.from_blob(test_app.id, blob).pack()
+        schema_ids = list(set(SCHEMA_IDS_SUPPORT_SEQUENCE).difference(
+            SCHEMA_IDS_SUPPORT_ROUTING
+        ).difference(SCHEMA_IDS_SUPPORT_CHECKSUM))
+        schemas = get_schemas(schema_ids)
         schemas.sort(key=lambda s: s.max_body, reverse=True)
         schema = schemas[0]
-        seq = Packager.Sequence(schema, 0, data_size=len(package))
+        seq = Sequence(schema, 0, data_size=len(package))
         seq.set_data(package)
         assert seq.seq_size == 2
 
         # add application, network interface, and peer
-        Packager.Packager.add_application(test_app)
-        Packager.Packager.add_interface(mock_interface1)
-        Packager.Packager.add_peer(b'peer0', [(b'mac0', mock_interface1)])
+        Packager.add_application(test_app)
+        Packager.add_interface(mock_interface1)
+        Packager.add_peer(b'peer0', [(b'mac0', mock_interface1)])
 
         # start sequence transmission with first packet
-        flags = Packager.Flags(0)
-        inbox.append(Packager.Datagram(
+        flags = Flags(0)
+        inbox.append(Datagram(
             seq.get_packet(0, flags, {}).pack(),
             mock_interface1.id,
             b'mac0',
         ))
 
-        assert len(Packager.Packager.new_events) == 0
-        assert len(Packager.Packager.schedule.keys()) == 0
-        assert len(Packager.Packager.in_seqs.keys()) == 0
+        assert len(Packager.new_events) == 0
+        assert len(Packager.schedule.keys()) == 0
+        assert len(Packager.in_seqs.keys()) == 0
         assert len(mock_interface1.outbox) == 0
 
         # should queue the sync_sequence event and send an ack
-        asyncio.run(Packager.Packager.process())
-        assert len(Packager.Packager.new_events) == 1
-        assert len(Packager.Packager.schedule.keys()) == 0
-        assert len(Packager.Packager.in_seqs.keys()) == 1
+        asyncio.run(Packager.process())
+        assert len(Packager.new_events) == 1
+        assert len(Packager.schedule.keys()) == 0
+        assert len(Packager.in_seqs.keys()) == 1
         assert len(mock_interface1.outbox) == 1
         assert len(outbox) == 0
 
         # mock_interface1 should send the ack datagram, and the event should be scheduled
-        asyncio.run(Packager.Packager.process())
+        asyncio.run(Packager.process())
         assert len(mock_interface1.outbox) == 0
         assert len(outbox) == 1
-        assert len(Packager.Packager.new_events) == 0
-        assert len(Packager.Packager.schedule.keys()) == 1
+        assert len(Packager.new_events) == 0
+        assert len(Packager.schedule.keys()) == 1
         outbox.clear()
 
         # spoof timestamp to advance the event
-        eid = list(Packager.Packager.schedule.keys())[0]
-        event = Packager.Packager.schedule[eid]
+        eid = list(Packager.schedule.keys())[0]
+        event = Packager.schedule[eid]
         event.ts = int(time()-1)*1000
-        assert event.handler == Packager.Packager.sync_sequence, event.handler
+        assert event.handler == Packager.sync_sequence, event.handler
 
         # should now execute cls.sync_sequence
-        assert Packager.Packager.in_seqs[0].retry == 3, Packager.Packager.in_seqs[0].retry
+        assert Packager.in_seqs[0].retry == 3, Packager.in_seqs[0].retry
         assert len(mock_interface1.outbox) == 0
         assert len(outbox) == 0
-        asyncio.run(Packager.Packager.process())
+        asyncio.run(Packager.process())
         # rtx should be queued for sending in the interface
         assert len(mock_interface1.outbox) == 1
         assert len(outbox) == 0
         assert mock_interface1.outbox[0].addr == b'mac0'
-        assert Packager.Packager.in_seqs[0].retry == 2, Packager.Packager.in_seqs[0].retry
+        assert Packager.in_seqs[0].retry == 2, Packager.in_seqs[0].retry
 
         # mock_interface1 should now send the rtx datagram
-        asyncio.run(Packager.Packager.process())
+        asyncio.run(Packager.process())
         assert len(mock_interface1.outbox) == 0
         assert len(outbox) == 1
-        packet = Packager.Packet.unpack(outbox.popleft().data)
+        packet = Packet.unpack(outbox.popleft().data)
         assert packet.flags.rtx
         assert packet.id == 1
         assert packet.fields['seq_id'] == 0
         assert packet.fields['seq_size'] == 1
 
         # retransmitting missing Packet should finish the Sequence and deliver the Package
-        inbox.append(Packager.Datagram(
+        inbox.append(Datagram(
             seq.get_packet(packet.id, flags, {}).pack(),
             mock_interface1.id,
             b'mac0',
         ))
         assert len(app_blobs) == 0
-        assert len(Packager.Packager.in_seqs.keys()) == 1
-        asyncio.run(Packager.Packager.process())
+        assert len(Packager.in_seqs.keys()) == 1
+        asyncio.run(Packager.process())
         assert len(app_blobs) == 1
         assert app_blobs[0] == blob
-        assert len(Packager.Packager.in_seqs.keys()) == 0
+        assert len(Packager.in_seqs.keys()) == 0
 
     def test_sequence_synchronization_e2e_failure(self):
         # sequence construction attempt should be dropped if the origin is unresponsive
         # prepare the sequence
         blob = b''.join([(i%256).to_bytes(1, 'big') for i in range(400)])
-        package = Packager.Package.from_blob(test_app.id, blob).pack()
-        schema_ids = list(set(Packager.SCHEMA_IDS_SUPPORT_SEQUENCE).difference(
-            Packager.SCHEMA_IDS_SUPPORT_ROUTING
-        ).difference(Packager.SCHEMA_IDS_SUPPORT_CHECKSUM))
-        schemas = Packager.get_schemas(schema_ids)
+        package = Package.from_blob(test_app.id, blob).pack()
+        schema_ids = list(set(SCHEMA_IDS_SUPPORT_SEQUENCE).difference(
+            SCHEMA_IDS_SUPPORT_ROUTING
+        ).difference(SCHEMA_IDS_SUPPORT_CHECKSUM))
+        schemas = get_schemas(schema_ids)
         schemas.sort(key=lambda s: s.max_body, reverse=True)
         schema = schemas[0]
-        seq = Packager.Sequence(schema, 0, data_size=len(package))
+        seq = Sequence(schema, 0, data_size=len(package))
         seq.set_data(package)
         assert seq.seq_size == 2
 
         # add application, network interface, and peer
-        Packager.Packager.add_application(test_app)
-        Packager.Packager.add_interface(mock_interface1)
-        Packager.Packager.add_peer(b'peer0', [(b'mac0', mock_interface1)])
+        Packager.add_application(test_app)
+        Packager.add_interface(mock_interface1)
+        Packager.add_peer(b'peer0', [(b'mac0', mock_interface1)])
 
         # start sequence transmission with first packet
-        flags = Packager.Flags(0)
-        inbox.append(Packager.Datagram(
+        flags = Flags(0)
+        inbox.append(Datagram(
             seq.get_packet(0, flags, {}).pack(),
             mock_interface1.id,
             b'mac0',
         ))
 
         # should queue the sync_sequence event and send an ack
-        asyncio.run(Packager.Packager.process())
-        assert len(Packager.Packager.new_events) == 1
-        assert len(Packager.Packager.in_seqs.keys()) == 1
+        asyncio.run(Packager.process())
+        assert len(Packager.new_events) == 1
+        assert len(Packager.in_seqs.keys()) == 1
         assert len(mock_interface1.outbox) == 1
 
         # mock_interface1 should send the ack datagram, and the event should be scheduled
-        asyncio.run(Packager.Packager.process())
+        asyncio.run(Packager.process())
         assert len(outbox) == 1
-        assert len(Packager.Packager.schedule.keys()) == 1
+        assert len(Packager.schedule.keys()) == 1
         outbox.clear()
 
         # spoof timestamp to advance the event
-        eid = list(Packager.Packager.schedule.keys())[0]
-        event = Packager.Packager.schedule[eid]
+        eid = list(Packager.schedule.keys())[0]
+        event = Packager.schedule[eid]
         event.ts = int(time()-1)*1000
-        assert event.handler == Packager.Packager.sync_sequence, event.handler
+        assert event.handler == Packager.sync_sequence, event.handler
 
         # should now execute cls.sync_sequence
-        assert Packager.Packager.in_seqs[0].retry == 3, Packager.Packager.in_seqs[0].retry
-        asyncio.run(Packager.Packager.process())
+        assert Packager.in_seqs[0].retry == 3, Packager.in_seqs[0].retry
+        asyncio.run(Packager.process())
         # rtx should be queued for sending in the interface
         assert len(mock_interface1.outbox) == 1
-        assert Packager.Packager.in_seqs[0].retry == 2, Packager.Packager.in_seqs[0].retry
-        assert len(Packager.Packager.new_events) == 1
+        assert Packager.in_seqs[0].retry == 2, Packager.in_seqs[0].retry
+        assert len(Packager.new_events) == 1
 
         # mock_interface1 should now send the rtx datagram
-        asyncio.run(Packager.Packager.process())
-        assert len(Packager.Packager.new_events) == 0
+        asyncio.run(Packager.process())
+        assert len(Packager.new_events) == 0
         assert len(outbox) == 1
-        packet = Packager.Packet.unpack(outbox.popleft().data)
+        packet = Packet.unpack(outbox.popleft().data)
         assert packet.flags.rtx
 
         # simulate unresponsive node by spoofing timestamp
-        eid = list(Packager.Packager.schedule.keys())[0]
-        event = Packager.Packager.schedule[eid]
+        eid = list(Packager.schedule.keys())[0]
+        event = Packager.schedule[eid]
         event.ts = int(time()-1)*1000
-        assert event.handler == Packager.Packager.sync_sequence, event.handler
+        assert event.handler == Packager.sync_sequence, event.handler
 
         # should execute cls.sync_sequence again
-        assert Packager.Packager.in_seqs[0].retry == 2, Packager.Packager.in_seqs[0].retry
-        asyncio.run(Packager.Packager.process())
-        asyncio.run(Packager.Packager.process())
-        assert Packager.Packager.in_seqs[0].retry == 1, Packager.Packager.in_seqs[0].retry
+        assert Packager.in_seqs[0].retry == 2, Packager.in_seqs[0].retry
+        asyncio.run(Packager.process())
+        asyncio.run(Packager.process())
+        assert Packager.in_seqs[0].retry == 1, Packager.in_seqs[0].retry
         # rtx datagram should be sent
         assert len(outbox) == 1
         outbox.clear()
 
         # simulate unresponsive node by spoofing timestamp
-        eid = list(Packager.Packager.schedule.keys())[0]
-        event = Packager.Packager.schedule[eid]
+        eid = list(Packager.schedule.keys())[0]
+        event = Packager.schedule[eid]
         event.ts = int(time()-1)*1000
-        assert event.handler == Packager.Packager.sync_sequence, event.handler
+        assert event.handler == Packager.sync_sequence, event.handler
 
         # should execute cls.sync_sequence again
-        assert Packager.Packager.in_seqs[0].retry == 1, Packager.Packager.in_seqs[0].retry
-        asyncio.run(Packager.Packager.process())
-        asyncio.run(Packager.Packager.process())
-        assert Packager.Packager.in_seqs[0].retry == 0, Packager.Packager.in_seqs[0].retry
+        assert Packager.in_seqs[0].retry == 1, Packager.in_seqs[0].retry
+        asyncio.run(Packager.process())
+        asyncio.run(Packager.process())
+        assert Packager.in_seqs[0].retry == 0, Packager.in_seqs[0].retry
         # rtx datagram should be sent
         assert len(outbox) == 1
         outbox.clear()
 
         # simulate unresponsive node by spoofing timestamp
-        eid = list(Packager.Packager.schedule.keys())[0]
-        event = Packager.Packager.schedule[eid]
+        eid = list(Packager.schedule.keys())[0]
+        event = Packager.schedule[eid]
         event.ts = int(time()-1)*1000
-        assert event.handler == Packager.Packager.sync_sequence, event.handler
+        assert event.handler == Packager.sync_sequence, event.handler
 
         # InSequence should be dropped
-        assert len(Packager.Packager.in_seqs.keys()) == 1
-        asyncio.run(Packager.Packager.process())
-        assert len(Packager.Packager.in_seqs.keys()) == 0
+        assert len(Packager.in_seqs.keys()) == 1
+        asyncio.run(Packager.process())
+        assert len(Packager.in_seqs.keys()) == 0
 
 
 class TestBeaconApplication(unittest.TestCase):
     def setUp(self) -> None:
-        Packager.Packager.apps.clear()
-        Packager.Packager.interfaces.clear()
-        Packager.Packager.peers.clear()
+        Packager.apps.clear()
+        Packager.interfaces.clear()
+        Packager.peers.clear()
         mock_interface1.castbox.clear()
         castbox.clear()
         return super().setUp()
 
     def tearDown(self) -> None:
-        Packager.Packager.apps.clear()
-        Packager.Packager.interfaces.clear()
-        Packager.Packager.peers.clear()
+        Packager.apps.clear()
+        Packager.interfaces.clear()
+        Packager.peers.clear()
         mock_interface1.castbox.clear()
         castbox.clear()
         return super().tearDown()
 
     def test_invoke_broadcast(self):
-        Packager.Packager.add_interface(mock_interface1)
-        assert len(Packager.Packager.peers) == 0
+        Packager.add_interface(mock_interface1)
+        assert len(Packager.peers) == 0
         assert len(mock_interface1.castbox) == 0
-        Packager.Packager.add_application(Beacon.Beacon)
-        Beacon.Beacon.invoke('broadcast')
+        Packager.add_application(Beacon)
+        Beacon.invoke('broadcast')
         assert len(mock_interface1.castbox) == 1
         assert len(castbox) == 0
-        asyncio.run(Packager.Packager.process())
+        asyncio.run(Packager.process())
         assert len(mock_interface1.castbox) == 0
         assert len(castbox) == 1
 
     def test_receive_adds_peer_and_sends_response(self):
-        Packager.Packager.add_interface(Packager.InterAppInterface)
-        assert len(Packager.Packager.peers) == 0
-        assert len(Packager.InterAppInterface.outbox) == 0
-        Packager.Packager.add_application(Beacon.Beacon)
+        Packager.add_interface(InterAppInterface)
+        assert len(Packager.peers) == 0
+        assert len(InterAppInterface.outbox) == 0
+        Packager.add_application(Beacon)
         bmsgs = [
-            Packager.Package.from_blob(
-                Beacon.Beacon.id,
-                Beacon.Beacon.invoke('serialize', bm),
+            Package.from_blob(
+                Beacon.id,
+                Beacon.invoke('serialize', bm),
             )
-            for bm in Beacon.Beacon.invoke('get_bmsgs', b'\x00')
+            for bm in Beacon.invoke('get_bmsgs', b'\x00')
         ]
-        Packager.Packager.node_id = b'changed for testing'
-        assert len(Packager.InterAppInterface.outbox) == 0
-        asyncio.run(Packager.Packager.process())
+        Packager.node_id = b'changed for testing'
+        assert len(InterAppInterface.outbox) == 0
+        asyncio.run(Packager.process())
         for bm in bmsgs:
-            Packager.Packager.deliver(bm, Packager.InterAppInterface, b'mac0')
-        asyncio.run(Packager.Packager.process())
-        assert len(Packager.Packager.peers) == 1
-        assert len(Packager._iai_box) == 1
-        asyncio.run(Packager.Packager.process())
-        assert len(Packager._iai_box) == 0
+            Packager.deliver(bm, InterAppInterface, b'mac0')
+        asyncio.run(Packager.process())
+        assert len(Packager.peers) == 1
+        assert len(iai_box) == 1
+        asyncio.run(Packager.process())
+        assert len(iai_box) == 0
 
     def test_start_broadcasts_and_schedules_event(self):
-        Packager.Packager.add_interface(Packager.InterAppInterface)
-        assert len(Packager.InterAppInterface.castbox) == 0
-        assert len(Packager.Packager.new_events) == 0
-        Packager.Packager.add_application(Beacon.Beacon)
+        Packager.add_interface(InterAppInterface)
+        assert len(InterAppInterface.castbox) == 0
+        assert len(Packager.new_events) == 0
+        Packager.add_application(Beacon)
         # should queue a broadcast on the interface and queue new event
-        Beacon.Beacon.invoke('start')
-        assert len(Packager.InterAppInterface.castbox) == 1
-        assert len(Packager.Packager.schedule.keys()) == 0
-        assert len(Packager.Packager.new_events) == 1
+        Beacon.invoke('start')
+        assert len(InterAppInterface.castbox) == 1
+        assert len(Packager.schedule.keys()) == 0
+        assert len(Packager.new_events) == 1
         # should send the broadcast then schedule the event
-        asyncio.run(Packager.Packager.process())
-        assert len(Packager.InterAppInterface.castbox) == 0
-        assert len(Packager.Packager.new_events) == 0
-        assert len(Packager.Packager.schedule.keys()) == 1
-        assert list(Packager.Packager.schedule.keys())[0] == Beacon.Beacon.id
+        asyncio.run(Packager.process())
+        assert len(InterAppInterface.castbox) == 0
+        assert len(Packager.new_events) == 0
+        assert len(Packager.schedule.keys()) == 1
+        assert list(Packager.schedule.keys())[0] == Beacon.id
 
 
 if __name__ == '__main__':

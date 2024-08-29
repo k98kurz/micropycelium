@@ -1,4 +1,4 @@
-from Packager import Interface, Datagram, Packager
+from .Packager import Interface, Datagram, Packager
 import network
 import espnow
 
@@ -11,6 +11,10 @@ sta_if.config(channel=14)
 e = espnow.ESPNow()
 e.active(True)
 e.add_peer(b'\xff\xff\xff\xff\xff\xff')
+
+def wake_espnwintrfc(*args, **kwargs):
+    sta_if.active(True)
+    sta_if.config(channel=14)
 
 def config_espnwintrfc(intrfc: Interface, data: dict):
     for k,v in data.items():
@@ -38,6 +42,7 @@ ESPNowInterface = Interface(
     receive_func=recv_espnwintrfc,
     send_func=send_espnwintrfc,
     broadcast_func=broadcast_espnwintrfc,
+    wake_func=wake_espnwintrfc,
 )
 
 Packager.add_interface(ESPNowInterface)

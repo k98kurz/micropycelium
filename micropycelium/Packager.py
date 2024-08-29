@@ -818,6 +818,7 @@ class Interface:
     send_func_async: Callable|None
     broadcast_func: Callable|None
     broadcast_func_async: Callable|None
+    wake_func: Callable|None
     _hooks: dict[str, Callable]
 
     def __init__(self, name: str, bitrate: int, configure: Callable,
@@ -825,7 +826,8 @@ class Interface:
                  send_func: Callable = None, broadcast_func: Callable = None,
                  receive_func_async: Callable = None,
                  send_func_async: Callable = None,
-                 broadcast_func_async: Callable = None) -> None:
+                 broadcast_func_async: Callable = None,
+                 wake_func: Callable = None) -> None:
         """Initialize an Interface. Note that the 0th item in the
             supported_schemas argument is used as the default Schema ID.
         """
@@ -847,12 +849,19 @@ class Interface:
         self.receive_func_async = receive_func_async
         self.send_func_async = send_func_async
         self.broadcast_func_async = broadcast_func_async
+        self.wake_func = wake_func
         self._hooks = {}
 
     def configure(self, data: dict) -> None:
         """Call the configure callback, passing self and data."""
         self.call_hook('configure', self, data)
         self._configure(self, data)
+
+    def wake(self) -> None:
+        """Wakes the Interface after a modem sleep cycle."""
+        self.call_hook('wake', self)
+        if callable(self.wake_func):
+            self.wake_func(self)
 
     def receive(self) -> Datagram|None:
         """Returns a datagram if there is one or None."""
@@ -1181,6 +1190,7 @@ class Packager:
             by all interfaces. Returns False if no schemas could be
             found that are supported by all interfaces.
         """
+        cls.sleepskip.extend([True for _ in range(MODEM_INTERSECT_RTX_TIMES)])
         cls.call_hook('broadcast', cls, app_id, blob, interface)
         schema: Schema
         chosen_intrfcs: list[Interface]
@@ -1342,8 +1352,8 @@ class Packager:
     @classmethod
     def rns(cls, peer_id: bytes, intrfc_id: bytes,
             retries: int = MODEM_INTERSECT_RTX_TIMES):
-        """Send RNS if one has not been sent in the last 20 ms,
-            otherwise update the event.
+        """Send RNS if one has not been sent in the last
+            MODEM_INTERSECT_INTERVAL ms, otherwise update the event.
         """
         cls.call_hook('rns', cls, peer_id, intrfc_id, retries)
         eid = b'rns'+peer_id+intrfc_id
@@ -1351,9 +1361,15 @@ class Packager:
         if eid in [e.id for e in cls.new_events]:
             return # do not add a duplicate event
 
+        if peer_id not in cls.peers:
+            # dropped peer, so drop attempt to contact
+            return
+
+        peer = cls.peers[peer_id]
+
         if retries < 1:
             # clear queue and drop the attempts
-            q = cls.peers[peer_id].queue
+            q = peer.queue
             while len(q):
                 q.popleft()
             return
@@ -1372,7 +1388,7 @@ class Packager:
         flags.rns = True
         intrfc = [i for i in cls.interfaces if i.id == intrfc_id][0]
         mac = [
-            mac for mac, i in cls.peers[peer_id].interfaces
+            mac for mac, i in peer.interfaces
             if i.id == intrfc_id
         ][0]
         intrfc.send(Datagram(
@@ -1391,7 +1407,8 @@ class Packager:
             AssertionError if the interface ID is invalid.
         """
         cls.call_hook('_send_datagram', cls, dgram, peer)
-        cls.sleepskip.extend([True, True, True, True, True, True, True, True, True, True])
+        cls.sleepskip.extend([True for _ in range(MODEM_INTERSECT_RTX_TIMES)])
+        # cls.sleepskip.extend([True, True, True, True, True, True, True, True, True, True])
         assert dgram.intrfc_id in [i.id for i in cls.interfaces]
         intrfc = [i for i in cls.interfaces if i.id == dgram.intrfc_id][0]
         if peer.can_tx:
@@ -1495,7 +1512,8 @@ class Packager:
             through the route.
         """
         cls.call_hook('receive', cls, p, intrfc, mac)
-        cls.sleepskip.extend([True, True, True, True, True, True, True, True, True, True])
+        cls.sleepskip.extend([True for _ in range(MODEM_INTERSECT_RTX_TIMES)])
+        # cls.sleepskip.extend([True, True, True, True, True, True, True, True, True, True])
         src = b'' # source of Packet
         if 'to_addr' in p.fields:
             if p.fields['to_addr'] not in [a.address for a in cls.node_addrs]:
@@ -1720,13 +1738,17 @@ class Packager:
             await cls.process()
             await asyncio.sleep(interval_ms / 1000)
             if use_modem_sleep:
-                if len(cls.sleepskip):
-                    cls.sleepskip.popleft()
-                    continue
                 modem_cycle = int(time()*1000) - ts
                 if modem_cycle > modem_active_ms:
                     modem_cycle = 0
-                    lightsleep(modem_sleep_ms)
+                    if len(cls.sleepskip):
+                        cls.call_hook('sleepskip')
+                        cls.sleepskip.popleft()
+                    else:
+                        cls.call_hook('modemsleep')
+                        lightsleep(modem_sleep_ms)
+                        for intrfc in cls.interfaces:
+                            intrfc.wake()
                     ts = int(time()*1000)
 
     @classmethod
@@ -1737,7 +1759,7 @@ class Packager:
 
 
 # Interface for inter-Application communication.
-_iai_box: deque[Datagram] = deque([], 10)
+iai_box: deque[Datagram] = deque([], 10)
 _iai_config = {}
 
 InterAppInterface = Interface(
@@ -1745,7 +1767,7 @@ InterAppInterface = Interface(
     bitrate=1_000_000_000,
     configure=lambda _, d: _iai_config.update(d),
     supported_schemas=SCHEMA_IDS,
-    receive_func=lambda _: _iai_box.popleft() if len(_iai_box) else None,
-    send_func=lambda d: _iai_box.append(d),
-    broadcast_func=lambda d: _iai_box.append(d),
+    receive_func=lambda _: iai_box.popleft() if len(iai_box) else None,
+    send_func=lambda d: iai_box.append(d),
+    broadcast_func=lambda d: iai_box.append(d),
 )
