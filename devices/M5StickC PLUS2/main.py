@@ -38,11 +38,22 @@ async def monitor_btn(p: Pin, q: deque, debounce_ms: int):
     while True:
         if not p.value():
             q.append(1)
+            await sleep_ms(debounce_ms)
+        await sleep_ms(1)
+async def btnAloop():
+    while True:
+        if len(btnAq):
+            btnAq.popleft()
             if len(list(Packager.peers.keys())):
                 Beacon.invoke('send', list(Packager.peers.keys())[0])
             else:
                 Beacon.invoke('start')
-            await sleep_ms(debounce_ms)
+        await sleep_ms(1)
+async def btnBloop():
+    while True:
+        if len(btnBq):
+            btnBq.popleft()
+            Beacon.invoke('start')
         await sleep_ms(1)
 
 # add some hooks
@@ -86,7 +97,9 @@ def start():
         Packager.work(use_modem_sleep=True),
         bloop(led26q, led26),
         monitor_btn(btnA, btnAq, 800),
-        monitor_btn(btnB, btnBq, 200)
+        monitor_btn(btnB, btnBq, 200),
+        btnAloop(),
+        btnBloop(),
     ))
 
 add_hooks()
