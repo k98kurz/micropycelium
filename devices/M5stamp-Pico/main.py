@@ -37,7 +37,7 @@ async def bloop(q: deque, p: Pin):
         await sleep_ms(1)
 async def monitor_btn(p: Pin, q: deque, debounce_ms: int, inverse: bool = True):
     while True:
-        if (inverse and not p.value()) or p.value():
+        if (inverse and not p.value()) or (not inverse and p.value()):
             q.append(1)
             Beacon.invoke('start')
             await sleep_ms(debounce_ms)
