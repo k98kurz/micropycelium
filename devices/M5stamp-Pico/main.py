@@ -22,12 +22,7 @@ async def rloop():
         rgb.write()
         await sleep_ms(100 if any(r) else 1)
 
-# LED specific to my breadboard
-# p18 = Pin(18, Pin.OUT)
-led19 = Pin(19, Pin.OUT)
 btn = Pin(39, Pin.IN)
-# p18q = deque([], 10)
-led19q = deque([], 10)
 btnq = deque([], 5)
 async def blink(p: Pin, ms: int):
     v = p.value()
@@ -40,9 +35,9 @@ async def bloop(q: deque, p: Pin):
             q.popleft()
             await blink(p, 100)
         await sleep_ms(1)
-async def monitor_btn(p: Pin, q: deque, debounce_ms: int):
+async def monitor_btn(p: Pin, q: deque, debounce_ms: int, inverse: bool = True):
     while True:
-        if not p.value():
+        if (inverse and not p.value()) or p.value():
             q.append(1)
             Beacon.invoke('start')
             await sleep_ms(debounce_ms)
@@ -68,6 +63,7 @@ Beacon.add_hook('broadcast', brdcst_hook)
 Beacon.add_hook('respond', respond_hook)
 Beacon.add_hook('send', debug_name('Beacon.send'))
 
+# debug hooks
 hooks_added = False
 def add_hooks():
     global hooks_added
@@ -92,7 +88,6 @@ def start():
     run(gather(
         Packager.work(use_modem_sleep=True),
         monitor_btn(btn, btnq, 800),
-        bloop(led19q, led19), rloop()
     ))
 
 add_hooks()
