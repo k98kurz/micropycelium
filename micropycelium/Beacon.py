@@ -54,7 +54,7 @@ def receive_bm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
 
         if bmsg.op == b'\x00':
             # respond
-            Beacon.invoke('send', bmsg.peer_id)
+            Beacon.invoke('respond', bmsg.peer_id)
 
 def get_bmsgs(op: bytes):
     # cache values in local scope
@@ -77,6 +77,12 @@ def get_bmsgs(op: bytes):
     return bmsgs
 
 def send_beacon(pid: bytes):
+    bmsgs = get_bmsgs(b'\x00')
+    for bm in bmsgs:
+        # send the BeaconMessage in a Package
+        Packager.send(beacon_app_id, serialize_bm(bm), pid)
+
+def respond_beacon(pid: bytes):
     bmsgs = get_bmsgs(b'\x01')
     for bm in bmsgs:
         # send the BeaconMessage in a Package
@@ -131,6 +137,7 @@ Beacon = Application(
     callbacks={
         'broadcast': lambda _: broadcast_beacon(),
         'send': lambda _, pid: send_beacon(pid),
+        'respond': lambda _, pid: respond_beacon(pid),
         'get_bmsgs': lambda _, op: get_bmsgs(op),
         'serialize': lambda _, bm: serialize_bm(bm),
         'deserialize': lambda _, blob: deserialize_bm(blob),
