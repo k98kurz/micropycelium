@@ -49,24 +49,24 @@ async def monitor_btn(p: Pin, q: deque, debounce_ms: int):
         await sleep_ms(1)
 
 # add some hooks
+def debug_name(name: str):
+    def inner(*args):
+        debug(name)
+    return inner
 def recv_hook(*args, **kwargs):
     debug('Beacon.receive')
     rq.append((0, 0, 255))
 def brdcst_hook(*args, **kwargs):
     debug('Beacon.broadcast')
     rq.append((255, 0, 0))
-def send_hook(*args, **kwargs):
-    debug('Beacon.send')
-    rq.append((126, 126, 126))
+def respond_hook(*args, **kwargs):
+    debug('Beacon.respond')
+    rq.append((126, 126, 0))
 
 Beacon.add_hook('receive', recv_hook)
 Beacon.add_hook('broadcast', brdcst_hook)
-Beacon.add_hook('send', send_hook)
-
-def debug_name(name: str):
-    def inner(*args):
-        debug(name)
-    return inner
+Beacon.add_hook('respond', respond_hook)
+Beacon.add_hook('send', debug_name('Beacon.send'))
 
 hooks_added = False
 def add_hooks():
