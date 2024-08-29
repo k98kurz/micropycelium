@@ -504,11 +504,15 @@ An Interface provides an API to an underlying transmission module that handles
 frame encapsulation and datagrams. It includes the following methods:
 
 - configure: takes a dict of configuration values and configures the interface
+- wake: re-activates/reconfigures any hardware after waking from modem sleep
 - receive: returns a received datagram if there is one or None
 - send: takes a datagram (with data and address) and transmits it
 - broadcast: takes a datagram (without address) and broadcasts it
 - process: processes the queued datagrams to be sent/broadcast and queues
 datagrams in the inbox; async method that calls callbacks passed to `__init__`
+- validate: validates that the Interface has the necessary callbacks
+- add_hook: takes a name and a callable hook; registers the hook with the name
+- call_hook: takes a name and any args/kwargs, then calls the hook if it exists
 
 The send and broadcast methods queue the data for asynchronous processing, and
 the receive method reads from a queue that is populated by an async task.
@@ -528,6 +532,9 @@ for sending using one of the `send_` callbacks; it then tries to broadcast a
 datagram queued for broadcast using one of the `broadcast_` callbacks. The
 `receive_` callback must accept the Interface as its sole argument. The `send_`
 and `broadcast_` callbacks must accept a Datagram as their sole argument.
+
+If the Interface will need to re-activate or reconfigure anything after waking
+from modem sleep, pass the callable as the `wake_func` keyword argument.
 
 ## InterAppInterface
 
@@ -819,22 +826,31 @@ removed from the peer list.
 
 To save battery power, the `Packager.work` method will use `machine.lightsleep`
 if it is available and the `use_modem_sleep` param is set to `True`. It will
-enter light sleep for `modem_sleep_ms` (default 90) and then stay active for a
-minimum of `modem_active_ms` (default 40).
+enter light sleep for `modem_sleep_ms` (default `MODEM_SLEEP_MS`) and then
+stay active for a minimum of `modem_active_ms` (default `MODEM_WAKE_MS`).
+Anytime a node receives or tries to send a datagram, it will queue skipping
+1 modem sleep cycle, and that queue will have capacity for a maximum of 10 skips.
+
+The following constants are defined for this feature and may be adjusted in
+future versions to tune performance:
+
+- MODEM_SLEEP_MS = 90
+- MODEM_WAKE_MS = 40
+- MODEM_INTERSECT_INTERVAL = floor(0.9 * MODEM_WAKE_MS)
+- MODEM_INTERSECT_RTX_TIMES = 1 + floor((MODEM_SLEEP_MS + MODEM_WAKE_MS) / MODEM_INTERSECT_INTERVAL)
 
 ## RNS / NIA
 
 When a node wants to transmit to another node, since it could be in modem sleep,
 it will first send a packet with `flags.rns=1` (Request Node Status) to test if
 the node is active. An active node that receives such a packet will respond with
-`flags.nia=1` (Node Is Active). Anytime a node receives or tries to send a
-datagram, it will queue skipping 10 modem sleep cycles, and that queue will have
-capacity for a maximum of 20 skips.
+`flags.nia=1` (Node Is Active).
 
-The RNS will be sent 10 times with a 20 ms delay between, after which all
-datagrams queued for the peer will be cleared if no NIA has been received. Upon
-receiving NIA, `peer.last_rx` will be updated, and thus datagrams will begin
-transmitting to that peer; the scheduled RNS event will also be canceled.
+The RNS will be sent `MODEM_INTERSECT_RTX_TIMES` times with a delay between of
+`MODEM_INTERSECT_INTERVAL`, after which all datagrams queued for the peer will
+be cleared if no NIA has been received. Upon receiving NIA, `peer.last_rx` will
+be updated, and thus datagrams will begin transmitting to that peer; the
+scheduled RNS event will also be canceled.
 
 
 # Gossip (Application Discovery)

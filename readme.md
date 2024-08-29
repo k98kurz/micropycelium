@@ -22,7 +22,7 @@ discover each other
 - [x] Packet schemas and serialization code
 - [x] Packet sequencer system
 - [x] Packager system
-- [ ] ESP-NOW plugin
+- [x] ESP-NOW plugin
 - [ ] VOUTE-based routing: tree state construction and updating
 - [ ] VOUTE-based routing: tree distance routing (flags.mode=0)
 - [ ] VOUTE-based routing: common prefix length routing (flags.mode=1)

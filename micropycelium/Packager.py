@@ -1096,7 +1096,7 @@ class Packager:
     new_events: deque[Event] = deque([], 64)
     cancel_events: deque[bytes] = deque([], 64)
     running: bool = False
-    sleepskip: deque[bool] = deque([], 20)
+    sleepskip: deque[bool] = deque([], 10)
     _hooks: dict[str, Callable] = {}
 
     @classmethod
@@ -1190,7 +1190,8 @@ class Packager:
             by all interfaces. Returns False if no schemas could be
             found that are supported by all interfaces.
         """
-        cls.sleepskip.extend([True for _ in range(MODEM_INTERSECT_RTX_TIMES)])
+        cls.sleepskip.append(True)
+        # cls.sleepskip.extend([True for _ in range(MODEM_INTERSECT_RTX_TIMES)])
         cls.call_hook('broadcast', cls, app_id, blob, interface)
         schema: Schema
         chosen_intrfcs: list[Interface]
@@ -1407,8 +1408,8 @@ class Packager:
             AssertionError if the interface ID is invalid.
         """
         cls.call_hook('_send_datagram', cls, dgram, peer)
-        cls.sleepskip.extend([True for _ in range(MODEM_INTERSECT_RTX_TIMES)])
-        # cls.sleepskip.extend([True, True, True, True, True, True, True, True, True, True])
+        cls.sleepskip.append(True)
+        # cls.sleepskip.extend([True for _ in range(MODEM_INTERSECT_RTX_TIMES)])
         assert dgram.intrfc_id in [i.id for i in cls.interfaces]
         intrfc = [i for i in cls.interfaces if i.id == dgram.intrfc_id][0]
         if peer.can_tx:
@@ -1512,8 +1513,8 @@ class Packager:
             through the route.
         """
         cls.call_hook('receive', cls, p, intrfc, mac)
-        cls.sleepskip.extend([True for _ in range(MODEM_INTERSECT_RTX_TIMES)])
-        # cls.sleepskip.extend([True, True, True, True, True, True, True, True, True, True])
+        cls.sleepskip.append(True)
+        # cls.sleepskip.extend([True for _ in range(MODEM_INTERSECT_RTX_TIMES)])
         src = b'' # source of Packet
         if 'to_addr' in p.fields:
             if p.fields['to_addr'] not in [a.address for a in cls.node_addrs]:
