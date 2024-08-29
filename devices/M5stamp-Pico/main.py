@@ -75,6 +75,8 @@ def add_hooks():
     Packager.add_hook('send', debug_name('Packager.send'))
     Packager.add_hook('broadcast', debug_name('Packager.broadcast'))
     Packager.add_hook('receive', debug_name('Packager.receive'))
+    Packager.add_hook('receive:rns', debug_name('Packager.receive:rns'))
+    Packager.add_hook('receive:nia', debug_name('Packager.receive:nia'))
     Packager.add_hook('rns', debug_name('Packager.rns'))
     Packager.add_hook('send_packet', debug_name('Packager.send_packet'))
     Packager.add_hook('_send_datagram', debug_name('Packager._send_datagram'))
