@@ -37,8 +37,11 @@ async def bloop(q: deque, p: Pin):
 async def monitor_btn(p: Pin, q: deque, debounce_ms: int):
     while True:
         if not p.value():
-            q.appendleft(1)
-            Beacon.invoke('start')
+            q.append(1)
+            if len(list(Packager.peers.keys())):
+                Beacon.invoke('send', list(Packager.peers.keys())[0])
+            else:
+                Beacon.invoke('start')
             await sleep_ms(debounce_ms)
         await sleep_ms(1)
 
@@ -54,25 +57,38 @@ def beacon_action_hook(name: str):
         led26q.append(1)
     return inner
 
-Beacon.add_hook('receive', beacon_action_hook('Beacon.receive'))
-Beacon.add_hook('broadcast', beacon_action_hook('Beacon.broadcast'))
-Beacon.add_hook('send', beacon_action_hook('Beacon.send'))
-ESPNowInterface.add_hook('process:receive', debug_name(f'Interface({ESPNowInterface.name}).process:receive'))
-ESPNowInterface.add_hook('process:send', debug_name(f'Interface({ESPNowInterface.name}).process:send'))
-ESPNowInterface.add_hook('process:broadcast', debug_name(f'Interface({ESPNowInterface.name}).process:broadcast'))
-Packager.add_hook('send', debug_name('Packager.send'))
-Packager.add_hook('broadcast', debug_name('Packager.broadcast'))
-Packager.add_hook('receive', debug_name('Packager.receive'))
-Packager.add_hook('rns', debug_name('Packager.rns'))
-Packager.add_hook('send_packet', debug_name('Packager.send_packet'))
-Packager.add_hook('_send_datagram', debug_name('Packager._send_datagram'))
-Packager.add_hook('deliver', debug_name('Packager.deliver'))
-Packager.add_hook('add_peer', debug_name('Packager.add_peer'))
-Packager.add_hook('remove_peer', debug_name('Packager.remove_peer'))
-
-Beacon.invoke('start')
+hooks_added = False
+def add_hooks():
+    global hooks_added
+    if hooks_added:
+        return
+    hooks_added = True
+    Beacon.add_hook('receive', beacon_action_hook('Beacon.receive'))
+    Beacon.add_hook('broadcast', debug_name('Beacon.broadcast'))
+    Beacon.add_hook('send', debug_name('Beacon.send'))
+    ESPNowInterface.add_hook('process:receive', debug_name(f'Interface({ESPNowInterface.name}).process:receive'))
+    ESPNowInterface.add_hook('process:send', debug_name(f'Interface({ESPNowInterface.name}).process:send'))
+    ESPNowInterface.add_hook('process:broadcast', debug_name(f'Interface({ESPNowInterface.name}).process:broadcast'))
+    Packager.add_hook('send', debug_name('Packager.send'))
+    Packager.add_hook('broadcast', debug_name('Packager.broadcast'))
+    Packager.add_hook('receive', debug_name('Packager.receive'))
+    Packager.add_hook('rns', debug_name('Packager.rns'))
+    Packager.add_hook('send_packet', debug_name('Packager.send_packet'))
+    Packager.add_hook('_send_datagram', debug_name('Packager._send_datagram'))
+    Packager.add_hook('deliver', debug_name('Packager.deliver'))
+    Packager.add_hook('add_peer', debug_name('Packager.add_peer'))
+    Packager.add_hook('remove_peer', debug_name('Packager.remove_peer'))
+    Packager.add_hook('modemsleep', debug_name('modemsleep'))
+    Packager.add_hook('sleepskip', debug_name('sleepskip'))
 
 def start():
-    run(gather(Packager.work(), bloop(led26q, led26), monitor_btn(btnA, btnAq, 800), monitor_btn(btnB, btnBq, 200)))
+    run(gather(
+        Packager.work(use_modem_sleep=True),
+        bloop(led26q, led26),
+        monitor_btn(btnA, btnAq, 800),
+        monitor_btn(btnB, btnBq, 200)
+    ))
 
+add_hooks()
+Beacon.invoke('start')
 start()
