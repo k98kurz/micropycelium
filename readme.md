@@ -22,7 +22,9 @@ discover each other
 - [x] Packet schemas and serialization code
 - [x] Packet sequencer system
 - [x] Packager system
-- [x] ESP-NOW plugin
+- [x] ESP-NOW Interface
+- [x] Modem sleep mode for power saving: Request Node Status/Node Is Active before tx
+- [ ] Eliptic curve cryptography
 - [ ] VOUTE-based routing: tree state construction and updating
 - [ ] VOUTE-based routing: tree distance routing (flags.mode=0)
 - [ ] VOUTE-based routing: common prefix length routing (flags.mode=1)
@@ -30,14 +32,16 @@ discover each other
 - [ ] Refactor: Store class to save RAM with Sequence handling
 - [ ] Error propagation
 - [ ] Peer throttling/congestion control
-- [x] Modem sleep mode for power saving: Request Node Status/Node Is Active before tx
-- [ ] RYLR-998 plugin
+- [ ] Gossip Application
+- [ ] Cryptography encapsulation Application(s)
+- [ ] RYLR-998 Interface
 - [ ] UDP/IP
-- [ ] Bluetooth plugin
+- [ ] Bluetooth Interface
 - [ ] VOUTE-based routing: leased addresses (fill bits after first null nibble)
 - [ ] VOUTE-based routing: trace route discovery
 - [ ] VOUTE-based routing: beacon routing or proxying (leased addresses)
-- [ ] Custom WLAN plugin (reverse engineer ESP-NOW or equivalent)
+- [ ] Custom WLAN Interface (reverse engineer ESP-NOW or equivalent)
+- [ ] Local and remote node management Application with semi-sandboxed REPL
 
 
 # License
