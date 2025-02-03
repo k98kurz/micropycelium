@@ -165,19 +165,22 @@ The `flags` field will be 8 bits (bits 0-7):
 - Bits 6: reserved2
 - Bit 7: mode - set to switch the mode of a schema-specific feature
 
-Bits 2 and 3 are used to encode mutually-exclusive flags, which the `Flags`
+Bits 2, 3, and 4 are used to encode mutually-exclusive flags, which the `Flags`
 class exposes as attributes:
 
+- 0b000 - no-op
 - 0b001 - ask: set when a transmitting node wants an ack for the packet
 - 0b010 - ack: set when the transmitting node is responding to an ask
 - 0b011 - rtx: set when requesting a packet retransmission
 - 0b100 - rns: set when requesting a node's status
 - 0b101 - nia: set to indicate node status response (i.e. the node is active)
+- 0b110 - encoded6: no-op
+- 0b111 - encoded7: no-op
 
-The mutually exclusive flag 0b000 is a no-op value, and 0b111 is reserved and is
-currently a no-op (`flags.encoded6`). Bits 5-6 can be added to the encoded flags
-field to increase the number of mutually exclusive flags if necessary for future
-developments.
+The mutually exclusive flag 0b000 is a no-op value. 0b110 and 0b111 are reserved
+and are currently no-op (`flags.encoded6` and `flags.encoded7`). Bits 5-6 can be
+added to the encoded flags field to increase the number of mutually exclusive
+flags if necessary for future developments.
 
 ## packet_id
 

@@ -17,6 +17,7 @@ class TestFlags(unittest.TestCase):
         assert not flags.rns
         assert not flags.nia
         assert not flags.encoded6
+        assert not flags.encoded7
         assert not flags.reserved1
         assert not flags.reserved2
         assert not flags.mode
@@ -28,6 +29,7 @@ class TestFlags(unittest.TestCase):
         assert not flags.rns
         assert not flags.nia
         assert not flags.encoded6
+        assert not flags.encoded7
         assert int(flags) == 0b00001000
 
         flags.ack = True
@@ -37,6 +39,7 @@ class TestFlags(unittest.TestCase):
         assert not flags.rns
         assert not flags.nia
         assert not flags.encoded6
+        assert not flags.encoded7
         assert int(flags) == 0b00010000
 
         flags.rtx = True
@@ -46,6 +49,7 @@ class TestFlags(unittest.TestCase):
         assert not flags.rns
         assert not flags.nia
         assert not flags.encoded6
+        assert not flags.encoded7
         assert int(flags) == 0b00011000
 
         flags.rns = True
@@ -55,6 +59,7 @@ class TestFlags(unittest.TestCase):
         assert not flags.rtx
         assert not flags.nia
         assert not flags.encoded6
+        assert not flags.encoded7
         assert int(flags) == 0b00100000
 
         flags.nia = True
@@ -64,6 +69,7 @@ class TestFlags(unittest.TestCase):
         assert not flags.rtx
         assert not flags.rns
         assert not flags.encoded6
+        assert not flags.encoded7
         assert int(flags) == 0b00101000
 
         flags.encoded6 = True
@@ -73,11 +79,21 @@ class TestFlags(unittest.TestCase):
         assert not flags.rtx
         assert not flags.rns
         assert not flags.nia
+        assert not flags.encoded7
+        assert int(flags) == 0b00110000
+
+        flags.encoded7 = True
+        assert flags.encoded7
+        assert not flags.ask
+        assert not flags.ack
+        assert not flags.rtx
+        assert not flags.rns
+        assert not flags.nia
+        assert not flags.encoded6
         assert int(flags) == 0b00111000
 
         flags.error = True
         flags.throttle = True
-        flags.reserved0 = True
         flags.reserved1 = True
         flags.reserved2 = True
         flags.mode = True

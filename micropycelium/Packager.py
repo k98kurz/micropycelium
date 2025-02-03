@@ -162,6 +162,8 @@ class Flags:
         return not self._bit2 and not self._bit3 and self._bit4
     @ask.setter
     def ask(self, val: bool):
+        if not val:
+            return
         self._bit2 = False
         self._bit3 = False
         self._bit4 = val
@@ -171,6 +173,8 @@ class Flags:
         return not self._bit2 and self._bit3 and not self._bit4
     @ack.setter
     def ack(self, val: bool):
+        if not val:
+            return
         self._bit2 = False
         self._bit3 = val
         self._bit4 = False
@@ -180,6 +184,8 @@ class Flags:
         return not self._bit2 and self._bit3 and self._bit4
     @rtx.setter
     def rtx(self, val: bool):
+        if not val:
+            return
         self._bit2 = False
         self._bit3 = val
         self._bit4 = val
@@ -189,6 +195,8 @@ class Flags:
         return self._bit2 and not self._bit3 and not self._bit4
     @rns.setter
     def rns(self, val: bool):
+        if not val:
+            return
         self._bit2 = val
         self._bit3 = False
         self._bit4 = False
@@ -198,18 +206,33 @@ class Flags:
         return self._bit2 and not self._bit3 and self._bit4
     @nia.setter
     def nia(self, val: bool):
+        if not val:
+            return
         self._bit2 = val
         self._bit3 = False
         self._bit4 = val
 
     @property
     def encoded6(self) -> bool:
-        return self._bit2 and self._bit3 and self._bit4
+        return self._bit2 and self._bit3 and not self._bit4
     @encoded6.setter
     def encoded6(self, val: bool):
-        self._bit2 = val
-        self._bit3 = val
-        self._bit4 = val
+        if not val:
+            return
+        self._bit2 = True
+        self._bit3 = True
+        self._bit4 = False
+
+    @property
+    def encoded7(self) -> bool:
+        return self._bit2 and self._bit3 and self._bit4
+    @encoded7.setter
+    def encoded7(self, val: bool):
+        if not val:
+            return
+        self._bit2 = True
+        self._bit3 = True
+        self._bit4 = True
 
     @property
     def reserved1(self) -> bool:
