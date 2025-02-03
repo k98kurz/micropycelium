@@ -858,7 +858,7 @@ scheduled RNS event will also be canceled.
 To enable additional functionality, primarily to allow nodes that run a shared
 application to find each other across the network, a gossip application will be
 included. This application will use broadcasts and sends to transmit Packages to
-to peers and thus disseminate them across the network.
+peers and thus disseminate them across the network.
 
 There are three types of gossip Packages: a Message, a Notification, and a
 Request. Each Package body will start with a 1-byte `type` field which will be
