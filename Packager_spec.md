@@ -211,10 +211,10 @@ The `ttl` field will be a u8 and will contain the hop limit for the packet.
 Each relay will decrement this counter before retransmission; if it reaches 0,
 the relay will instead set the error flag and send the packet back toward the
 originating node. If a relay receives a packet with the error flag active, it
-will increment the ttl field before retransmitting back toward the originating
+will increment the `ttl` field before retransmitting back toward the originating
 node; if it hits 255, the packet will be dropped.
 
-packet schemas that do not use the `ttl` field will be ineligible for packet
+Packet schemas that do not use the `ttl` field will be ineligible for packet
 switching beyond a single hop: if the relay cannot immediately deliver the
 packet to the intended recipient, it will respond by returning the packet to
 the originator with the error flag set.
@@ -687,9 +687,9 @@ peer that is closest to the root from the peers that respond to the broadcast.
 
 Addresses will encode up to 32 coordinates, each representing the index of a
 child at the parent. This will allow for a network of between 16 tree levels at
-up to 7+128 children per parent and 32 tree levels at up to 7 children per
-parent. This allows for tree membership in the range between 1.1x10^27 and
-1.2x10^34 nodes.
+up to 134 (6+128) children per parent and 32 tree levels at up to 6 children per
+parent. This alone allows for tree membership in the range between 8.0x10^24 and
+1.1x10^34 nodes.
 
 A zero value represents a lack of that coordinate. The root will have no
 coordinates, i.e. an address of all zeros. Each child will take its parent's
@@ -698,8 +698,8 @@ coordinates as a prefix for its own; e.g. child 3 of the node with coordinates
 
 Coordinates are encoded as follows: if the coordinate is <8, it is encoded in a
 nibble with the high bit set to 0; if the coordinate is >7, it is encoded by
-subtracting 8, converted to an octet, and setting the high bit to 1. Coordinates
-can thus have a value between 1 and 135.
+subtracting 8, converting to an octet, and setting the high bit to 1.
+Coordinates can thus have a value between 1 and 135.
 
 Coordinates are decoded as follows: split the address into nibbles; for each
 nibble, if the high bit is not set, then the next 3 bits (the rest of the nibble)
@@ -963,3 +963,21 @@ import aioespnow
 ## collections.deque
 
 - deque (doule-ended queue) has two thread safe operations: append and popleft
+
+## Original Mycelium draft spec
+
+After abandoning the idea of using machine learning to approximate coordinates
+in N-dimensional space as the primary method of creating addresses upon which
+greedy routing could be accomplished, I rewrote the spec to include methods that
+actually could work. Below are the links to the original concept, the outcomes
+of the simulation studies that convinced me it would not work (specifically the
+orienting of a second axis by adding a third node, which almost always failed to
+produce a valid/accurate result), and the first attempt to specify a network
+system with any detail.
+
+- [Old, conceptual outline](https://github.com/k98kurz/pycelium-sdk/blob/master/readme.md)
+- [Results 1/4](https://imgur.com/a/further-experiments-with-gradient-descent-2d-trilateration-4u2xtYq)
+- [Results 2/4](https://imgur.com/a/gradient-descent-trick-reliability-without-foreknowledge-to-tune-parameters-AzWYMjS)
+- [Results 3/4](https://imgur.com/a/gradient-descent-3d-trilateration-plotted-as-x-y-z-2-fFqIZzG)
+- [Results 4/4](https://imgur.com/a/gradient-descent-4d-trilateration-plotted-as-x-y-2-z-w-2-1KZtqD3)
+- [Incomplete mycelium draft spec](https://github.com/k98kurz/mycelium-network-specification/blob/master/draft-spec.md)
