@@ -14,7 +14,14 @@ assignees: k98kurz
 ## To Reproduce
 
 Steps to reproduce the behavior:
-1. ...
+
+1. Write this code:
+
+```python
+from micropycelium import ...
+...
+```
+
 2. ...
 
 ## Expected behavior
@@ -27,10 +34,12 @@ Steps to reproduce the behavior:
 
 ## Platform and Version (please complete the following information)
 
-- Platform/device: [e.g. desktop, esp32-pico]
-- OS: [e.g. RTOS]
-- Python/micropython Version: [e.g. 3.10]
-- Micropycelium Version [e.g. 0.1.0]
+<!-- using `import os; os.uname()` can help with some of this -->
+
+- Platform/device: [e.g. ESP32-Pico-D4]
+- OS: [e.g. Ubuntu]
+- MicroPython Version: [e.g. 1.24]
+- Library Version: [e.g. 0.0.1]
 
 ### Additional context
 
