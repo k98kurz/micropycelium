@@ -17,6 +17,7 @@ assignees: k98kurz
 <!-- Below are examples. Overwrite as needed. -->
 
 - readme.md: "Usage"
+- notes/build.md: "..."
 - dox.md: "Classes > Packager"
 
 ## Discrepancies from Documentation Encountered

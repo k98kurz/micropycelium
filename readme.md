@@ -39,20 +39,61 @@ For a functional v0.1 release:
 - [x] Packager system
 - [x] ESP-NOW Interface
 - [x] Modem sleep mode for power saving: Request Node Status/Node Is Active before tx
-- [ ] Eliptic curve cryptography
 - [ ] Greedy routing: tree state construction and updating
 - [ ] Greedy routing: tree distance routing (flags.mode=0)
 - [ ] Greedy routing: common prefix length routing (flags.mode=1)
+- [ ] Eliptic curve cryptography
 
-Everything else can be tracked in the [issues](https://github.com/k98kurz/micropycelium/issues).
+Everything can be tracked in the [issues](https://github.com/k98kurz/micropycelium/issues).
 There are 6 milestones from v0.1 to v0.6, and issues planned for resolution have
 been categorized into those milestones.
 
 Once the v0.1 release is complete, these status items will be moved into a new
 changelog file.
 
+## Usage
 
-# License
+This is a highly experimental project. To use this, the following steps need to
+be completed:
+
+1. Clone the micropycelium repo
+2. Clone the micropython repo
+3. Follow the instructions from [notes/build.md](https://github.com/k98kurz/micropycelium/blob/master/notes/build.md)
+4. Connect via tty serial to your device to get to a REPL or file management
+5. See the example main.py files in the devices directory for reference in setting up a node
+
+This has not been tested on non-ESP32 devices, though expansion of support to
+more hardware platforms is an eventual goal of this project.
+
+For maximum flexibility in development, I also include my
+[micropython file editor](https://github.com/k98kurz/micropython-file-editor) in
+my test devices.
+It can be added after flashing the firmware or built into the firmware as a
+module in the same way as micropycelium (much better experience imo).
+
+## Testing
+
+There are currently 43 unit tests that rely on a bunch of mocks. E2e testing is
+done with hardware and is a bit more involved.
+
+To run the unit tests, clone the repo and then run the following:
+
+```bash
+python tests/test_Packager.py
+```
+
+To do e2e testing with hardware, build and deploy the firmware as described in
+the Usage section above, then copy a main.py file from the examples in the
+"devices" directory to your device, altering it as you like (e.g. add LED blinks
+or something similar to a generic ESP32 node the way I have to the M5stamp and
+M5StickC). Then turn on the devices, connect to the serial, and monitor debug
+messages (or watch blinking lights).
+
+In my e2e testing, the Beacon app running through the ESPNOW network interface
+adapter was able to properly transmit and receive between devices at up to ~200
+feet with direct line of sight.
+
+## License
 
 ISC License
 
