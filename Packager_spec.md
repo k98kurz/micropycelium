@@ -634,9 +634,11 @@ forwarding packets. The routing metric to use will be determined by setting
 `flags.mode`: 0 for tree distance and 1 for common prefix length distance.
 
 The spanning tree system will be maintained by an application, and its Package
-format will start with a 1-byte `type` field, which will be 0x00 for a root
-election claim, 0x0f for address assignment notification, 0xf0 for address
-assignment request, and 0xff for address assignment response.
+format will start with a 1-byte `type` field, which will be 0x00 for a periodic
+broadcast containing current best root election claim and the node's address,
+0x0f to respond to a 0x00 broadcast if the local node has a better root election
+claim in its app state, 0xf0 for address assignment request, and 0xff for
+address assignment response.
 
 There are three separate aspects to consider: spanning tree creation/maintenance,
 coordinates, and routing.
@@ -657,6 +659,19 @@ drop any old tree data, mark their current tree data as old, allocate new tree
 data, and update their tree state to the first byte of the CRC32 of the root
 public key, the sha256 of the protocol name, and the Unix epoch timestamp. This
 then generalizes for peers of peers of the root, etc.
+
+Before requesting an address assignment, a node will wait >=20 seconds to collect
+broadcasts from its peers. If its own election claim is not the best, it will
+filter its peers for those with the best root election claim, then request an
+address assignment from the peer with the shortest distance to the root.
+
+Every 60 seconds, a routine will run that will do the following:
+
+1. If the peer who is the local node's parent in the tree is no longer in the
+   peer list, the node will unset its address.
+2. If the node does not have the best root election claim and does not have an
+   address, it will request an address assignment from the best peer. Otherwise,
+   it will broadcast its periodic information package.
 
 Address assignments take the form of a chain of simple certificates stemming
 from the root: the root signs an address assignment for a peer consisting of
