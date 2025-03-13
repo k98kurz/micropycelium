@@ -1,14 +1,26 @@
 # Commands
 
-Note that the devices I use for testing are ESP-32 devices from M5stack.
+Note that the devices I use for testing are ESP-32 devices from M5stack. This
+guide assumes a `~/Documents/repos` directory where all repositories will exist.
 
 ## Environment Setup
 
-First set the paths for the local forks/clones of the micropython and
+First, if you are using ESP32, ensure that the esp-idf tool is installed
+somewhere and configured:
+
+```bash
+cd ~/Documents/repos
+git clone --recursive https://github.com/espressif/esp-idf.git
+cd esp-idf
+./install.sh
+```
+
+Then set the paths for the local forks/clones of the micropython and
 micropycelium repos, as well as the device to which the firmware will be
 deployed:
 
 ```bash
+source ~/Documents/repos/esp-idf/export.sh
 MICROPYTHON_PATH=$HOME/Documents/repos/micropython
 MICROPYCELIUM_PATH=$HOME/Documents/repos/micropycelium
 DEVICE=/dev/ttyACM0
