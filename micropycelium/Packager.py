@@ -963,10 +963,24 @@ class Interface:
 class Address:
     tree_state: bytes
     address: bytes
+    coords: list[int,]
 
-    def __init__(self, tree_state: bytes, address: bytes) -> None:
+    def __init__(
+            self, tree_state: bytes, address: bytes|bytearray|None = None,
+            coords: list[int]|None = None
+        ) -> None:
+        if address is coords is None:
+            raise ValueError("must provide at least one of address or coords")
+        if address is not None and type(address) not in (bytes, bytearray):
+            raise TypeError("address must be bytes|bytearray")
+        if coords is not None:
+            if type(coords) not in (list, tuple):
+                raise TypeError("coords must be list[int,] or tuple[int,]")
+            if not all([type(i) is int for i in coords]):
+                raise TypeError("coords must be list[int,] or tuple[int,]")
         self.tree_state = tree_state
-        self.address = address
+        self.address = address if address else Address.encode(coords)
+        self.coords = coords if coords is not None else Address.decode(address)
 
     @staticmethod
     def decode(address: bytes|bytearray) -> list[int,]:
@@ -988,7 +1002,7 @@ class Address:
                 coordinates.append(((n & 7) << 4) + nibbles.pop() + 8)
 
         # trim final empty coords
-        while coordinates[-1] == 0:
+        while len(coordinates) and coordinates[-1] == 0:
             coordinates.pop()
 
         return coordinates

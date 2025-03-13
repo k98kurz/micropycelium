@@ -416,16 +416,32 @@ class TestAddress(unittest.TestCase):
         assert len(address) == 16
         assert Address.decode(address) != coords
 
+    def test_initialization(self):
+        with self.assertRaises(ValueError) as e:
+            Address(b'\x00')
+        assert 'must provide at least one' in str(e.exception)
+        with self.assertRaises(TypeError) as e:
+            Address(b'\x00', '00sdsd')
+        assert 'bytes|bytearray' in str(e.exception)
+        with self.assertRaises(TypeError) as e:
+            Address(b'\x00', coords=['a', 'b', 'c'])
+        assert 'int' in str(e.exception)
+
+        addr1 = Address(b'0', address=b'\x00' * 16)
+        addr2 = Address(b'0', coords=[])
+        assert addr1.address == addr2.address
+        assert addr1.coords == addr2.coords
+
 
 class TestPeer(unittest.TestCase):
     def test_e2e(self):
         peer = Peer(b'123', {b'mac': mock_interface1})
         assert len(peer.addrs) == 0
-        peer.set_addr(Address(b'\x00', b'\x00\x00\x00'))
+        peer.set_addr(Address(b'\x00', b'\x00' * 16))
         assert len(peer.addrs) == 1
-        peer.set_addr(Address(b'\x01', b'\x01\x00\x00'))
+        peer.set_addr(Address(b'\x01', b'\x01' * 16))
         assert len(peer.addrs) == 2
-        peer.set_addr(Address(b'\x02', b'\x02\x00\x00'))
+        peer.set_addr(Address(b'\x02', b'\x02' * 16))
         assert len(peer.addrs) == 2
         assert peer.addrs[0].tree_state == b'\x01'
         assert peer.addrs[1].tree_state == b'\x02'
@@ -533,7 +549,7 @@ class TestPackager(unittest.TestCase):
 
     def test_add_route_remove_route(self):
         assert len(Packager.routes.keys()) == 0
-        addr = Address(b'\x00', b'12345')
+        addr = Address(b'\x00', b'\x00' * 16)
         Packager.add_peer(b'peer0', [(b'macpeer0', mock_interface1)])
         Packager.add_route(b'peer0', addr)
         assert len(Packager.routes.keys()) == 1
@@ -542,11 +558,11 @@ class TestPackager(unittest.TestCase):
 
     def test_set_addr(self):
         assert len(Packager.node_addrs) == 0
-        Packager.set_addr(Address(b'\x00', b'local node addr 0'))
+        Packager.set_addr(Address(b'\x00', b'\x00' * 16))
         assert len(Packager.node_addrs) == 1
-        Packager.set_addr(Address(b'\x01', b'local node addr 1'))
+        Packager.set_addr(Address(b'\x01', b'\x01' * 16))
         assert len(Packager.node_addrs) == 2
-        Packager.set_addr(Address(b'\x02', b'local node addr 2'))
+        Packager.set_addr(Address(b'\x02', b'\x02' * 16))
         assert len(Packager.node_addrs) == 2
         assert Packager.node_addrs[0].tree_state == b'\x01'
         assert Packager.node_addrs[1].tree_state == b'\x02'
@@ -628,10 +644,10 @@ class TestPackager(unittest.TestCase):
         app_id = b'app 9659b56ae1d8'
         blob = b'test'
         peer_id = b'123'
-        peer_addr = Address(b'\x00', b'123')
+        peer_addr = Address(b'\x00', b'123' + b'\x00' * 13)
         node_id = b'321'
-        node_addr = Address(b'\x00', b'321')
-        Packager.set_addr(Address(b'\x00', b'node0'))
+        node_addr = Address(b'\x00', b'321' + b'\x00' * 13)
+        Packager.set_addr(Address(b'\x00', b'node0' + b'\x00' * 11))
         Packager.add_peer(peer_id, [(b'macpeer0', mock_interface1)])
         Packager.add_route(peer_id, peer_addr)
         Packager.add_route(node_id, node_addr)
@@ -646,10 +662,10 @@ class TestPackager(unittest.TestCase):
         app_id = b'app 9659b56ae1d8'
         blob = b''.join([(i%256).to_bytes(1, 'big') for i in range(300)])
         peer_id = b'123'
-        peer_addr = Address(b'\x00', b'123')
+        peer_addr = Address(b'\x00', b'123' + b'\x00' * 13)
         node_id = b'321'
-        node_addr = Address(b'\x00', b'321')
-        Packager.set_addr(Address(b'\x00', b'node0'))
+        node_addr = Address(b'\x00', b'321' + b'\x00' * 13)
+        Packager.set_addr(Address(b'\x00', b'node0' + b'\x00' * 11))
         Packager.add_peer(peer_id, [(b'macpeer0', mock_interface1)])
         Packager.add_route(peer_id, peer_addr)
         Packager.add_route(node_id, node_addr)
