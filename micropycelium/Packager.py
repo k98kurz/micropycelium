@@ -982,6 +982,9 @@ class Address:
         self.address = address if address else Address.encode(coords)
         self.coords = coords if coords is not None else Address.decode(address)
 
+    def __hash__(self) -> int:
+        return hash(bytes(self.address))
+
     @staticmethod
     def decode(address: bytes|bytearray) -> list[int,]:
         """Decode an address into a list of coordinates."""
@@ -1361,7 +1364,42 @@ class Packager:
         return True
 
     @classmethod
-    def send(cls, app_id: bytes, blob: bytes, node_id: bytes, schema: int = None) -> bool:
+    def next_hop(
+        cls, tree_state: bytes, to_addr: Address, metric: str = 'dTree'
+    ) -> tuple[Peer, Address]|None:
+        """Returns the next hop for the given to_addr if one can be
+            found for the given tree_state. Returns None if no next
+            hop can be found.
+        """
+        cls.call_hook('next_hop', cls, to_addr, tree_state, metric)
+        if to_addr in cls.routes:
+            peer_id = cls.routes[to_addr]
+            if peer_id in cls.peers:
+                return (cls.peers[peer_id], to_addr)
+
+        # first filter peers by tree_state
+        peers: list[tuple[Peer, Address]] = []
+        for peer in cls.peers.values():
+            for addr in peer.addrs:
+                if addr.tree_state == tree_state:
+                    peers.append((peer, addr))
+
+        # bail; should result in an error response
+        if len(peers) == 0:
+            return None
+
+        # then sort by appropriate distance metric
+        if metric == 'dCPL':
+            peers.sort(key=lambda p: Address.dCPL(p[1], to_addr))
+        else:
+            peers.sort(key=lambda p: Address.dTree(p[1], to_addr))
+        return (peers[0][0], peers[0][1])
+
+    @classmethod
+    def send(
+        cls, app_id: bytes, blob: bytes, node_id: bytes, schema: int = None,
+        metric: str = 'dTree'
+    ) -> bool:
         """Attempts to send a Package containing the app_id and blob to
             the specified node. Returns True if it can be sent and False
             if it cannot (i.e. if it is not a known peer and there is
@@ -1377,16 +1415,18 @@ class Packager:
         if islocal:
             peer = cls.peers[node_id]
         else:
-            # to-do: routing
-            # for now, pick one at random
-            addrs = [
-                a for a, p in cls.routes.items()
-                if p in cls.peers
-            ]
-            addrs.sort(key=lambda _: randint(0, 255))
-            addr = addrs[-1]
-            peer_id = cls.routes[addr]
-            peer = cls.peers[peer_id]
+            # find the address for the given node_id
+            for addr, pid in cls.routes.items():
+                if pid == node_id:
+                    to_addr = addr
+                    break
+            if not to_addr:
+                return False
+            next_hop = cls.next_hop(cls.node_addrs[-1].tree_state, to_addr, metric)
+            if not next_hop:
+                return False
+            peer = next_hop[0]
+            addr = next_hop[1]
 
         intrfcs = peer.interfaces
         sids = set(intrfcs[0][1].supported_schemas)
@@ -1427,10 +1467,10 @@ class Packager:
         return True
 
     @classmethod
-    def get_interface(cls, node_id: bytes|None = None,
-                             to_addr: Address|None = None,
-                             exclude: list[bytes,] = []
-                             ) -> tuple[bytes|None, Interface|None, Peer|None]:
+    def get_interface(
+        cls, node_id: bytes|None = None, to_addr: Address|None = None,
+        exclude: list[bytes,] = [], metric: str = 'dTree'
+    ) -> tuple[bytes|None, Interface|None, Peer|None]:
         """Get the proper Interface and MAC for direct transmission to
             the neighbor with the given node_id or for direct
             transmission to the best candidate for routing toward the
@@ -1446,29 +1486,26 @@ class Packager:
             intrfcs.sort(key=lambda mi: mi[1].bitrate, reverse=True)
             return (intrfcs[0][0], intrfcs[0][1], cls.peers[node_id])
         elif node_id in (nid for _, nid in cls.routes.items()):
-            # known node reachable via routing; find next hop
+            # known node reachable via routing; prepare to find next hop
             # set to_addr
             addrs = [addr for addr, pid in cls.routes.items() if pid == node_id]
             nowaddrs = [a for a in addrs if a.tree_state == cls.node_addrs[-1].tree_state]
             if len(nowaddrs):
                 to_addr = nowaddrs[0]
             to_addr = addrs[0]
+
         if to_addr:
-            # need to route
-            # to-do: routing
-            # for now, pick one at random
-            addrs = [
-                a for a, p in cls.routes.items()
-                if p in cls.peers
-            ]
-            addrs.sort(key=lambda _: randint(0, 255))
-            addr = addrs[-1]
-            peer_id = cls.routes[addr]
-            if peer_id in exclude:
+            # unknown node; find next hop
+            next_hop = cls.next_hop(cls.node_addrs[-1].tree_state, to_addr, metric)
+            if not next_hop:
                 return (None, None, None)
-            intrfcs = cls.peers[peer_id].interfaces
+            peer = next_hop[0]
+            addr = next_hop[1]
+            if peer.id in exclude:
+                return (None, None, None)
+            intrfcs = peer.interfaces
             intrfcs.sort(key=lambda mi: mi[1].bitrate, reverse=True)
-            return (intrfcs[0][0], intrfcs[0][1], cls.peers[peer_id])
+            return (intrfcs[0][0], intrfcs[0][1], peer)
         else:
             return (None, None, None)
 
@@ -1557,14 +1594,19 @@ class Packager:
             mac, intrfc, peer = cls.get_interface(node_id)
         elif 'to_addr' in packet.fields and 'from_addr' in packet.fields:
             # this is an intermediate hop
+            metric = 'dCPL' if packet.flags.mode else 'dTree'
             to_addr = Address(packet.fields['tree_state'], packet.fields['to_addr'])
             from_addr = packet.fields['from_addr']
             if packet.flags.error:
                 exclude = [cls.routes[to_addr]] if from_addr in cls.routes else []
-                mac, intrfc, peer = cls.get_interface(to_addr=from_addr, exclude=exclude)
+                mac, intrfc, peer = cls.get_interface(
+                    to_addr=from_addr, exclude=exclude, metric=metric
+                )
             else:
                 exclude = [cls.routes[from_addr]] if from_addr in cls.routes else []
-                mac, intrfc, peer = cls.get_interface(to_addr=to_addr, exclude=exclude)
+                mac, intrfc, peer = cls.get_interface(
+                    to_addr=to_addr, exclude=exclude, metric=metric
+                )
                 packet.fields['ttl'] -= 1
 
             if packet.fields['ttl'] <= 0:

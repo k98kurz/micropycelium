@@ -608,6 +608,111 @@ class TestPackager(unittest.TestCase):
         assert Packager.node_addrs[0].tree_state == b'\x01'
         assert Packager.node_addrs[1].tree_state == b'\x02'
 
+    def test_dTree_routing(self):
+        # example network structure from the VOUTE paper for routing s -> e:
+        # s [1] <-> r [] <-> e [2] <-> [2, 1] <-> [2, 1, 1] <-> u [2, 1, 1, 1]
+        # s <-> u
+        tree_state = b'\x00'
+        Packager.node_id = b'0' * 32
+        local_addr = Address(tree_state, coords=[2,2,3])
+        peer1_id = b'1' * 32
+        peer2_id = b'2' * 32
+        peer1_addr = Address(tree_state, coords=[2,2,4])
+        peer2_addr = Address(tree_state, coords=[2,5])
+        Packager.add_peer(peer1_id, [(b'macpeer1', mock_interface1)])
+        Packager.add_peer(peer2_id, [(b'macpeer2', mock_interface1)])
+        Packager.add_route(peer1_id, peer1_addr)
+        Packager.add_route(peer2_id, peer2_addr)
+        Packager.set_addr(local_addr)
+
+        to_addr = Address(tree_state, coords=[2,5,1])
+        mac, intrfc, peer = Packager.get_interface(to_addr=to_addr)
+        assert mac == b'macpeer2', mac
+        assert intrfc == mock_interface1
+        assert peer.id == peer2_id, peer
+
+        to_addr = Address(tree_state, coords=[2,2,4])
+        mac, intrfc, peer = Packager.get_interface(to_addr=to_addr)
+        assert mac == b'macpeer1', mac
+        assert intrfc == mock_interface1
+        assert peer.id == peer1_id, peer
+
+        to_addr = Address(tree_state, coords=[2,2,3])
+        mac, intrfc, peer = Packager.get_interface(to_addr=to_addr)
+
+    def test_dTree_example_from_VOUTE_paper(self):
+        # example network structure from the VOUTE paper for routing s -> e:
+        # s [1] <-> r [] <-> e [2] <-> [2, 1] <-> [2, 1, 1] <-> u [2, 1, 1, 1]
+        # s <-> u
+        tree_state = b'\x00'
+        local_addr = Address(tree_state, coords=[1])
+        peer1_id = b'1' * 32
+        peer2_id = b'2' * 32
+        peer1_addr = Address(tree_state, coords=[]) # r
+        peer2_addr = Address(tree_state, coords=[2, 1, 1, 1]) # u
+        Packager.add_peer(peer1_id, [(b'mac_peer_r', mock_interface1)])
+        Packager.add_peer(peer2_id, [(b'mac_peer_u', mock_interface1)])
+        Packager.add_route(peer1_id, peer1_addr)
+        Packager.add_route(peer2_id, peer2_addr)
+        Packager.set_addr(local_addr)
+
+        to_addr = Address(tree_state, coords=[2]) # e
+        mac, intrfc, peer = Packager.get_interface(to_addr=to_addr, metric='dTree')
+        assert mac == b'mac_peer_r', mac
+        assert intrfc == mock_interface1
+        assert peer.id == peer1_id, peer
+
+    def test_dCPL_routing(self):
+        tree_state = b'\x00'
+        Packager.node_id = b'0' * 32
+        local_addr = Address(tree_state, coords=[2,2,3])
+        peer1_id = b'1' * 32
+        peer2_id = b'2' * 32
+        peer1_addr = Address(tree_state, coords=[2,2,4])
+        peer2_addr = Address(tree_state, coords=[2,5])
+        Packager.add_peer(peer1_id, [(b'macpeer1', mock_interface1)])
+        Packager.add_peer(peer2_id, [(b'macpeer2', mock_interface1)])
+        Packager.add_route(peer1_id, peer1_addr)
+        Packager.add_route(peer2_id, peer2_addr)
+        Packager.set_addr(local_addr)
+
+        to_addr = Address(tree_state, coords=[2,5,1])
+        mac, intrfc, peer = Packager.get_interface(to_addr=to_addr, metric='dCPL')
+        assert mac == b'macpeer2', mac
+        assert intrfc == mock_interface1
+        assert peer.id == peer2_id, peer
+
+        to_addr = Address(tree_state, coords=[2,2,4])
+        mac, intrfc, peer = Packager.get_interface(to_addr=to_addr, metric='dCPL')
+        assert mac == b'macpeer1', mac
+        assert intrfc == mock_interface1
+        assert peer.id == peer1_id, peer
+
+        to_addr = Address(tree_state, coords=[2,2,3])
+        mac, intrfc, peer = Packager.get_interface(to_addr=to_addr, metric='dCPL')
+
+    def test_dCPL_example_from_VOUTE_paper(self):
+        # example network structure from the VOUTE paper for routing s -> e:
+        # s [1] <-> r [] <-> e [2] <-> [2, 1] <-> [2, 1, 1] <-> u [2, 1, 1, 1]
+        # s <-> u
+        tree_state = b'\x00'
+        local_addr = Address(tree_state, coords=[1])
+        peer1_id = b'1' * 32
+        peer2_id = b'2' * 32
+        peer1_addr = Address(tree_state, coords=[]) # r
+        peer2_addr = Address(tree_state, coords=[2, 1, 1, 1]) # u
+        Packager.add_peer(peer1_id, [(b'mac_peer_r', mock_interface1)])
+        Packager.add_peer(peer2_id, [(b'mac_peer_u', mock_interface1)])
+        Packager.add_route(peer1_id, peer1_addr)
+        Packager.add_route(peer2_id, peer2_addr)
+        Packager.set_addr(local_addr)
+
+        to_addr = Address(tree_state, coords=[2]) # e
+        mac, intrfc, peer = Packager.get_interface(to_addr=to_addr, metric='dCPL')
+        assert mac == b'mac_peer_u', mac
+        assert intrfc == mock_interface1
+        assert peer.id == peer2_id, peer
+
     def test_broadcast_small(self):
         Packager.add_interface(mock_interface1)
         assert len(Packager.interfaces) == 1
