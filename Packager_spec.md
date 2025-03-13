@@ -713,9 +713,6 @@ Examples:
 - (8, 3) => 0b1000000 0b0011
 - (4, 12) => 0b0100 0b10000100
 
-The only exception is that the final nibble, if it is not part of the preceding
-coordinate, can have values with the high bit set, i.e. integer values 1-15.
-
 ## Routing
 
 Routing is done by calculating the selected distance metric for each peer and
@@ -723,8 +720,7 @@ forwarding to the peer closest (i.e. with the shortest distance) to the
 destination. The distance metrics are defined as follows. For these definitions,
 cpl(x1, x2) is the "common prefix length" and means the number of consecutive
 coordinates starting at the beginning that are shared between addresses x1 and
-x2; i.e. the length of the beginning shared address bytes. Also, |x1| means the
-number of coordinates in address x1, and L = 17.
+x2. Also, |x1| means the number of coordinates in address x1, and L = 33.
 
 ### Tree Distance
 
@@ -734,6 +730,10 @@ dTree(x1, x2) = |x1| + |x2| - 2 * cpl(x1, x2)
 
 Greedy routing with this metric tends to favor shorter paths but may congest
 nodes closer to the root.
+
+Note that client nodes will have addresses with empty coordinates between the
+router coordinates and the client coordinates, and only the router coordinates
+should be used for routing.
 
 ### CPL Distance
 
@@ -749,6 +749,9 @@ dCPL(x1, x2) = 0
 
 Greedy routing with this metric tends to favor routing further away from the
 nodes closer to the root, but sometimes takes longer paths.
+
+Note that all coordinates must be used for dCPL routing, including any empty
+trailing or internal coordinates.
 
 # Peer Discovery and Management
 
