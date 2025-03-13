@@ -968,6 +968,53 @@ class Address:
         self.tree_state = tree_state
         self.address = address
 
+    @staticmethod
+    def decode(address: bytes|bytearray) -> list[int,]:
+        """Decode an address into a list of coordinates."""
+        if len(address) != 16:
+            raise ValueError("address must be 16 bytes")
+        nibbles = []
+        for i in range(len(address)):
+            nibbles.append(address[i] >> 4)
+            nibbles.append(address[i] & 15)
+        nibbles.reverse()
+
+        coordinates = []
+        while len(nibbles):
+            n = nibbles.pop()
+            if n < 8 or len(nibbles) == 0:
+                coordinates.append(n)
+            else:
+                coordinates.append(((n & 7) << 4) + nibbles.pop() + 8)
+
+        # trim final empty coords
+        while coordinates[-1] == 0:
+            coordinates.pop()
+
+        return coordinates
+
+    @staticmethod
+    def encode(coordinates: list[int,]) -> bytearray:
+        """Encode a list of coordinates into an address."""
+        nibbles = []
+        for coord in coordinates:
+            if coord < 8:
+                nibbles.append(coord)
+            else:
+                # subtract 8 and set the high bit of an octet
+                coord = ((coord - 8) & 127) | 128
+                # append two nibbles
+                nibbles.append(coord >> 4)
+                nibbles.append(coord & 15)
+        if len(nibbles) % 2:
+            nibbles.append(0)
+        address = bytearray()
+        for i in range(0, len(nibbles), 2):
+            address.append((nibbles[i] << 4) | nibbles[i+1])
+        while len(address) < 16:
+            address.append(0)
+        return address[:16]
+
 
 # @micropython.native
 class Peer:

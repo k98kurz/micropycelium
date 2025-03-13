@@ -2,6 +2,7 @@ import asyncio
 from binascii import crc32
 from collections import deque
 from context import *
+from random import randint
 from time import time, sleep
 import unittest
 
@@ -355,6 +356,65 @@ class TestInterface(unittest.TestCase):
         assert len(mock_interface1.castbox) == 0
         assert len(castbox) == 1
         castbox.pop()
+
+
+class TestAddress(unittest.TestCase):
+    def test_encode(self):
+        coords = [1, 3, 7, 8, 129]
+        address = Address.encode(coords)
+        assert type(address) is bytearray
+        assert len(address) == 16
+        # coords 1 and 3
+        assert address[0] == (0b0001 << 4) | 0b0011
+        # coords 7 and first half of 8
+        assert address[1] == (0b0111 << 4) | 0b1000
+        # second half of 8 and first half of 129
+        assert address[2] == (0b0000 << 4) | 0b1111
+        # second half of 129 and the rest is padding
+        assert address[3] == (0b1001 << 4) | 0b0000
+        for i in range(4, len(address)):
+            assert address[i] == 0
+
+    def test_decode(self):
+        address = bytes.fromhex('13780f90') + (b'\x00' * 12)
+        assert len(address) == 16
+        coords = Address.decode(address)
+        assert type(coords) is list
+        assert all([type(c) is int for c in coords])
+
+    def test_encode_decode_e2e_fuzz(self):
+        # first test max address with all 4-bit coords
+        for _ in range(10_000):
+            coords = [randint(0, 7) for _ in range(32)]
+            # trim terminal empty coords
+            while coords[-1] == 0:
+                coords.pop()
+            address = Address.encode(coords)
+            assert Address.decode(address) == coords, \
+                (coords, address.hex(), Address.decode(address))
+
+        # second test max address with all 8-bit coords
+        for _ in range(10_000):
+            coords = [randint(8, 135) for _ in range(16)]
+            address = Address.encode(coords)
+            assert Address.decode(address) == coords, \
+                (coords, address.hex(), Address.decode(address))
+
+        # third test addresses with mix of 4-bit and 8-bit coords
+        for _ in range(10_000):
+            coords = [randint(0, 135) for _ in range(16)]
+            # trim terminal empty coords
+            while coords[-1] == 0:
+                coords.pop()
+            address = Address.encode(coords)
+            assert Address.decode(address) == coords, \
+                (coords, address.hex(), Address.decode(address))
+
+        # finally test an overflow
+        coords = [randint(0, 135) for _ in range(33)]
+        address = Address.encode(coords)
+        assert len(address) == 16
+        assert Address.decode(address) != coords
 
 
 class TestPeer(unittest.TestCase):
