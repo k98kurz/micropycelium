@@ -44,6 +44,8 @@ MODEM_INTERSECT_INTERVAL = micropython.const(int(0.9 * MODEM_WAKE_MS))
 MODEM_INTERSECT_RTX_TIMES = micropython.const(
     int((MODEM_SLEEP_MS+MODEM_WAKE_MS)/MODEM_INTERSECT_INTERVAL) + 1
 )
+dTree = micropython.const(0)
+dCPL = micropython.const(1)
 
 def debug(*args):
     if DEBUG:
@@ -1365,7 +1367,7 @@ class Packager:
 
     @classmethod
     def next_hop(
-        cls, tree_state: bytes, to_addr: Address, metric: str = 'dTree'
+        cls, tree_state: bytes, to_addr: Address, metric: int = dTree
     ) -> tuple[Peer, Address]|None:
         """Returns the next hop for the given to_addr if one can be
             found for the given tree_state. Returns None if no next
@@ -1389,7 +1391,7 @@ class Packager:
             return None
 
         # then sort by appropriate distance metric
-        if metric == 'dCPL':
+        if metric == dCPL:
             peers.sort(key=lambda p: Address.dCPL(p[1], to_addr))
         else:
             peers.sort(key=lambda p: Address.dTree(p[1], to_addr))
@@ -1398,7 +1400,7 @@ class Packager:
     @classmethod
     def send(
         cls, app_id: bytes, blob: bytes, node_id: bytes, schema: int = None,
-        metric: str = 'dTree'
+        metric: int = dTree
     ) -> bool:
         """Attempts to send a Package containing the app_id and blob to
             the specified node. Returns True if it can be sent and False
@@ -1469,7 +1471,7 @@ class Packager:
     @classmethod
     def get_interface(
         cls, node_id: bytes|None = None, to_addr: Address|None = None,
-        exclude: list[bytes,] = [], metric: str = 'dTree'
+        exclude: list[bytes,] = [], metric: int = dTree
     ) -> tuple[bytes|None, Interface|None, Peer|None]:
         """Get the proper Interface and MAC for direct transmission to
             the neighbor with the given node_id or for direct
@@ -1594,7 +1596,7 @@ class Packager:
             mac, intrfc, peer = cls.get_interface(node_id)
         elif 'to_addr' in packet.fields and 'from_addr' in packet.fields:
             # this is an intermediate hop
-            metric = 'dCPL' if packet.flags.mode else 'dTree'
+            metric = dCPL if packet.flags.mode else dTree
             to_addr = Address(packet.fields['tree_state'], packet.fields['to_addr'])
             from_addr = packet.fields['from_addr']
             if packet.flags.error:

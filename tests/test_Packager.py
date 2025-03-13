@@ -626,19 +626,19 @@ class TestPackager(unittest.TestCase):
         Packager.set_addr(local_addr)
 
         to_addr = Address(tree_state, coords=[2,5,1])
-        mac, intrfc, peer = Packager.get_interface(to_addr=to_addr)
+        mac, intrfc, peer = Packager.get_interface(to_addr=to_addr, metric=dTree)
         assert mac == b'macpeer2', mac
         assert intrfc == mock_interface1
         assert peer.id == peer2_id, peer
 
         to_addr = Address(tree_state, coords=[2,2,4])
-        mac, intrfc, peer = Packager.get_interface(to_addr=to_addr)
+        mac, intrfc, peer = Packager.get_interface(to_addr=to_addr, metric=dTree)
         assert mac == b'macpeer1', mac
         assert intrfc == mock_interface1
         assert peer.id == peer1_id, peer
 
         to_addr = Address(tree_state, coords=[2,2,3])
-        mac, intrfc, peer = Packager.get_interface(to_addr=to_addr)
+        mac, intrfc, peer = Packager.get_interface(to_addr=to_addr, metric=dTree)
 
     def test_dTree_example_from_VOUTE_paper(self):
         # example network structure from the VOUTE paper for routing s -> e:
@@ -657,7 +657,7 @@ class TestPackager(unittest.TestCase):
         Packager.set_addr(local_addr)
 
         to_addr = Address(tree_state, coords=[2]) # e
-        mac, intrfc, peer = Packager.get_interface(to_addr=to_addr, metric='dTree')
+        mac, intrfc, peer = Packager.get_interface(to_addr=to_addr, metric=dTree)
         assert mac == b'mac_peer_r', mac
         assert intrfc == mock_interface1
         assert peer.id == peer1_id, peer
@@ -677,19 +677,19 @@ class TestPackager(unittest.TestCase):
         Packager.set_addr(local_addr)
 
         to_addr = Address(tree_state, coords=[2,5,1])
-        mac, intrfc, peer = Packager.get_interface(to_addr=to_addr, metric='dCPL')
+        mac, intrfc, peer = Packager.get_interface(to_addr=to_addr, metric=dCPL)
         assert mac == b'macpeer2', mac
         assert intrfc == mock_interface1
         assert peer.id == peer2_id, peer
 
         to_addr = Address(tree_state, coords=[2,2,4])
-        mac, intrfc, peer = Packager.get_interface(to_addr=to_addr, metric='dCPL')
+        mac, intrfc, peer = Packager.get_interface(to_addr=to_addr, metric=dCPL)
         assert mac == b'macpeer1', mac
         assert intrfc == mock_interface1
         assert peer.id == peer1_id, peer
 
         to_addr = Address(tree_state, coords=[2,2,3])
-        mac, intrfc, peer = Packager.get_interface(to_addr=to_addr, metric='dCPL')
+        mac, intrfc, peer = Packager.get_interface(to_addr=to_addr, metric=dCPL)
 
     def test_dCPL_example_from_VOUTE_paper(self):
         # example network structure from the VOUTE paper for routing s -> e:
@@ -708,7 +708,7 @@ class TestPackager(unittest.TestCase):
         Packager.set_addr(local_addr)
 
         to_addr = Address(tree_state, coords=[2]) # e
-        mac, intrfc, peer = Packager.get_interface(to_addr=to_addr, metric='dCPL')
+        mac, intrfc, peer = Packager.get_interface(to_addr=to_addr, metric=dCPL)
         assert mac == b'mac_peer_u', mac
         assert intrfc == mock_interface1
         assert peer.id == peer2_id, peer

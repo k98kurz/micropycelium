@@ -16,6 +16,8 @@ from micropycelium import (
     MODEM_INTERSECT_RTX_TIMES,
     MODEM_SLEEP_MS,
     MODEM_WAKE_MS,
+    dCPL,
+    dTree,
     get_schema,
     get_schemas,
     Packet,
