@@ -1029,6 +1029,44 @@ class Address:
             address.append(0)
         return address[:16]
 
+    @staticmethod
+    def cpl(x1: list[int,], x2: list[int,]) -> int:
+        """Calculate the common prefix length of two addresses."""
+        cpl = 0
+        for i in range(min(len(x1), len(x2))):
+            if x1[i] != x2[i]:
+                break
+            cpl += 1
+        return cpl
+
+    def dTree_coords(self) -> list[int,]:
+        """Return the routable coordinates for tree distance."""
+        if 0 in self.coords:
+            return self.coords[:self.coords.index(0)]
+        return self.coords
+
+    @staticmethod
+    def dTree(x1: 'Address', x2: 'Address') -> int:
+        """Calculate the tree distance between two addresses."""
+        x1 = x1.dTree_coords()
+        x2 = x2.dTree_coords()
+        return len(x1) + len(x2) - 2 * Address.cpl(x1, x2)
+
+    def dCPL_coords(self) -> list[int,]:
+        """Return the routable coordinates for CPL distance."""
+        if len(self.coords) == 32:
+            return self.coords
+        return self.coords + [0] * (32 - len(self.coords))
+
+    @staticmethod
+    def dCPL(x1: 'Address', x2: 'Address') -> int:
+        """Calculate the CPL distance between two addresses."""
+        x1 = x1.dCPL_coords()
+        x2 = x2.dCPL_coords()
+        if x1 == x2:
+            return 0
+        return 33 - Address.cpl(x1, x2) - 1 / (len(x1) + len(x2) + 1)
+
 
 # @micropython.native
 class Peer:
