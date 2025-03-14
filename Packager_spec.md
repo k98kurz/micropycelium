@@ -713,7 +713,7 @@ forwarding packets. The routing metric to use will be determined by setting
 `flags.mode`: 0 for tree distance and 1 for common prefix length distance.
 
 The spanning tree system will be maintained by an application, and its Package
-format will start with a 1-byte `type` field, which will be 0x00 for a periodic
+format will start with a 1-byte `op` field, which will be 0x00 for a periodic
 broadcast containing current best root election claim and the node's address,
 0x0f to respond to a 0x00 broadcast if the local node has a better root election
 claim in its app state, 0xf0 for address assignment request, and 0xff for

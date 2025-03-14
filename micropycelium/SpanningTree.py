@@ -1,0 +1,265 @@
+try:
+    from Packager import (
+        Packager,
+        Address,
+        Application,
+        Interface,
+        Event,
+        MODEM_INTERSECT_INTERVAL,
+        MODEM_INTERSECT_RTX_TIMES,
+    )
+except ImportError:
+    from .Packager import (
+        Packager,
+        Address,
+        Application,
+        Interface,
+        Event,
+        MODEM_INTERSECT_INTERVAL,
+        MODEM_INTERSECT_RTX_TIMES,
+    )
+from binascii import crc32
+from collections import deque, namedtuple
+from random import randint
+from time import time
+
+
+def enum(**enums):
+    """Enum workaround for micropython. CC BY-SA 4.0
+        https://stackoverflow.com/a/1695250
+    """
+    return type('Enum', (), enums)
+
+TreeOp = enum(
+    SEND=b'\x00',
+    RESPOND=b'\x0f',
+    REQUEST_ADDRESS_ASSIGNMENT=b'\xf0',
+    ASSIGN_ADDRESS=b'\xff',
+)
+
+def tree_state(claim: bytes):
+    return crc32(claim).to_bytes(4, 'big')[0]
+
+root_id_targets = (
+    b'1234' * 8,
+    b'4321' * 8,
+    b'5678' * 8,
+    b'8765' * 8,
+)
+now = lambda: int(time()*1000)
+TreeMessage = namedtuple("TreeMessage", ['op', 'claim', 'address'])
+seen: deque[TreeMessage] = deque([], 10)
+tree_app_id = b''
+
+current_children: dict[bytes, int] = {} # map of child peer ids to coordinates
+current_parent: bytes = b''
+# tuple of (claim, dTree from root, peer_id)
+known_claims: deque[tuple[bytes, int, bytes]] = deque([], 10)
+
+# elect self as initial root
+current_best_root_id = Packager.node_id
+Packager.set_addr(Address(tree_state(Packager.node_id), coords=[]))
+
+def xor(b1: bytes, b2: bytes) -> bytes:
+    """XOR two equal-length byte strings together."""
+    b3 = bytearray()
+    for i in range(len(b1)):
+        b3.append(b1[i] ^ b2[i])
+
+    return bytes(b3)
+
+def claim_score(node_id: bytes, overlay_idx: int = 0) -> int:
+    """Calculate the distance from the target root id. Lower is better."""
+    return int.from_bytes(xor(node_id, root_id_targets[overlay_idx]), 'big')
+
+def serialize_tm(tmsg: TreeMessage):
+    return tmsg.op + tmsg.claim + tmsg.address
+
+def deserialize_tm(blob: bytes) -> TreeMessage:
+    op = blob[:1]
+    claim = blob[1:33]
+    address = blob[33:]
+    return TreeMessage(op, claim, address)
+
+def lwst_avlbl_coord() -> int|None:
+    vals = set(current_children.values())
+    for i in range(1, 136):
+        if i not in vals:
+            return i
+    return None
+
+def remove_peer(_, pid: bytes):
+    # remove the peer from the current children
+    if pid in current_children:
+        del current_children[pid]
+    # remove the peer from the known claims
+    claims = list(known_claims)
+    known_claims.clear()
+    for claim, dTree, peer_id in claims:
+        if peer_id != pid:
+            known_claims.append((claim, dTree, peer_id))
+
+def receive_tm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
+    global current_best_root_id, current_parent
+    tmsg = deserialize_tm(blob)
+    seen.append(tmsg)
+    peer_id = next(
+        (
+            pid for pid, peer in Packager.peers.items()
+            if mac in [pi[0] for pi in peer.interfaces]
+        ),
+        None
+    )
+
+    if tmsg.op == TreeOp.SEND:
+        # received aperiodic broadcast
+        if claim_score(tmsg.claim) < claim_score(current_best_root_id):
+            # add the claim to the known claims
+            addr = Address(tree_state(tmsg.claim), address=tmsg.address)
+            root = Address(tree_state(tmsg.claim), coords=[])
+            known_claims.append((tmsg.claim, addr.dTree(root, addr), peer_id))
+        elif claim_score(current_best_root_id) < claim_score(tmsg.claim):
+            # we have a better claim, so respond with it
+            respond_tree_message(peer_id)
+    elif tmsg.op == TreeOp.RESPOND:
+        # received a response to a periodic broadcast
+        if claim_score(tmsg.claim) < claim_score(current_best_root_id):
+            # add the claim to the known claims
+            addr = Address(tree_state(tmsg.claim), address=tmsg.address)
+            root = Address(tree_state(tmsg.claim), coords=[])
+            known_claims.append((tmsg.claim, addr.dTree(root, addr), peer_id))
+    elif tmsg.op == TreeOp.REQUEST_ADDRESS_ASSIGNMENT:
+        # received an address assignment request
+        if tree_state(tmsg.claim) == Packager.node_addrs[-1].tree_state:
+            # respond with the address assignment
+            coords = list(Packager.node_addrs[0].coords)
+            coord = lwst_avlbl_coord()
+            if coord is None or peer_id is None:
+                # no available coordinates, or peer_id not found, so reject the request
+                return
+            coords.append(coord)
+            current_children[peer_id] = coord
+            assign_address(peer_id, coords)
+    elif tmsg.op == TreeOp.ASSIGN_ADDRESS:
+        # received an address assignment response
+        if claim_score(tmsg.claim) < claim_score(current_best_root_id):
+            # accept the address and set the new best claim
+            Packager.set_addr(Address(tree_state(tmsg.claim), tmsg.address))
+            current_best_root_id = tmsg.claim
+            current_parent = peer_id
+            current_children.clear()
+        else:
+            # we have a better claim, so respond with it
+            respond_tree_message(peer_id)
+
+def broadcast_tree_message():
+    tmsg = TreeMessage(TreeOp.SEND, current_best_root_id, Packager.node_addrs[-1].address)
+    Packager.broadcast(tree_app_id, serialize_tm(tmsg))
+
+def send_tree_message(pid: bytes):
+    tmsg = TreeMessage(TreeOp.SEND, current_best_root_id, Packager.node_addrs[-1].address)
+    Packager.send(tree_app_id, serialize_tm(tmsg), pid)
+
+def respond_tree_message(pid: bytes):
+    tmsg = TreeMessage(TreeOp.RESPOND, current_best_root_id, Packager.node_addrs[-1].address)
+    Packager.send(tree_app_id, serialize_tm(tmsg), pid)
+
+def request_address_assignment(pid: bytes, claim: bytes):
+    tmsg = TreeMessage(TreeOp.REQUEST_ADDRESS_ASSIGNMENT, claim, b'')
+    Packager.send(tree_app_id, serialize_tm(tmsg), pid)
+
+def assign_address(pid: bytes, coords: list[int]):
+    addr = Address(tree_state(current_best_root_id), Packager.node_id, coords)
+    tmsg = TreeMessage(TreeOp.ASSIGN_ADDRESS, current_best_root_id, addr.address)
+    Packager.send(tree_app_id, serialize_tm(tmsg), pid)
+
+def periodic_tree_message(count: int):
+    """Broadcasts count times with a 30ms delay between."""
+    if count <= 0:
+        return schedule_tree_maintenance()
+    broadcast_tree_message()
+    Packager.new_events.append(Event(
+        now() + MODEM_INTERSECT_INTERVAL,
+        tree_app_id,
+        periodic_tree_message,
+        count - 1
+    ))
+
+def maintain_tree():
+    """Maintains the spanning tree: 1) when a parent has disconnected,
+        reset the local state; 2) if there is no parent and there are
+        known claims, request an address assignment from the best claim;
+        3) begin the periodic_tree_message event.
+    """
+    global current_best_root_id, current_parent, current_children
+
+    # check if parent has disconnected
+    if current_parent != b'':
+        if current_parent not in Packager.peers:
+            # parent has disconnected, reset the local state
+            current_best_root_id = Packager.node_id
+            current_parent = b''
+            current_children.clear()
+            Packager.set_addr(Address(tree_state(Packager.node_id), coords=[]))
+
+    # check if there is no parent and there are known claims
+    if current_parent == b'' and len(known_claims) > 0:
+        # get the best known claim (and shortest distance from root)
+        claims = list(known_claims)
+        claims.sort(key=lambda t: claim_score(t[0]) + t[1])
+        best_claim, _, peer_id = claims[0]
+        if claim_score(best_claim) < claim_score(Packager.node_id):
+            # request an address assignment from the best claim
+            request_address_assignment(peer_id, best_claim)
+            # schedule the next maintenance event
+            schedule_tree_maintenance()
+        else:
+            # we have the best claim, so begin broadcasting it
+            periodic_tree_message(MODEM_INTERSECT_RTX_TIMES)
+    else:
+        # begin broadcasting
+        periodic_tree_message(MODEM_INTERSECT_RTX_TIMES)
+
+def schedule_tree_maintenance():
+    """Schedules the tree maintenance event."""
+    if tree_app_id+b's' in Packager.schedule:
+        return
+    Packager.new_events.append(Event(
+        now() + 60_000,
+        tree_app_id+b's',
+        maintain_tree,
+    ))
+
+def schedule_start():
+    """Schedules the app to start broadcasting with a random delay up to 30s."""
+    if tree_app_id+b's' in Packager.schedule:
+        return
+    Packager.new_events.append(Event(
+        now() + randint(0, 30) * 1000,
+        tree_app_id + b's',
+        maintain_tree,
+    ))
+
+SpanningTree = Application(
+    name='SpanningTree',
+    description='Dev SpanningTree App',
+    version=0,
+    receive_func=receive_tm,
+    callbacks={
+        'broadcast': lambda _: broadcast_tree_message(),
+        'send': lambda _, pid: send_tree_message(pid),
+        'respond': lambda _, pid: respond_tree_message(pid),
+        'request_address_assignment': lambda _, pid, claim: request_address_assignment(pid, claim),
+        'assign_address': lambda _, pid, coords: assign_address(pid, coords),
+        'remove_peer': lambda _, pid: remove_peer(pid),
+        'maintain_tree': lambda _: maintain_tree(),
+        'schedule_tree_maintenance': lambda _: schedule_tree_maintenance(),
+        'serialize': lambda _, tm: serialize_tm(tm),
+        'deserialize': lambda _, blob: deserialize_tm(blob),
+        'start': lambda _: schedule_start(),
+    }
+)
+tree_app_id = SpanningTree.id
+
+Packager.add_application(SpanningTree)
+Packager.add_hook('remove_peer', remove_peer)
