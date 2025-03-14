@@ -1401,7 +1401,7 @@ class Packager:
         """Adds an interface. Raises AssertionError if it does not meet
             the requirements for a network interface.
         """
-        cls.call_hook('add_interface', cls, interface)
+        cls.call_hook('add_interface', interface)
         assert interface.validate()
         cls.interfaces.append(interface)
 
@@ -1449,7 +1449,7 @@ class Packager:
             Address for the peer to maintain routability during tree
             state transitions.
         """
-        cls.call_hook('add_route', cls, node_id, address)
+        cls.call_hook('add_route', node_id, address)
         if node_id in cls.peers:
             addrs = cls.peers[node_id].addrs
             if address not in addrs:
@@ -1461,7 +1461,7 @@ class Packager:
     @classmethod
     def remove_route(cls, address: Address):
         """Removes the route to the peer with the given address."""
-        cls.call_hook('remove_route', cls, address)
+        cls.call_hook('remove_route', address)
         if address in cls.routes:
             cls.routes.pop(address)
 
@@ -1471,7 +1471,7 @@ class Packager:
             preserving the previous address to maintain routability
             between tree state transitions.
         """
-        cls.call_hook('set_addr', cls, addr)
+        cls.call_hook('set_addr', addr)
         cls.node_addrs.append(addr)
         while len(cls.node_addrs) > 2:
             cls.node_addrs.popleft()
@@ -1485,7 +1485,7 @@ class Packager:
         """
         cls.sleepskip.append(True)
         # cls.sleepskip.extend([True for _ in range(MODEM_INTERSECT_RTX_TIMES)])
-        cls.call_hook('broadcast', cls, app_id, blob, interface)
+        cls.call_hook('broadcast', app_id, blob, interface)
         schema: Schema
         chosen_intrfcs: list[Interface]
         if interface:
@@ -1539,7 +1539,7 @@ class Packager:
             found for the given tree_state. Returns None if no next
             hop can be found.
         """
-        cls.call_hook('next_hop', cls, to_addr, tree_state, metric)
+        cls.call_hook('next_hop', to_addr, tree_state, metric)
         if to_addr in cls.routes:
             peer_id = cls.routes[to_addr]
             if peer_id in cls.peers:
@@ -1573,7 +1573,7 @@ class Packager:
             if it cannot (i.e. if it is not a known peer and there is
             not a known route to the node).
         """
-        cls.call_hook('send', cls, app_id, blob, node_id, schema)
+        cls.call_hook('send', app_id, blob, node_id, schema)
         islocal = node_id in cls.peers
         if not islocal and node_id not in [r for a, r in cls.routes.items()]:
             return False
@@ -1647,7 +1647,7 @@ class Packager:
             passed, the Interfaces for those nodes with ids specified in
             the list will be excluded from consideration.
         """
-        cls.call_hook('get_interface', cls, node_id, to_addr, exclude)
+        cls.call_hook('get_interface', node_id, to_addr, exclude)
         if node_id in cls.peers and node_id not in exclude:
             # direct neighbors
             intrfcs = cls.peers[node_id].interfaces
@@ -1683,7 +1683,7 @@ class Packager:
         """Send RNS if one has not been sent in the last
             MODEM_INTERSECT_INTERVAL ms, otherwise update the event.
         """
-        cls.call_hook('rns', cls, peer_id, intrfc_id, retries)
+        cls.call_hook('rns', peer_id, intrfc_id, retries)
         eid = b'rns'+peer_id+intrfc_id
         now = int(time()*1000)
         if eid in [e.id for e in cls.new_events]:
@@ -1734,7 +1734,7 @@ class Packager:
         """Sends a Datagram on the appropriate interface. Raises
             AssertionError if the interface ID is invalid.
         """
-        cls.call_hook('_send_datagram', cls, dgram, peer)
+        cls.call_hook('_send_datagram', dgram, peer)
         cls.sleepskip.append(True)
         # cls.sleepskip.extend([True for _ in range(MODEM_INTERSECT_RTX_TIMES)])
         assert dgram.intrfc_id in [i.id for i in cls.interfaces]
@@ -1753,7 +1753,7 @@ class Packager:
             send toward the from_addr field (no ttl decrement). Returns
             False if it cannot be sent.
         """
-        cls.call_hook('send_packet', cls, packet, node_id)
+        cls.call_hook('send_packet', packet, node_id)
         if node_id in cls.peers:
             # direct neighbors
             mac, intrfc, peer = cls.get_interface(node_id)
@@ -1809,7 +1809,7 @@ class Packager:
     @classmethod
     def sync_sequence(cls, seq_id: int):
         """Requests retransmission of any missing packets."""
-        cls.call_hook('sync_sequence', cls, seq_id)
+        cls.call_hook('sync_sequence', seq_id)
         seq = cls.in_seqs[seq_id]
         if seq.retry <= 0:
             # drop sequence because the originator is not responding to rtx
@@ -1861,7 +1861,7 @@ class Packager:
             if that fails, set the error flag and transmit backwards
             through the route.
         """
-        cls.call_hook('receive', cls, p, intrfc, mac)
+        cls.call_hook('receive', p, intrfc, mac)
         cls.sleepskip.append(True)
         # cls.sleepskip.extend([True for _ in range(MODEM_INTERSECT_RTX_TIMES)])
         if p.schema.version > cls.version:
@@ -1928,7 +1928,7 @@ class Packager:
                 ))
         elif p.flags.nia and len(src):
             # peer responded to RNS: cancel event, update peer.last_rx
-            cls.call_hook('receive:nia', cls, p, intrfc, mac)
+            cls.call_hook('receive:nia', p, intrfc, mac)
             peer = cls.peers[src]
             eid = b'rns'+peer.id+intrfc.id
             cls.cancel_events.append(eid)
@@ -1936,7 +1936,7 @@ class Packager:
             return
         elif p.flags.rns and len(src):
             # peer sent RNS: send NIA
-            cls.call_hook('receive:rns', cls, p, intrfc, mac)
+            cls.call_hook('receive:rns', p, intrfc, mac)
             peer = cls.peers[src]
             flags = Flags(0)
             flags.nia = True
@@ -1979,7 +1979,7 @@ class Packager:
             was not registered, or if the Application's receive method
             errors. Otherwise returns True.
         """
-        cls.call_hook('deliver', cls, p, i, mac)
+        cls.call_hook('deliver', p, i, mac)
         if p.half_sha256 != sha256(p.blob).digest()[:16] or p.app_id not in cls.apps:
             return False
         try:
@@ -1991,13 +1991,13 @@ class Packager:
     @classmethod
     def add_application(cls, app: Application):
         """Registers an Application to accept Package delivery."""
-        cls.call_hook('add_application', cls, app)
+        cls.call_hook('add_application', app)
         cls.apps[app.id] = app
 
     @classmethod
     def remove_appliation(cls, app: Application|bytes):
         """Deregisters an Application to no longer accept Package delivery."""
-        cls.call_hook('remove_application', cls, app)
+        cls.call_hook('remove_application', app)
         if isinstance(app, Application):
             app = app.id
         cls.apps.pop(app)
@@ -2008,13 +2008,13 @@ class Packager:
             will be added to the schedule, overwriting any event with
             the same ID.
         """
-        cls.call_hook('queue_event', cls, event)
+        cls.call_hook('queue_event', event)
         cls.new_events.append(event)
 
     @classmethod
     async def process(cls):
         """Process interface actions, then process Packager actions."""
-        cls.call_hook('process', cls)
+        cls.call_hook('process')
         # schedule new events
         while len(cls.new_events):
             event = cls.new_events.popleft()
@@ -2085,7 +2085,7 @@ class Packager:
             process is eligible for a sleep cycle, an item will be
             popped off the queue and the cycle will be skipped.
         """
-        cls.call_hook('work', cls, interval_ms, use_modem_sleep, modem_sleep_ms, modem_active_ms)
+        cls.call_hook('work', interval_ms, use_modem_sleep, modem_sleep_ms, modem_active_ms)
         cls.running = True
         modem_cycle = 0
         ts = int(time()*1000)
@@ -2109,8 +2109,11 @@ class Packager:
     @classmethod
     def stop(cls):
         """Sets cls.running to False for graceful shutdown of worker."""
-        cls.call_hook('stop', cls)
+        cls.call_hook('stop')
         cls.running = False
+
+
+Packager.node_id = sha256(sha256(unique_id()).digest()).digest()
 
 
 # Interface for inter-Application communication.
