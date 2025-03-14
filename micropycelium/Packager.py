@@ -1239,7 +1239,7 @@ class Application:
         self._hooks[name] = callback
 
     def receive(self, blob: bytes, intrfc: Interface, mac: bytes):
-        """Passes self, blob, and intrfc to the receive_func callback."""
+        """Passes self, blob, intrfc, and mac to the receive_func callback."""
         if 'receive' in self._hooks:
             self._hooks['receive'](self, blob, intrfc, mac)
         self.receive_func(self, blob, intrfc, mac)
@@ -1353,6 +1353,7 @@ class Packager:
     apps: dict[bytes, object] = {}
     in_seqs: dict[int, InSequence] = {}
     peers: dict[bytes, Peer] = {}
+    inverse_peers: dict[tuple[bytes, bytes], bytes] = {} # map (mac, intrfc.id): peer_id
     routes: dict[Address, bytes] = {}
     node_id: bytes = b''
     node_addrs: deque[Address] = deque([], 2)
@@ -1418,6 +1419,8 @@ class Packager:
         for mac, intrfc in interfaces:
             if mac not in (i[0] for i in peer.interfaces):
                 peer.interfaces.append((mac, intrfc))
+            if (mac, intrfc.id) not in cls.inverse_peers:
+                cls.inverse_peers[(mac, intrfc.id)] = peer_id
         peer.last_rx = int(time()*1000)
         peer.timeout = 4
 
@@ -1432,6 +1435,9 @@ class Packager:
             for addr in peer.addrs:
                 if addr in cls.routes:
                     cls.routes.pop(addr)
+            for mac, intrfc in peer.interfaces:
+                if (mac, intrfc.id) in cls.inverse_peers:
+                    del cls.inverse_peers[(mac, intrfc.id)]
 
     @classmethod
     def add_route(cls, node_id: bytes, address: Address):

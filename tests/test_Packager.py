@@ -567,6 +567,7 @@ class TestPackager(unittest.TestCase):
         Packager.interfaces.clear()
         Packager.node_addrs.clear()
         Packager.peers.clear()
+        Packager.inverse_peers.clear()
         Packager.routes.clear()
         Packager.apps.clear()
         Packager.in_seqs.clear()
@@ -587,6 +588,7 @@ class TestPackager(unittest.TestCase):
         Packager.interfaces.clear()
         Packager.node_addrs.clear()
         Packager.peers.clear()
+        Packager.inverse_peers.clear()
         Packager.routes.clear()
         Packager.apps.clear()
         Packager.in_seqs.clear()
@@ -605,10 +607,13 @@ class TestPackager(unittest.TestCase):
 
     def test_add_peer_remove_peer(self):
         assert len(Packager.peers.keys()) == 0
+        assert len(Packager.inverse_peers.keys()) == 0
         Packager.add_peer(b'peer0', [(b'macpeer0', mock_interface1)])
         assert len(Packager.peers.keys()) == 1
+        assert len(Packager.inverse_peers.keys()) == 1
         Packager.remove_peer(b'peer0')
         assert len(Packager.peers.keys()) == 0
+        assert len(Packager.inverse_peers.keys()) == 0
 
     def test_add_route_remove_route(self):
         assert len(Packager.routes.keys()) == 0
