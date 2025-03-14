@@ -1595,7 +1595,11 @@ class TestSpanningTreeApplication(unittest.TestCase):
         Packager.interfaces.clear()
         Packager.peers.clear()
         mock_interface1.castbox.clear()
+        mock_interface1.outbox.clear()
+        mock_interface1.inbox.clear()
         castbox.clear()
+        inbox.clear()
+        outbox.clear()
         return super().setUp()
 
     def tearDown(self) -> None:
@@ -1605,7 +1609,11 @@ class TestSpanningTreeApplication(unittest.TestCase):
         Packager.interfaces.clear()
         Packager.peers.clear()
         mock_interface1.castbox.clear()
+        mock_interface1.outbox.clear()
+        mock_interface1.inbox.clear()
         castbox.clear()
+        inbox.clear()
+        outbox.clear()
         SpanningTree.invoke('stop')
         asyncio.run(Packager.process())
         return super().tearDown()
@@ -1768,6 +1776,64 @@ class TestSpanningTreeApplication(unittest.TestCase):
         assert tm.claim == Packager.node_id, (tm.claim.hex(), Packager.node_id.hex())
         assert len(SpanningTree.invoke('get_current_children')) == 1
         SpanningTree.invoke('get_current_children').clear()
+
+    def test_receive_ASSIGN_ADDRESS_with_worse_claim_does_not_change_address(self):
+        Packager.add_interface(mock_interface1)
+        Packager.add_application(SpanningTree)
+        claim_score = lambda pid: SpanningTree.invoke('claim_score', pid)
+        SpanningTree.invoke('start')
+        local_claim_score = claim_score(Packager.node_id)
+        assert len(Packager.node_id) == 32, len(Packager.node_id)
+
+        # add a peer with the worse claim score peer_id
+        peer_id = (local_claim_score + 11).to_bytes(32, 'big')
+        peer_id = xor(peer_id, b'1234' * 8)
+        their_score = claim_score(peer_id)
+        while their_score <= local_claim_score:
+            print('recalculating peer_id')
+            peer_id = urandom(32)
+            their_score = claim_score(peer_id)
+        Packager.add_peer(peer_id, [(b'mac0', mock_interface1)])
+
+        # receive an ASSIGN_ADDRESS from that peer
+        SpanningTree.invoke('start')
+        tm = TreeMessage(TreeOp.ASSIGN_ADDRESS, peer_id, b'\x10' + b'\x00' * 15)
+        package = Package.from_blob(
+            SpanningTree.id, SpanningTree.invoke('serialize', tm)
+        )
+        addr1 = Packager.node_addrs[-1]
+        Packager.deliver(package, mock_interface1, b'mac0')
+        addr2 = Packager.node_addrs[-1]
+        assert addr1 == addr2, (addr1, addr2)
+
+    def test_receive_ASSIGN_ADDRESS_with_better_claim_does_change_address(self):
+        Packager.add_interface(mock_interface1)
+        Packager.add_application(SpanningTree)
+        claim_score = lambda pid: SpanningTree.invoke('claim_score', pid)
+        SpanningTree.invoke('start')
+        local_claim_score = claim_score(Packager.node_id)
+        assert len(Packager.node_id) == 32, len(Packager.node_id)
+
+        # add a peer with the better claim score peer_id
+        peer_id = (local_claim_score - 11).to_bytes(32, 'big')
+        peer_id = xor(peer_id, b'1234' * 8)
+        their_score = claim_score(peer_id)
+        while their_score >= local_claim_score:
+            print('recalculating peer_id')
+            peer_id = urandom(32)
+            their_score = claim_score(peer_id)
+        Packager.add_peer(peer_id, [(b'mac0', mock_interface1)])
+
+        # receive an ASSIGN_ADDRESS from that peer
+        SpanningTree.invoke('start')
+        tm = TreeMessage(TreeOp.ASSIGN_ADDRESS, peer_id, b'\x10' + b'\x00' * 15)
+        package = Package.from_blob(
+            SpanningTree.id, SpanningTree.invoke('serialize', tm)
+        )
+        addr1 = Packager.node_addrs[-1]
+        Packager.deliver(package, mock_interface1, b'mac0')
+        addr2 = Packager.node_addrs[-1]
+        assert addr1 != addr2, (addr1, addr2)
 
 
 if __name__ == '__main__':
