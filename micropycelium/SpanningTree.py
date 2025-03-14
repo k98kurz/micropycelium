@@ -275,6 +275,9 @@ SpanningTree = Application(
         'stop': lambda _: stop(),
         'claim_score': lambda _, claim: claim_score(claim),
         'get_known_claims': lambda _: known_claims,
+        'get_current_children': lambda _: current_children,
+        'get_current_parent': lambda _: current_parent,
+        'get_current_best_root_id': lambda _: current_best_root_id,
     }
 )
 tree_app_id = SpanningTree.id

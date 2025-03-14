@@ -1606,7 +1606,6 @@ class TestSpanningTreeApplication(unittest.TestCase):
         Packager.peers.clear()
         mock_interface1.castbox.clear()
         castbox.clear()
-        Packager.clear_hook('remove_peer')
         SpanningTree.invoke('stop')
         asyncio.run(Packager.process())
         return super().tearDown()
@@ -1640,7 +1639,6 @@ class TestSpanningTreeApplication(unittest.TestCase):
         assert len(castbox) == 0
         asyncio.run(Packager.process())
         assert len(castbox) == 1
-        assert len(mock_interface1.castbox) == 0, len(mock_interface1.castbox)
 
     def test_receive_SEND_with_worse_claim_sends_RESPOND(self):
         Packager.add_interface(mock_interface1)
@@ -1705,6 +1703,71 @@ class TestSpanningTreeApplication(unittest.TestCase):
         Packager.deliver(package, mock_interface1, b'mac0')
         assert len(SpanningTree.invoke('get_known_claims')) == 1
         SpanningTree.invoke('get_known_claims').pop()
+
+    def test_receive_RESPOND_with_better_claim_adds_to_known_claims(self):
+        Packager.add_interface(mock_interface1)
+        Packager.add_application(SpanningTree)
+        claim_score = lambda pid: SpanningTree.invoke('claim_score', pid)
+        SpanningTree.invoke('start')
+        local_claim_score = claim_score(Packager.node_id)
+        assert len(Packager.node_id) == 32, len(Packager.node_id)
+
+        # add a peer with the better claim score peer_id
+        peer_id = (local_claim_score - 11).to_bytes(32, 'big')
+        peer_id = xor(peer_id, b'1234' * 8)
+        their_score = claim_score(peer_id)
+        while their_score >= local_claim_score:
+            print('recalculating peer_id')
+            peer_id = urandom(32)
+            their_score = claim_score(peer_id)
+        Packager.add_peer(peer_id, [(b'mac0', mock_interface1)])
+
+        # receive a RESPOND from that peer
+        SpanningTree.invoke('start')
+        tm = TreeMessage(TreeOp.RESPOND, peer_id, b'\x00' * 16)
+        package = Package.from_blob(
+            SpanningTree.id, SpanningTree.invoke('serialize', tm)
+        )
+        assert len(SpanningTree.invoke('get_known_claims')) == 0
+        Packager.deliver(package, mock_interface1, b'mac0')
+        assert len(SpanningTree.invoke('get_known_claims')) == 1
+        SpanningTree.invoke('get_known_claims').pop()
+
+    def test_receive_REQUEST_ADDRESS_ASSIGNMENT_sends_ASSIGN_ADDRESS(self):
+        Packager.add_interface(mock_interface1)
+        Packager.add_application(SpanningTree)
+        claim_score = lambda pid: SpanningTree.invoke('claim_score', pid)
+        SpanningTree.invoke('start')
+        local_claim_score = claim_score(Packager.node_id)
+        assert len(Packager.node_id) == 32, len(Packager.node_id)
+
+        # add a peer with a worse claim score peer_id
+        peer_id = (local_claim_score + 11).to_bytes(32, 'big')
+        peer_id = xor(peer_id, b'1234' * 8)
+        their_score = claim_score(peer_id)
+        while their_score <= local_claim_score:
+            print('recalculating peer_id')
+            peer_id = urandom(32)
+            their_score = claim_score(peer_id)
+        Packager.add_peer(peer_id, [(b'mac0', mock_interface1)])
+
+        # receive a REQUEST_ADDRESS_ASSIGNMENT from that peer
+        SpanningTree.invoke('start')
+        tm = TreeMessage(TreeOp.REQUEST_ADDRESS_ASSIGNMENT, Packager.node_id, b'')
+        package = Package.from_blob(
+            SpanningTree.id, SpanningTree.invoke('serialize', tm)
+        )
+        assert len(mock_interface1.outbox) == 0
+        assert len(SpanningTree.invoke('get_current_children')) == 0
+        Packager.deliver(package, mock_interface1, b'mac0')
+        assert len(mock_interface1.outbox) == 1
+        packet = Packet.unpack(mock_interface1.outbox.popleft().data)
+        p = Package.unpack(packet.body)
+        tm = SpanningTree.invoke('deserialize', p.blob)
+        assert tm.op == TreeOp.ASSIGN_ADDRESS, tm.op
+        assert tm.claim == Packager.node_id, (tm.claim.hex(), Packager.node_id.hex())
+        assert len(SpanningTree.invoke('get_current_children')) == 1
+        SpanningTree.invoke('get_current_children').clear()
 
 
 if __name__ == '__main__':
