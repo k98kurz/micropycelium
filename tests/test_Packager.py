@@ -622,6 +622,7 @@ class TestPackager(unittest.TestCase):
         Packager.add_peer(b'peer0', [(b'macpeer0', mock_interface1)])
         assert len(Packager.peers.keys()) == 1
         assert len(Packager.inverse_peers.keys()) == 1
+        assert Packager.inverse_peers.get((b'macpeer0', mock_interface1.id)) == b'peer0'
         Packager.remove_peer(b'peer0')
         assert len(Packager.peers.keys()) == 0
         assert len(Packager.inverse_peers.keys()) == 0
@@ -1870,6 +1871,9 @@ class TestSpanningTreeApplication(unittest.TestCase):
         Packager.apps.clear()
         Packager.interfaces.clear()
         Packager.peers.clear()
+        Packager.inverse_peers.clear()
+        Packager.routes.clear()
+        Packager.node_addrs.clear()
         mock_interface1.castbox.clear()
         mock_interface1.outbox.clear()
         mock_interface1.inbox.clear()
@@ -1879,26 +1883,32 @@ class TestSpanningTreeApplication(unittest.TestCase):
         return super().setUp()
 
     def tearDown(self) -> None:
+        SpanningTree.invoke('stop')
         Packager.schedule.clear()
         Packager.new_events.clear()
         Packager.apps.clear()
         Packager.interfaces.clear()
         Packager.peers.clear()
+        Packager.inverse_peers.clear()
+        Packager.routes.clear()
+        Packager.node_addrs.clear()
         mock_interface1.castbox.clear()
         mock_interface1.outbox.clear()
         mock_interface1.inbox.clear()
         castbox.clear()
         inbox.clear()
         outbox.clear()
-        SpanningTree.invoke('stop')
         asyncio.run(Packager.process())
         return super().tearDown()
 
-    def test_start_and_stop(self):
+    def test_start_and_stop_e2e(self):
         Packager.add_application(SpanningTree)
+        Packager.add_application(Gossip)
         assert len(Packager._hooks.get('remove_peer', [])) == 0
+        assert len(Gossip.invoke('get_subscriptions')) == 0
         SpanningTree.invoke('start')
         assert len(Packager._hooks.get('remove_peer', [])) == 1
+        assert len(Gossip.invoke('get_subscriptions')) == 1
         assert len(Packager.new_events) == 1
         asyncio.run(Packager.process())
         assert len(Packager.schedule.keys()) == 1
@@ -1907,6 +1917,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
 
         assert len(Packager.cancel_events) == 0
         SpanningTree.invoke('stop')
+        assert len(Gossip.invoke('get_subscriptions')) == 0
         assert len(Packager.cancel_events) == 2
         asyncio.run(Packager.process())
         assert len(Packager.schedule.keys()) == 0
@@ -1944,7 +1955,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
 
         # receive a SEND from that peer
         SpanningTree.invoke('start')
-        tm = TreeMessage(TreeOp.SEND, peer_id, b'\x00' * 16)
+        tm = TreeMessage(TreeOp.SEND, peer_id, b'\x00' * 16, peer_id)
         package = Package.from_blob(
             SpanningTree.id, SpanningTree.invoke('serialize', tm)
         )
@@ -1979,7 +1990,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
 
         # receive a SEND from that peer
         SpanningTree.invoke('start')
-        tm = TreeMessage(TreeOp.SEND, peer_id, b'\x00' * 16)
+        tm = TreeMessage(TreeOp.SEND, peer_id, b'\x00' * 16, peer_id)
         package = Package.from_blob(
             SpanningTree.id, SpanningTree.invoke('serialize', tm)
         )
@@ -2008,7 +2019,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
 
         # receive a RESPOND from that peer
         SpanningTree.invoke('start')
-        tm = TreeMessage(TreeOp.RESPOND, peer_id, b'\x00' * 16)
+        tm = TreeMessage(TreeOp.RESPOND, peer_id, b'\x00' * 16, peer_id)
         package = Package.from_blob(
             SpanningTree.id, SpanningTree.invoke('serialize', tm)
         )
@@ -2037,7 +2048,12 @@ class TestSpanningTreeApplication(unittest.TestCase):
 
         # receive a REQUEST_ADDRESS_ASSIGNMENT from that peer
         SpanningTree.invoke('start')
-        tm = TreeMessage(TreeOp.REQUEST_ADDRESS_ASSIGNMENT, Packager.node_id, b'')
+        tm = TreeMessage(
+            TreeOp.REQUEST_ADDRESS_ASSIGNMENT,
+            Packager.node_id,
+            b'\x00' * 16,
+            peer_id
+        )
         package = Package.from_blob(
             SpanningTree.id, SpanningTree.invoke('serialize', tm)
         )
@@ -2073,7 +2089,12 @@ class TestSpanningTreeApplication(unittest.TestCase):
 
         # receive an ASSIGN_ADDRESS from that peer
         SpanningTree.invoke('start')
-        tm = TreeMessage(TreeOp.ASSIGN_ADDRESS, peer_id, b'\x10' + b'\x00' * 15)
+        tm = TreeMessage(
+            TreeOp.ASSIGN_ADDRESS,
+            peer_id,
+            b'\x10' + b'\x00' * 15,
+            peer_id
+        )
         package = Package.from_blob(
             SpanningTree.id, SpanningTree.invoke('serialize', tm)
         )
@@ -2102,7 +2123,12 @@ class TestSpanningTreeApplication(unittest.TestCase):
 
         # receive an ASSIGN_ADDRESS from that peer
         SpanningTree.invoke('start')
-        tm = TreeMessage(TreeOp.ASSIGN_ADDRESS, peer_id, b'\x10' + b'\x00' * 15)
+        tm = TreeMessage(
+            TreeOp.ASSIGN_ADDRESS,
+            peer_id,
+            b'\x10' + b'\x00' * 15,
+            peer_id
+        )
         package = Package.from_blob(
             SpanningTree.id, SpanningTree.invoke('serialize', tm)
         )
@@ -2110,6 +2136,63 @@ class TestSpanningTreeApplication(unittest.TestCase):
         Packager.deliver(package, mock_interface1, b'mac0')
         addr2 = Packager.node_addrs[-1]
         assert addr1 != addr2, (addr1, addr2)
+
+    def test_gossip_tree_message_broadcasts_gossip_message(self):
+        Packager.add_interface(mock_interface1)
+        Packager.add_application(SpanningTree)
+        Packager.add_application(Gossip)
+        SpanningTree.invoke('start')
+        assert len(mock_interface1.castbox) == 0
+        SpanningTree.invoke('send_gossip_tree_message')
+        assert len(mock_interface1.castbox) == 1
+        packet = Packet.unpack(mock_interface1.castbox.popleft().data)
+        p = Package.unpack(packet.body)
+        assert p.app_id == Gossip.id
+        gm = Gossip.invoke('deserialize_gm', p.blob)
+        assert gm.op == GossipOp.MESSAGE, gm.op
+        assert gm.topic_id == SpanningTree.id, gm.topic_id
+        tm = SpanningTree.invoke('deserialize', gm.data)
+        assert tm.op == TreeOp.SEND, tm.op
+        assert tm.claim == Packager.node_id, (tm.claim.hex(), Packager.node_id.hex())
+        assert tm.address == b'\x00' * 16, tm.address.hex()
+        assert tm.node_id == Packager.node_id, (tm.node_id.hex(), Packager.node_id.hex())
+
+    def test_set_addr_sends_gossip_message(self):
+        Packager.add_interface(mock_interface1)
+        Packager.add_application(SpanningTree)
+        Packager.add_application(Gossip)
+        SpanningTree.invoke('start')
+        assert len(mock_interface1.castbox) == 0
+        addr = Address(tree_state(Packager.node_id), urandom(16))
+        Packager.set_addr(addr)
+        assert len(mock_interface1.castbox) == 1
+        packet = Packet.unpack(mock_interface1.castbox.popleft().data)
+        p = Package.unpack(packet.body)
+        gm = Gossip.invoke('deserialize_gm', p.blob)
+        assert gm.op == GossipOp.MESSAGE, gm.op
+        assert gm.topic_id == SpanningTree.id, gm.topic_id
+
+    def test_receive_gossip_message_from_peer_adds_route(self):
+        assert len(Packager.routes) == 0
+        Packager.add_interface(mock_interface1)
+        Packager.add_application(SpanningTree)
+        Packager.add_application(Gossip)
+        SpanningTree.invoke('start')
+        peer_id = urandom(32)
+        another_node_id = urandom(32)
+        addr = Address(tree_state(another_node_id), urandom(16))
+        Packager.add_peer(peer_id, [(b'mac0', mock_interface1)])
+        tm = TreeMessage(TreeOp.SEND, another_node_id, addr.address, another_node_id)
+        blob = SpanningTree.invoke('serialize', tm)
+        gm = GossipMessage(GossipOp.MESSAGE, SpanningTree.id, blob)
+        package = Package.from_blob(
+            Gossip.id, Gossip.invoke('serialize_gm', gm)
+        )
+        assert len(Packager.routes) == 0, Packager.routes
+        Packager.deliver(package, mock_interface1, b'mac0')
+        assert len(Packager.routes) == 1, Packager.routes
+        assert addr in Packager.routes
+        assert Packager.routes[addr] == another_node_id
 
 
 if __name__ == '__main__':

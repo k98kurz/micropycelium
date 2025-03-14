@@ -1,5 +1,5 @@
 from .Packager import *
 from .ESPNowInterface import ESPNowInterface
 from .Beacon import Beacon, BeaconMessage
-from .SpanningTree import SpanningTree, TreeMessage, TreeOp
+from .SpanningTree import SpanningTree, TreeMessage, TreeOp, tree_state
 from .Gossip import Gossip, GossipMessage, GossipOp

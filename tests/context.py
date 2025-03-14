@@ -42,6 +42,7 @@ from micropycelium import (
     SpanningTree,
     TreeMessage,
     TreeOp,
+    tree_state,
     Gossip,
     GossipMessage,
     GossipOp,
