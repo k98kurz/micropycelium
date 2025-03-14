@@ -254,6 +254,7 @@ def stop():
     Packager.cancel_events.append(tree_app_id)
     Packager.cancel_events.append(tree_app_id+b's')
 
+
 SpanningTree = Application(
     name='SpanningTree',
     description='Dev SpanningTree App',
@@ -273,6 +274,7 @@ SpanningTree = Application(
         'start': lambda _: schedule_start(),
         'stop': lambda _: stop(),
         'claim_score': lambda _, claim: claim_score(claim),
+        'get_known_claims': lambda _: known_claims,
     }
 )
 tree_app_id = SpanningTree.id
