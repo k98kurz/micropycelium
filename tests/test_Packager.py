@@ -2,6 +2,7 @@ import asyncio
 from binascii import crc32
 from collections import deque
 from context import *
+from os import urandom
 from random import randint
 from time import time, sleep
 import unittest
@@ -188,7 +189,7 @@ def xor(b1: bytes, b2: bytes) -> bytes:
     b3 = bytearray(len(b1))
     for i in range(len(b2)):
         b3[i] = b1[i] ^ b2[i]
-    return b3
+    return bytes(b3)
 
 def xor_diff(b1: bytes, b2: bytes) -> tuple[str, str]:
     b3 = xor(b1, b2)
@@ -1584,6 +1585,97 @@ class TestBeaconApplication(unittest.TestCase):
         assert len(Packager.new_events) == 0
         assert len(Packager.schedule.keys()) == 1
         assert list(Packager.schedule.keys())[0] == Beacon.id
+
+
+class TestSpanningTreeApplication(unittest.TestCase):
+    def setUp(self) -> None:
+        Packager.schedule.clear()
+        Packager.new_events.clear()
+        Packager.apps.clear()
+        Packager.interfaces.clear()
+        Packager.peers.clear()
+        mock_interface1.castbox.clear()
+        castbox.clear()
+        return super().setUp()
+
+    def tearDown(self) -> None:
+        Packager.schedule.clear()
+        Packager.new_events.clear()
+        Packager.apps.clear()
+        Packager.interfaces.clear()
+        Packager.peers.clear()
+        mock_interface1.castbox.clear()
+        castbox.clear()
+        Packager.clear_hook('remove_peer')
+        SpanningTree.invoke('stop')
+        asyncio.run(Packager.process())
+        return super().tearDown()
+
+    def test_start_and_stop(self):
+        Packager.add_application(SpanningTree)
+        assert len(Packager._hooks.get('remove_peer', [])) == 0
+        SpanningTree.invoke('start')
+        assert len(Packager._hooks.get('remove_peer', [])) == 1
+        assert len(Packager.new_events) == 1
+        asyncio.run(Packager.process())
+        assert len(Packager.schedule.keys()) == 1
+        assert SpanningTree.id+b's' in Packager.schedule
+        assert len(Packager.new_events) == 0
+
+        assert len(Packager.cancel_events) == 0
+        SpanningTree.invoke('stop')
+        assert len(Packager.cancel_events) == 2
+        asyncio.run(Packager.process())
+        assert len(Packager.schedule.keys()) == 0
+        assert len(Packager.new_events) == 0
+        assert len(Packager._hooks.get('remove_peer', [])) == 0
+
+    def test_invoke_broadcast(self):
+        Packager.add_interface(mock_interface1)
+        Packager.add_application(SpanningTree)
+        SpanningTree.invoke('start')
+        assert len(mock_interface1.castbox) == 0
+        SpanningTree.invoke('broadcast')
+        assert len(mock_interface1.castbox) == 1
+        assert len(castbox) == 0
+        asyncio.run(Packager.process())
+        assert len(mock_interface1.castbox) == 0
+        assert len(castbox) == 1
+
+    def test_receive_SEND_with_worse_claim_sends_RESPOND(self):
+        Packager.add_interface(mock_interface1)
+        Packager.add_application(SpanningTree)
+        claim_score = lambda pid: SpanningTree.invoke('claim_score', pid)
+        SpanningTree.invoke('start')
+        local_claim_score = claim_score(Packager.node_id)
+        assert len(Packager.node_id) == 32, len(Packager.node_id)
+
+        # add a peer with the worse claim score peer_id
+        peer_id = (local_claim_score + 11).to_bytes(32, 'big')
+        peer_id = xor(peer_id, b'1234' * 8)
+        their_score = claim_score(peer_id)
+        while their_score <= local_claim_score:
+            print('recalculating peer_id')
+            peer_id = urandom(32)
+            their_score = claim_score(peer_id)
+        Packager.add_peer(peer_id, [(b'mac0', mock_interface1)])
+
+        # receive a SEND from that peer
+        SpanningTree.invoke('start')
+        tm = TreeMessage(TreeOp.SEND, peer_id, b'\x00' * 16)
+        package = Package.from_blob(
+            SpanningTree.id, SpanningTree.invoke('serialize', tm)
+        )
+        assert len(outbox) == 0
+        Packager.deliver(package, mock_interface1, b'mac0')
+        asyncio.run(Packager.process())
+        assert len(outbox) == 1, (len(outbox), len(mock_interface1.outbox))
+        packet = Packet.unpack(outbox.popleft().data)
+        p = Package.unpack(packet.body)
+        tm = SpanningTree.invoke('deserialize', p.blob)
+        assert tm.op == TreeOp.RESPOND, tm.op
+        assert tm.claim == Packager.node_id, (tm.claim.hex(), Packager.node_id.hex())
+        assert tm.address == b'\x00' * 16, tm.address.hex()
 
 
 if __name__ == '__main__':

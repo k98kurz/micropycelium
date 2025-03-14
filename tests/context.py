@@ -38,4 +38,7 @@ from micropycelium import (
     ESPNowInterface,
     Beacon,
     BeaconMessage,
+    SpanningTree,
+    TreeMessage,
+    TreeOp,
 )
