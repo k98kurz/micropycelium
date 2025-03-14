@@ -20,6 +20,8 @@ from micropycelium import (
     dTree,
     get_schema,
     get_schemas,
+    schema_has,
+    schema_lacks,
     Packet,
     Peer,
     Node,

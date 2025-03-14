@@ -468,6 +468,37 @@ def get_schema(id: int) -> Schema:
             Field('from_addr', 16, bytes, 0),
             Field('body', 0, bytes, 203),
         ])
+    if id == 11:
+        # ESP-NOW; one-hop routable; 216 max Package size.
+        return Schema(0, 11, [
+            Field('packet_id', 1, int, 0),
+            Field('tree_state', 1, int, 0),
+            Field('to_addr', 16, bytes, 0),
+            Field('from_addr', 16, bytes, 0),
+            Field('body', 0, bytes, 216),
+        ])
+    if id == 12:
+        # ESP-NOW; one-hop routable; 256 max sequence size; 53.5 KiB max Package size.
+        return Schema(0, 12, [
+            Field('packet_id', 1, int, 0),
+            Field('seq_id', 1, int, 0),
+            Field('seq_size', 1, int, 0),
+            Field('tree_state', 1, int, 0),
+            Field('to_addr', 16, bytes, 0),
+            Field('from_addr', 16, bytes, 0),
+            Field('body', 0, bytes, 214),
+        ])
+    if id == 13:
+        # ESP-NOW; one-hop routable; 65536 max sequence size; 13.25 MiB max Package size.
+        return Schema(0, 13, [
+            Field('packet_id', 2, int, 0),
+            Field('seq_id', 1, int, 0),
+            Field('seq_size', 2, int, 0),
+            Field('tree_state', 1, int, 0),
+            Field('to_addr', 16, bytes, 0),
+            Field('from_addr', 16, bytes, 0),
+            Field('body', 0, bytes, 212),
+        ])
     if id == 20:
         # RYLR-998; 235 B max Package size
         return Schema(0, 20, [
@@ -578,6 +609,38 @@ def get_schema(id: int) -> Schema:
             Field('from_addr', 16, bytes, 0),
             Field('body', 0, bytes, 193),
         ])
+    if id == 31:
+        # LYLR-998; one-hop routable; 206 max Package size.
+        return Schema(0, 31, [
+            Field('packet_id', 1, int, 0),
+            Field('tree_state', 1, int, 0),
+            Field('to_addr', 16, bytes, 0),
+            Field('from_addr', 16, bytes, 0),
+            Field('body', 0, bytes, 206),
+        ])
+    if id == 32:
+        # LYLR-998; one-hop routable; 256 max sequence size; 51 KiB max Package size.
+        return Schema(0, 32, [
+            Field('packet_id', 1, int, 0),
+            Field('seq_id', 1, int, 0),
+            Field('seq_size', 1, int, 0),
+            Field('tree_state', 1, int, 0),
+            Field('to_addr', 16, bytes, 0),
+            Field('from_addr', 16, bytes, 0),
+            Field('body', 0, bytes, 204),
+        ])
+    if id == 33:
+        # LYLR-998; one-hop routable; 65536 max sequence size; 12.625 MiB max Package size.
+        return Schema(0, 33, [
+            Field('packet_id', 2, int, 0),
+            Field('seq_id', 1, int, 0),
+            Field('seq_size', 2, int, 0),
+            Field('tree_state', 1, int, 0),
+            Field('to_addr', 16, bytes, 0),
+            Field('from_addr', 16, bytes, 0),
+            Field('body', 0, bytes, 202),
+        ])
+    raise ValueError(f'Unsupported schema id: {id}')
 
 # @micropython.native
 def get_schemas(ids: list[int]) -> list[Schema]:
@@ -594,11 +657,24 @@ def schema_supports_sequence(schema: Schema) -> bool:
 
 # @micropython.native
 def schema_supports_routing(schema: Schema) -> bool:
-    """Determine if a Schema supports routing."""
+    """Determine if a Schema supports multi-hop routing."""
     return len([True for f in schema.fields if f.name == 'ttl']) == 1
 
+# @micropython.native
+def schema_has(schema: Schema, field_name: str) -> bool:
+    """Determine if a Schema has a specific field."""
+    return len([True for f in schema.fields if f.name == field_name]) == 1
 
-SCHEMA_IDS: list[int] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+# @micropython.native
+def schema_lacks(schema: Schema, field_name: str) -> bool:
+    """Determine if a Schema lacks a specific field."""
+    return len([True for f in schema.fields if f.name == field_name]) == 0
+
+
+SCHEMA_IDS: list[int] = [
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
+    20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33
+]
 SCHEMA_IDS_SUPPORT_SEQUENCE: list[int] = [
     i for i in SCHEMA_IDS
     if len([True for f in get_schema(i).fields if f.name == 'seq_size'])
@@ -606,6 +682,10 @@ SCHEMA_IDS_SUPPORT_SEQUENCE: list[int] = [
 SCHEMA_IDS_SUPPORT_ROUTING: list[int] = [
     i for i in SCHEMA_IDS
     if len([True for f in get_schema(i).fields if f.name == 'ttl'])
+]
+SCHEMA_IDS_SUPPORT_RELAY: list[int] = [
+    i for i in SCHEMA_IDS
+    if schema_has(get_schema(i), 'to_addr') and schema_lacks(get_schema(i), 'ttl')
 ]
 SCHEMA_IDS_SUPPORT_CHECKSUM: list[int] = [
     i for i in SCHEMA_IDS
@@ -821,10 +901,14 @@ class Datagram:
     data: bytes
     intrfc_id: bytes|None
     addr: bytes|None
+
     def __init__(self, data: bytes, intrfc_id: bytes|None = None, addr: bytes|None = None) -> None:
         self.data = data
         self.intrfc_id = intrfc_id
         self.addr = addr
+
+    def __repr__(self) -> str:
+        return f'Datagram(data={self.data}, intrfc_id={self.intrfc_id}, addr={self.addr})'
 
 
 # @micropython.native
@@ -963,12 +1047,12 @@ class Interface:
 
 # @micropython.native
 class Address:
-    tree_state: bytes
+    tree_state: int
     address: bytes
     coords: list[int,]
 
     def __init__(
-            self, tree_state: bytes, address: bytes|bytearray|None = None,
+            self, tree_state: int, address: bytes|bytearray|None = None,
             coords: list[int]|None = None
         ) -> None:
         if address is coords is None:
@@ -981,11 +1065,14 @@ class Address:
             if not all([type(i) is int for i in coords]):
                 raise TypeError("coords must be list[int,] or tuple[int,]")
         self.tree_state = tree_state
-        self.address = address if address else Address.encode(coords)
+        self.address = bytes(address if address else Address.encode(coords))
         self.coords = coords if coords is not None else Address.decode(address)
 
     def __hash__(self) -> int:
-        return hash(bytes(self.address))
+        return hash((self.tree_state, bytes(self.address)))
+
+    def __eq__(self, other: 'Address') -> bool:
+        return hash(self) == hash(other)
 
     @staticmethod
     def decode(address: bytes|bytearray) -> list[int,]:
@@ -1098,6 +1185,9 @@ class Peer:
         self.queue = deque([], 10)
 
     def set_addr(self, addr: Address):
+        """Appends the Address to the peer's address deque, maintaining
+            at most 2 addresses.
+        """
         self.addrs.append(addr)
         while len(self.addrs) > 2:
             self.addrs.popleft()
@@ -1208,6 +1298,7 @@ class InSequence:
 
 # @micropython.native
 class Packager:
+    version: int = 0
     interfaces: list[Interface] = []
     seq_id: int = 0
     packet_id: int = 0
@@ -1261,7 +1352,7 @@ class Packager:
         peer = cls.peers[peer_id]
         for mac, intrfc in interfaces:
             if mac not in (i[0] for i in peer.interfaces):
-                peer.interfaces[mac] = intrfc
+                peer.interfaces.append((mac, intrfc))
         peer.last_rx = int(time()*1000)
         peer.timeout = 4
 
@@ -1286,9 +1377,9 @@ class Packager:
         cls.call_hook('add_route', cls, node_id, address)
         if node_id in cls.peers:
             addrs = cls.peers[node_id].addrs
-            if len(addrs) > 1 and address not in addrs:
-                cls.routes.pop(addrs[0])
             if address not in addrs:
+                if len(addrs) > 1:
+                    cls.routes.pop(addrs[0])
                 cls.peers[node_id].set_addr(address)
         cls.routes[address] = node_id
 
@@ -1598,9 +1689,21 @@ class Packager:
             # this is an intermediate hop
             metric = dCPL if packet.flags.mode else dTree
             to_addr = Address(packet.fields['tree_state'], packet.fields['to_addr'])
-            from_addr = packet.fields['from_addr']
+            from_addr = Address(packet.fields['tree_state'], packet.fields['from_addr'])
+            if 'ttl' not in packet.fields:
+                # if the destination is not a peer, and the error flag is not set,
+                # set the error flag
+                to_in_routes = to_addr in cls.routes
+                to_in_peers = to_in_routes and cls.routes[to_addr] in cls.peers
+                from_in_routes = from_addr in cls.routes
+                from_in_peers = from_in_routes and cls.routes[from_addr] in cls.peers
+                if not packet.flags.error and (not to_in_routes or not to_in_peers):
+                    packet.flags.error = True
+                elif packet.flags.error and (not from_in_routes or not from_in_peers):
+                    # error is set and the sender is not a peer, so drop the packet
+                    return False
             if packet.flags.error:
-                exclude = [cls.routes[to_addr]] if from_addr in cls.routes else []
+                exclude = [cls.routes[to_addr]] if to_addr in cls.routes else []
                 mac, intrfc, peer = cls.get_interface(
                     to_addr=from_addr, exclude=exclude, metric=metric
                 )
@@ -1609,9 +1712,14 @@ class Packager:
                 mac, intrfc, peer = cls.get_interface(
                     to_addr=to_addr, exclude=exclude, metric=metric
                 )
-                packet.fields['ttl'] -= 1
 
-            if packet.fields['ttl'] <= 0:
+            if 'ttl' in packet.fields:
+                packet.fields['ttl'] += -1 if packet.flags.error else 1
+
+            if packet.fields.get('ttl', 1) <= 0 and not packet.flags.error:
+                # drop the packet
+                return False
+            if packet.fields.get('ttl', 1) > 255 and packet.flags.error:
                 # drop the packet
                 return False
         else:
@@ -1681,6 +1789,9 @@ class Packager:
         cls.call_hook('receive', cls, p, intrfc, mac)
         cls.sleepskip.append(True)
         # cls.sleepskip.extend([True for _ in range(MODEM_INTERSECT_RTX_TIMES)])
+        if p.schema.version > cls.version:
+            # drop the packet
+            return
         src = b'' # source of Packet
         if 'to_addr' in p.fields:
             if p.fields['to_addr'] not in [a.address for a in cls.node_addrs]:

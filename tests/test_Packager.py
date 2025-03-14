@@ -619,21 +619,21 @@ class TestPackager(unittest.TestCase):
         peer2_id = b'2' * 32
         peer1_addr = Address(tree_state, coords=[2,2,4])
         peer2_addr = Address(tree_state, coords=[2,5])
-        Packager.add_peer(peer1_id, [(b'macpeer1', mock_interface1)])
-        Packager.add_peer(peer2_id, [(b'macpeer2', mock_interface1)])
+        Packager.add_peer(peer1_id, [(b'mac_peer_r', mock_interface1)])
+        Packager.add_peer(peer2_id, [(b'mac_peer_u', mock_interface1)])
         Packager.add_route(peer1_id, peer1_addr)
         Packager.add_route(peer2_id, peer2_addr)
         Packager.set_addr(local_addr)
 
         to_addr = Address(tree_state, coords=[2,5,1])
         mac, intrfc, peer = Packager.get_interface(to_addr=to_addr, metric=dTree)
-        assert mac == b'macpeer2', mac
+        assert mac == b'mac_peer_u', mac
         assert intrfc == mock_interface1
         assert peer.id == peer2_id, peer
 
         to_addr = Address(tree_state, coords=[2,2,4])
         mac, intrfc, peer = Packager.get_interface(to_addr=to_addr, metric=dTree)
-        assert mac == b'macpeer1', mac
+        assert mac == b'mac_peer_r', mac
         assert intrfc == mock_interface1
         assert peer.id == peer1_id, peer
 
@@ -670,21 +670,21 @@ class TestPackager(unittest.TestCase):
         peer2_id = b'2' * 32
         peer1_addr = Address(tree_state, coords=[2,2,4])
         peer2_addr = Address(tree_state, coords=[2,5])
-        Packager.add_peer(peer1_id, [(b'macpeer1', mock_interface1)])
-        Packager.add_peer(peer2_id, [(b'macpeer2', mock_interface1)])
+        Packager.add_peer(peer1_id, [(b'mac_peer_r', mock_interface1)])
+        Packager.add_peer(peer2_id, [(b'mac_peer_u', mock_interface1)])
         Packager.add_route(peer1_id, peer1_addr)
         Packager.add_route(peer2_id, peer2_addr)
         Packager.set_addr(local_addr)
 
         to_addr = Address(tree_state, coords=[2,5,1])
         mac, intrfc, peer = Packager.get_interface(to_addr=to_addr, metric=dCPL)
-        assert mac == b'macpeer2', mac
+        assert mac == b'mac_peer_u', mac
         assert intrfc == mock_interface1
         assert peer.id == peer2_id, peer
 
         to_addr = Address(tree_state, coords=[2,2,4])
         mac, intrfc, peer = Packager.get_interface(to_addr=to_addr, metric=dCPL)
-        assert mac == b'macpeer1', mac
+        assert mac == b'mac_peer_r', mac
         assert intrfc == mock_interface1
         assert peer.id == peer1_id, peer
 
@@ -940,6 +940,210 @@ class TestPackager(unittest.TestCase):
         assert not packet.flags.rns, (packet.flags, packet.body)
         assert len(packet.body) == 36 and packet.body[-4:] == b'test', \
             (len(packet.body), packet.body)
+
+    def test_receive_wrong_version_drops_packet(self):
+        # add application, network interface, and peer
+        received = []
+        hook = lambda *args, **__: received.append(args)
+        assert 'receive' not in test_app._hooks
+        test_app.add_hook('receive', hook)
+        Packager.add_application(test_app)
+        Packager.add_interface(mock_interface1)
+        Packager.add_peer(b'peer0', [(b'mac0', mock_interface1)])
+        blob = Package.from_blob(test_app.id, b'hello world').pack()
+
+        # receive a packet with the correct version
+        packet = Packet(
+            get_schema(SCHEMA_IDS[0]),
+            Flags(0),
+            {
+                'body': blob,
+                'packet_id': 0,
+            }
+        )
+        inbox.append(Datagram(packet.pack(), mock_interface1.id, b'mac0'))
+        asyncio.run(Packager.process())
+        assert len(inbox) == 0, len(inbox)
+        assert len(received) == 1, received
+        assert received[0][1] == b'hello world', received[0][1]
+        received.clear()
+
+        # receive a packet with the wrong version
+        packet = Packet(
+            get_schema(SCHEMA_IDS[0]),
+            Flags(0),
+            {
+                'body': blob,
+                'packet_id': 0,
+            }
+        )
+        packet.schema.version += 1
+        inbox.append(Datagram(packet.pack(), mock_interface1.id, b'mac0'))
+        asyncio.run(Packager.process())
+        assert len(inbox) == 0, len(inbox)
+        assert len(received) == 0, received
+        del test_app._hooks['receive']
+
+    def test_receive_can_relay_packets_with_to_addr_but_without_ttl(self):
+        schemas = [
+            s for s in get_schemas(SCHEMA_IDS)
+            if schema_has(s, 'to_addr') and schema_lacks(s, 'ttl')
+        ]
+        schema = schemas[0]
+        Packager.add_interface(mock_interface1)
+
+        # copy network configuration from VOUTE paper example
+        # example network structure from the VOUTE paper for routing s -> e:
+        # s [1] <-> r [] <-> e [2] <-> [2, 1] <-> v [2, 1, 1] <-> u [2, 1, 1, 1]
+        # s <-> u
+        tree_state = 69
+        local_addr = Address(tree_state, coords=[1])
+        Packager.node_id = b'0' * 32
+        Packager.set_addr(local_addr)
+
+        # r
+        peer1 = Peer(
+            b'1' * 32,
+            [(b'mac_peer_r', mock_interface1)]
+        )
+        peer1_addr = Address(tree_state, coords=[])
+        Packager.add_peer(peer1.id, peer1.interfaces)
+        Packager.add_route(peer1.id, peer1_addr)
+
+        # u
+        peer2 = Peer(
+            b'2' * 32,
+            [(b'mac_peer_u', mock_interface1)]
+        )
+        peer2_addr = Address(tree_state, coords=[2, 1, 1, 1])
+        Packager.add_peer(peer2.id, peer2.interfaces)
+        Packager.add_route(peer2.id, peer2_addr)
+
+        # send from u to r
+        blob = Package.from_blob(test_app.id, b'hello world').pack()
+        from_addr = peer2_addr
+        to_addr = peer1_addr
+        packet = Packet(
+            schema,
+            Flags(0),
+            {
+                'packet_id': 0,
+                'tree_state': tree_state,
+                'to_addr': to_addr.address,
+                'from_addr': from_addr.address,
+                'body': blob,
+            }
+        )
+        assert len(mock_interface1.outbox) == 0
+        inbox.append(Datagram(packet.pack(), mock_interface1.id, peer2.interfaces[0][0]))
+        asyncio.run(Packager.process())
+        assert len(mock_interface1.outbox) == 1
+        dgram = mock_interface1.outbox.popleft()
+        # delivers to r
+        assert dgram.addr == peer1.interfaces[0][0], (dgram, Packet.unpack(dgram.data))
+
+        # attempt to send from u to e; must send an error back to u
+        packet.fields['to_addr'] = Address(tree_state, coords=[2]).address
+        assert len(mock_interface1.outbox) == 0
+        inbox.append(Datagram(packet.pack(), mock_interface1.id, peer2.interfaces[0][0]))
+        asyncio.run(Packager.process())
+        assert len(mock_interface1.outbox) == 1, len(mock_interface1.outbox)
+        dgram = mock_interface1.outbox.popleft()
+        assert Packet.unpack(dgram.data).flags.error
+        assert dgram.addr == peer2.interfaces[0][0], (dgram, Packet.unpack(dgram.data))
+
+    def test_receive_routes_properly_e2e(self):
+        # add application and network interface
+        Packager.add_interface(mock_interface1)
+
+        # copy network configuration from VOUTE paper example
+        # example network structure from the VOUTE paper for routing s -> e:
+        # s [1] <-> r [] <-> e [2] <-> [2, 1] <-> v [2, 1, 1] <-> u [2, 1, 1, 1]
+        # s <-> u
+        tree_state = b'\x00'
+        local_addr = Address(tree_state, coords=[1])
+        Packager.node_id = b'0' * 32
+        Packager.set_addr(local_addr)
+
+        # r
+        peer1 = Peer(
+            b'1' * 32,
+            [(b'mac_peer_r', mock_interface1)]
+        )
+        peer1_addr = Address(tree_state, coords=[])
+        Packager.add_peer(peer1.id, peer1.interfaces)
+        Packager.add_route(peer1.id, peer1_addr)
+
+        # u
+        peer2 = Peer(
+            b'2' * 32,
+            [(b'mac_peer_u', mock_interface1)]
+        )
+        peer2_addr = Address(tree_state, coords=[2, 1, 1, 1])
+        Packager.add_peer(peer2.id, peer2.interfaces)
+        Packager.add_route(peer2.id, peer2_addr)
+
+        # child node routing through the local node
+        peer3 = Peer(
+            b'3' * 32,
+            [(b'mac_child_1', mock_interface1)]
+        )
+        peer3_addr = Address(tree_state, coords=[1, 1])
+        Packager.add_peer(peer3.id, peer3.interfaces)
+        Packager.add_route(peer3.id, peer3_addr)
+
+        # send to e
+        to_addr = Address(tree_state, coords=[2])
+        blob = Package.from_blob(test_app.id, b'hello world').pack()
+        packet = Packet(
+            get_schemas(SCHEMA_IDS_SUPPORT_ROUTING)[0],
+            Flags(0),
+            {
+                'packet_id': 0,
+                'ttl': 250,
+                'tree_state': b'0',
+                'to_addr': to_addr.address,
+                'from_addr': local_addr.address,
+                'body': blob,
+            }
+        )
+
+        # first test dTree, the default mode
+        assert len(mock_interface1.outbox) == 0
+        inbox.append(Datagram(packet.pack(), mock_interface1.id, peer3.interfaces[0][0]))
+        asyncio.run(Packager.process())
+        assert len(mock_interface1.outbox) == 1
+        dgram = mock_interface1.outbox.popleft()
+        # routes through e
+        assert dgram.addr == peer1.interfaces[0][0]
+
+        # now test dCPL, the second mode
+        packet.flags.mode = 1
+        assert len(mock_interface1.outbox) == 0
+        inbox.append(Datagram(packet.pack(), mock_interface1.id, peer3.interfaces[0][0]))
+        asyncio.run(Packager.process())
+        assert len(mock_interface1.outbox) == 1
+        dgram = mock_interface1.outbox.popleft()
+        # routes through u
+        assert dgram.addr == peer2.interfaces[0][0]
+
+        # v; to test a new shortcut for dCPL
+        peer4 = Peer(
+            b'4' * 32,
+            [(b'mac_peer_u', mock_interface1)]
+        )
+        peer4_addr = Address(tree_state, coords=[2, 1, 1, 1])
+        Packager.add_peer(peer4.id, peer4.interfaces)
+        Packager.add_route(peer4.id, peer4_addr)
+
+        # test dCPL again after adding shortcut
+        assert len(mock_interface1.outbox) == 0
+        inbox.append(Datagram(packet.pack(), mock_interface1.id, peer3.interfaces[0][0]))
+        asyncio.run(Packager.process())
+        assert len(mock_interface1.outbox) == 1
+        dgram = mock_interface1.outbox.popleft()
+        # routes through v now
+        assert dgram.addr == peer4.interfaces[0][0]
 
     def test_receive_RNS_sends_NIA(self):
         # add application, network interface, and peer
