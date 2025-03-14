@@ -1332,7 +1332,7 @@ class Packager:
 
     @classmethod
     def remove_hook(cls, name: str, hook: Callable):
-        if name in cls._hooks:
+        if name in cls._hooks and hook in cls._hooks[name]:
             cls._hooks[name].remove(hook)
 
     @classmethod
