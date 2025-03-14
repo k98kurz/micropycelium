@@ -1315,16 +1315,34 @@ class Packager:
     cancel_events: deque[bytes] = deque([], 64)
     running: bool = False
     sleepskip: deque[bool] = deque([], 10)
-    _hooks: dict[str, Callable] = {}
+    _hooks: dict[str, list[Callable]] = {}
 
     @classmethod
     def add_hook(cls, name: str, hook: Callable):
-        cls._hooks[name] = hook
+        if name not in cls._hooks:
+            cls._hooks[name] = []
+        if hook not in cls._hooks[name]:
+            cls._hooks[name].append(hook)
 
     @classmethod
     def call_hook(cls, name: str, *args, **kwargs):
         if name in cls._hooks:
-            cls._hooks[name](cls, *args, **kwargs)
+            for hook in cls._hooks[name]:
+                hook(cls, *args, **kwargs)
+
+    @classmethod
+    def remove_hook(cls, name: str, hook: Callable):
+        if name in cls._hooks:
+            cls._hooks[name].remove(hook)
+
+    @classmethod
+    def clear_hook(cls, name: str):
+        if name in cls._hooks:
+            del cls._hooks[name]
+
+    @classmethod
+    def clear_all_hooks(cls):
+        cls._hooks.clear()
 
     @classmethod
     def add_interface(cls, interface: Interface):
@@ -1361,7 +1379,7 @@ class Packager:
         """Removes a peer from the local peer list. Packager will be
             unable to send Packages to this peer.
         """
-        cls.call_hook('remove_peer', cls, peer_id)
+        cls.call_hook('remove_peer', peer_id)
         if peer_id in cls.peers:
             peer = cls.peers.pop(peer_id)
             for addr in peer.addrs:
