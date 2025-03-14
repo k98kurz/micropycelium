@@ -32,6 +32,7 @@ from micropycelium import (
     Event,
     Interface,
     Application,
+    Cache,
     Packager,
     InterAppInterface,
     iai_box,

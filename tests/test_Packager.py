@@ -489,6 +489,27 @@ class TestPeer(unittest.TestCase):
         assert peer.addrs[1].tree_state == b'\x02'
 
 
+class TestCache(unittest.TestCase):
+    def test_evict_on_get(self):
+        cache = Cache(limit=10)
+        cache.add(b'key', b'value', ttl=1)
+        assert cache.get(b'key') == b'value'
+        cache.add(b'key', b'value', ttl=-1)
+        assert cache.get(b'key') is None
+
+    def test_evict_on_add(self):
+        cache = Cache(limit=2)
+        cache.add(b'key1', b'value1', ttl=1)
+        assert cache.get(b'key1') == b'value1'
+        cache.add(b'key2', b'value2', ttl=2)
+        assert cache.get(b'key1') == b'value1'
+        assert cache.get(b'key2') == b'value2'
+        cache.add(b'key3', b'value3', ttl=2)
+        assert cache.get(b'key1') is None
+        assert cache.get(b'key2') == b'value2'
+        assert cache.get(b'key3') == b'value3'
+
+
 app_blobs = []
 
 test_app = Application(

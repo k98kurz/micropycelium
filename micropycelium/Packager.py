@@ -1297,6 +1297,53 @@ class InSequence:
 
 
 # @micropython.native
+class Cache:
+    limit: int
+    items: dict[bytes, tuple[int, object]]
+    lowest_expiry: int
+
+    def __init__(self, limit: int) -> None:
+        self.limit = limit
+        self.items = {}
+        self.lowest_expiry = -1
+
+    def add(self, key: bytes, value: object, ttl: int = 60):
+        self.items.pop(key, None)
+        # if we hit the limit, remove the item that has the lowest expiry
+        if len(self.items) >= self.limit:
+            self.remove_lowest_expiry()
+        expiry = int(time() * 1000) + ttl
+        self.items[key] = (expiry, value)
+        if expiry < self.lowest_expiry or self.lowest_expiry == -1:
+            self.lowest_expiry = expiry
+
+    def get(self, key: bytes) -> object|None:
+        if key in self.items:
+            pair = self.items[key]
+            if pair[0] < int(time() * 1000):
+                self.items.pop(key)
+                return None
+            return pair[1]
+        return None
+
+    def remove_lowest_expiry(self):
+        for key, value in self.items.items():
+            if value[0] == self.lowest_expiry:
+                self.items.pop(key)
+                break
+        self.lowest_expiry = min(self.items.values(), key=lambda x: x[0])[0]
+
+    def invalidate_expired(self):
+        keys_to_remove = []
+        for key, value in self.items.items():
+            if value[0] < int(time() * 1000):
+                keys_to_remove.append(key)
+        for key in keys_to_remove:
+            self.items.pop(key)
+        self.lowest_expiry = min(self.items.values(), key=lambda x: x[0])[0] if self.items else -1
+
+
+# @micropython.native
 class Packager:
     version: int = 0
     interfaces: list[Interface] = []
