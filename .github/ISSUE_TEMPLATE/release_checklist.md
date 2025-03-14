@@ -15,10 +15,11 @@ Once all other issues are complete, prepare to release the next version.
 
 - [ ] Verify release candidate code works in hardware
 - [ ] Review and update docstrings
-- [ ] Update dox.md
+- [ ] Update notes/build.md
 - [ ] Update readme.md
 - [ ] Update changelog.md
 - [ ] Review and finalize documentation
 - [ ] Ensure version strings are set to `'M.m.p'`
+- [ ] Ensure protocol version ints are correct
 - [ ] Close milestone on GitHub
 - [ ] Push tag and make release on GitHub
