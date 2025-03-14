@@ -1009,6 +1009,11 @@ the node will send the Message to the peer that sent the Request.
 Associates an application with a topic ID. All new Messages delivered will be
 forwarded to the subscribed application.
 
+## Unsubscribe
+
+Removes an application from the subscriber list for a topic ID. If no
+applications are subscribed to the topic ID, the topic ID will be dropped.
+
 
 # References and Notes
 

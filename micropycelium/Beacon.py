@@ -23,7 +23,6 @@ from time import time
 
 
 now = lambda: int(time()*1000)
-Packager.node_id = sha256(sha256(unique_id()).digest()).digest()
 BeaconMessage = namedtuple("BeaconMessage", ['op', 'peer_id', 'apps'])
 seen: deque[BeaconMessage] = deque([], 10)
 sent: deque[BeaconMessage] = deque([], 10)
