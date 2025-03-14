@@ -13,6 +13,7 @@ assignees: k98kurz
 
 Once all other issues are complete, prepare to release the next version.
 
+- [ ] Verify release candidate code works in hardware
 - [ ] Review and update docstrings
 - [ ] Update dox.md
 - [ ] Update readme.md
@@ -21,4 +22,3 @@ Once all other issues are complete, prepare to release the next version.
 - [ ] Ensure version strings are set to `'M.m.p'`
 - [ ] Close milestone on GitHub
 - [ ] Push tag and make release on GitHub
-- [ ] Update PyPI
