@@ -1916,17 +1916,17 @@ class Packager:
             ), src)
 
     @classmethod
-    def deliver(cls, p: Package, i: Interface, m: bytes) -> bool:
+    def deliver(cls, p: Package, i: Interface, mac: bytes) -> bool:
         """Attempt to deliver a Package. Returns False if the Package
             half_sha256 is invalid for the blob, or if the Application
             was not registered, or if the Application's receive method
             errors. Otherwise returns True.
         """
-        cls.call_hook('deliver', cls, p, i, m)
+        cls.call_hook('deliver', cls, p, i, mac)
         if p.half_sha256 != sha256(p.blob).digest()[:16] or p.app_id not in cls.apps:
             return False
         try:
-            cls.apps[p.app_id].receive(p.blob, i, m)
+            cls.apps[p.app_id].receive(p.blob, i, mac)
             return True
         except:
             return False
