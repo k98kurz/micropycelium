@@ -1326,6 +1326,10 @@ class Cache:
             return pair[1]
         return None
 
+    def clear(self):
+        self.items.clear()
+        self.lowest_expiry = -1
+
     def remove_lowest_expiry(self):
         for key, value in self.items.items():
             if value[0] == self.lowest_expiry:
