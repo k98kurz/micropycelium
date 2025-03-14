@@ -87,7 +87,17 @@ Deregestiers an Application so it will not receive Packages.
 ## Process
 
 Asynchronous method that creates a task for each interface to let them process
-their pending actions, then process pending Packager actions.
+their pending actions, then process pending Packager actions. The specific
+sequence of operations is as follows:
+
+1. Schedule the events in `cls.new_events`, putting them in `cls.schedule`.
+2. Remove every event in `cls.canceled_events` from `cls.schedule`.
+3. Process interface actions by gathering asyncio tasks and running them
+   concurrently.
+4. Read datagrams from each interface inbox and attempt to receive the Packet.
+5. Handle scheduled events, executing callbacks/tasks if the event is due.
+6. Remove all processed events from `cls.schedule`.
+7. Send queued datagrams to reachable peers.
 
 ## Work
 
@@ -159,7 +169,7 @@ which fields are used in the packet.
 
 The `flags` field will be 8 bits (bits 0-7):
 - Bit 0: error - set in response as a generic error notification
-- Bit 1: throttle - set when a responding node is experiencing congestion
+- Bit 1: throttle - set when a node retransmitting packet is experiencing congestion
 - Bits 2-4: encoded, mutually exclusive flags
 - Bits 5: reserved1
 - Bits 6: reserved2
@@ -203,7 +213,8 @@ The `seq_size` field will be a u8 or u16 sequence size, depending on the schema.
 This is used to inform a receiver the size of the sequence of packets needed to
 reconstruct the package from its parts. This value will always be exactly 1 less
 than the actual value; in other words, it will show the maximum `packet_id` for
-the sequence.
+the sequence. (I.e. add 1 because a sequence size of 0 is meaningless and bytes
+are 0-indexed.)
 
 ## ttl
 
@@ -379,6 +390,40 @@ ESP-NOW; 65536 max sequence size; 12.6875 MiB max Package size.
 - 16 `from_addr`
 - 203 `body`
 
+## (version, schema) == (0, 11)
+
+ESP-NOW; one-hop routable; 216 max Package size.
+
+- 1 `packet_id`
+- 1 `tree_state`
+- 16 `to_addr`
+- 16 `from_addr`
+- 216 `body`
+
+## (version, schema) == (0, 12)
+
+ESP-NOW; one-hop routable; 256 max sequence size; 53.5 KiB max Package size.
+
+- 1 `packet_id`
+- 1 `seq_id`
+- 1 `seq_size`
+- 1 `tree_state`
+- 16 `to_addr`
+- 16 `from_addr`
+- 214 `body`
+
+## (version, schema) == (0, 13)
+
+ESP-NOW; one-hop routable; 65536 max sequence size; 13.25 MiB max Package size.
+
+- 2 `packet_id`
+- 1 `seq_id`
+- 2 `seq_size`
+- 1 `tree_state`
+- 16 `to_addr`
+- 16 `from_addr`
+- 212 `body`
+
 ## (version, schema) == (0, 20)
 
 RYLR-998; 235 B max Package size.
@@ -499,6 +544,40 @@ RYLR-998; 65536 max sequence size; 12.0625 MiB max Package size.
 - 16 `to_addr`
 - 16 `from_addr`
 - 193 `body`
+
+## (version, schema) == (0, 31)
+
+LYLR-998; one-hop routable; 206 max Package size.
+
+- 1 `packet_id`
+- 1 `tree_state`
+- 16 `to_addr`
+- 16 `from_addr`
+- 206 `body`
+
+## (version, schema) == (0, 32)
+
+LYLR-998; one-hop routable; 256 max sequence size; 51 KiB max Package size.
+
+- 1 `packet_id`
+- 1 `seq_id`
+- 1 `seq_size`
+- 1 `tree_state`
+- 16 `to_addr`
+- 16 `from_addr`
+- 204 `body`
+
+## (version, schema) == (0, 33)
+
+LYLR-998; one-hop routable; 65536 max sequence size; 12.625 MiB max Package size.
+
+- 2 `packet_id`
+- 1 `seq_id`
+- 2 `seq_size`
+- 1 `tree_state`
+- 16 `to_addr`
+- 16 `from_addr`
+- 202 `body`
 
 
 # Interface
