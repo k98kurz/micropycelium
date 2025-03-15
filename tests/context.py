@@ -46,4 +46,7 @@ from micropycelium import (
     Gossip,
     GossipMessage,
     GossipOp,
+    Ping,
+    PingMessage,
+    PingOp,
 )
