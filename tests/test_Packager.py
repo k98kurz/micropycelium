@@ -1905,6 +1905,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
         castbox.clear()
         inbox.clear()
         outbox.clear()
+        SpanningTree.invoke('get_seen').clear()
         return super().setUp()
 
     def tearDown(self) -> None:
@@ -1923,6 +1924,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
         castbox.clear()
         inbox.clear()
         outbox.clear()
+        SpanningTree.invoke('get_seen').clear()
         asyncio.run(Packager.process())
         return super().tearDown()
 
@@ -1985,7 +1987,9 @@ class TestSpanningTreeApplication(unittest.TestCase):
             SpanningTree.id, SpanningTree.invoke('serialize', tm)
         )
         assert len(outbox) == 0
+        assert len(SpanningTree.invoke('get_seen')) == 0
         Packager.deliver(package, mock_interface1, b'mac0')
+        assert len(SpanningTree.invoke('get_seen')) == 1
         asyncio.run(Packager.process())
         assert len(outbox) == 1, (len(outbox), len(mock_interface1.outbox))
         packet = Packet.unpack(outbox.popleft().data)

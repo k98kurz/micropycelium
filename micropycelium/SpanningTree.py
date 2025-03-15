@@ -48,7 +48,7 @@ root_id_targets = (
 )
 now = lambda: int(time()*1000)
 TreeMessage = namedtuple("TreeMessage", ['op', 'claim', 'address', 'node_id'])
-seen: deque[TreeMessage] = deque([], 10)
+seen_tm: deque[TreeMessage] = deque([], 10)
 tree_app_id = b''
 gossip_app_id = bytes.fromhex('849969c1f22797d66f5a94db2afe634a')
 tree_maintenance_rounds = 0
@@ -106,11 +106,11 @@ def remove_peer(_, pid: bytes):
 def receive_tm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
     global current_best_root_id, current_parent
     tmsg = deserialize_tm(blob)
-    seen.append(tmsg)
+    seen_tm.append(tmsg)
     peer_id = Packager.inverse_peers.get((mac, intrfc.id), None)
 
     if tmsg.op == TreeOp.SEND:
-        if tmsg.node_id is not None:
+        if tmsg.node_id is not None and tmsg.node_id != Packager.node_id:
             Packager.add_route(
                 tmsg.node_id, Address(tree_state(tmsg.claim), address=tmsg.address)
             )
@@ -333,6 +333,7 @@ SpanningTree = Application(
         'get_current_parent': lambda _: current_parent,
         'get_current_best_root_id': lambda _: current_best_root_id,
         'send_gossip_tree_message': lambda _: send_gossip_tree_message(),
+        'get_seen': lambda _: seen_tm,
     }
 )
 tree_app_id = SpanningTree.id
