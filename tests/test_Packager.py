@@ -361,6 +361,23 @@ class TestInterface(unittest.TestCase):
 
 
 class TestAddress(unittest.TestCase):
+    def test_to_str_and_from_str(self):
+        addr = Address(12, coords=[])
+        adstr = str(addr)
+        assert adstr == '12-::', adstr
+        assert repr(addr) == 'Address(12-::)', repr(addr)
+        assert addr == Address.from_str(adstr)
+        addr = Address(35, coords=[2,4] + [0] * 29 + [1])
+        adstr = str(addr)
+        assert adstr == '35-24::01', adstr
+        assert repr(addr) == 'Address(35-24::01)', repr(addr)
+        assert addr == Address.from_str(adstr)
+        addr = Address(176, coords=[2,4,1] + [0] * 27 + [13])
+        adstr = str(addr)
+        assert adstr == '176-2410::85', adstr
+        assert repr(addr) == 'Address(176-2410::85)', repr(addr)
+        assert addr == Address.from_str(adstr)
+
     def test_encode(self):
         coords = [1, 3, 7, 8, 129]
         address = Address.encode(coords)

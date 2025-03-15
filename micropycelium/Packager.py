@@ -1074,6 +1074,39 @@ class Address:
     def __eq__(self, other: 'Address') -> bool:
         return hash(self) == hash(other)
 
+    def __str__(self) -> str:
+        """User-friendly string representation of the address."""
+        addr = list(self.address.hex())
+        addr = [addr[i] + addr[i+1] for i in range(0, len(addr), 2)]
+        formatted, empty = '', False
+        for pair in addr:
+            if pair != '00':
+                formatted += pair
+            elif not empty:
+                formatted += '::'
+                empty = True
+            elif formatted[-2:] != '::':
+                formatted += pair
+
+        return f'{self.tree_state}-{formatted}'
+
+    def __repr__(self) -> str:
+        """String representation of the address for debugging."""
+        return f'Address({self})'
+
+    @classmethod
+    def from_str(cls, formatted: str) -> 'Address':
+        """Reconstruct an Address from a user-friendly string representation."""
+        tree_state, addr = formatted.split('-')
+        parts = addr.split('::')
+        if len(parts) == 1:
+            addr = parts[0] + '0' * (32 - len(parts[0]))
+        else:
+            prefix, postfix = parts
+            addr = prefix + '0' * (32 - len(prefix) - len(postfix)) + postfix
+        return cls(int(tree_state), address=bytes.fromhex(addr))
+
+
     @staticmethod
     def decode(address: bytes|bytearray) -> list[int,]:
         """Decode an address into a list of coordinates."""
