@@ -1,7 +1,7 @@
 from asyncio import sleep_ms, run, gather
 from collections import deque
 from machine import Pin
-from micropycelium import Packager, debug, ESPNowInterface, Beacon, Gossip, SpanningTree
+from micropycelium import Packager, debug, ESPNowInterface, Beacon, Gossip, SpanningTree, Ping
 from neopixel import NeoPixel
 
 def write_file(fname: str, data: str):
@@ -58,7 +58,8 @@ treesend = (126, 126, 255)
 # add some hooks
 def debug_name(name: str):
     def inner(*args):
-        debug(name)
+        args = [a.hex() if isinstance(a, bytes) else repr(a) for a in args]
+        debug(name, *args)
     return inner
 def bcn_recv_hook(*args, **kwargs):
     debug('Beacon.receive')
@@ -103,6 +104,23 @@ SpanningTree.add_hook('receive', tree_recv_hook)
 SpanningTree.add_hook('broadcast', tree_brdcst_hook)
 SpanningTree.add_hook('send', tree_send_hook)
 
+def ping_report_callback(*args, **kwargs):
+    print('Ping report:')
+    for k, v in kwargs.items():
+        if isinstance(v, dict):
+            print(f'  {k}:')
+            for k2, v2 in v.items():
+                print(f'    {k2}: {v2}')
+        else:
+            print(f'  {k}: {v}')
+
+Ping.add_hook('request', debug_name('Ping.request'))
+Ping.add_hook('respond', debug_name('Ping.respond'))
+Ping.add_hook('response_received', debug_name('Ping.response_received'))
+Ping.add_hook('gossip_request', debug_name('Ping.gossip_request'))
+Ping.add_hook('gossip_respond', debug_name('Ping.gossip_respond'))
+Ping.add_hook('gossip_response_received', debug_name('Ping.gossip_response_received'))
+
 # debug hooks
 hooks_added = False
 def add_hooks():
@@ -139,4 +157,5 @@ add_hooks()
 Beacon.invoke('start')
 Gossip.invoke('start')
 SpanningTree.invoke('start')
+Ping.invoke('start')
 start()

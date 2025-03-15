@@ -52,3 +52,14 @@ the next step in trying to build a fast and reliable PKI.
 make clean && make USER_C_MODULES=$MICROPYTHON_PATH/examples/tweetnacl/micropython.cmake
 make PORT=$DEVICE deploy
 ```
+
+## Erase Flash
+
+In case of file system errors, erase the flash then reflash the firmware:
+
+```bash
+pushd $MICROPYTHON_PATH/ports/esp32
+esptool.py --chip esp32 -p $DEVICE erase_flash
+make PORT=$DEVICE deploy
+popd
+```
