@@ -24,8 +24,8 @@ from time import time
 
 now = lambda: int(time()*1000)
 BeaconMessage = namedtuple("BeaconMessage", ['op', 'peer_id', 'apps'])
-seen: deque[BeaconMessage] = deque([], 10)
-sent: deque[BeaconMessage] = deque([], 10)
+seen_bm: deque[BeaconMessage] = deque([], 10)
+sent_bm: deque[BeaconMessage] = deque([], 10)
 beacon_app_id = b''
 
 
@@ -46,7 +46,7 @@ def deserialize_bm(blob: bytes) -> BeaconMessage:
 
 def receive_bm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
     bmsg = deserialize_bm(blob)
-    seen.append(bmsg)
+    seen_bm.append(bmsg)
     node_id = Packager.node_id
     if bmsg.peer_id != node_id:
         Packager.add_peer(bmsg.peer_id, [(mac, intrfc)])
@@ -86,12 +86,14 @@ def respond_beacon(pid: bytes):
     for bm in bmsgs:
         # send the BeaconMessage in a Package
         Packager.send(beacon_app_id, serialize_bm(bm), pid)
+    sent_bm.extend(bmsgs)
 
 def broadcast_beacon():
     bmsgs = get_bmsgs(b'\x00')
     for bm in bmsgs:
         # broadcast the BeaconMessage in a Package
         Packager.broadcast(beacon_app_id, serialize_bm(bm))
+    sent_bm.extend(bmsgs)
 
 def timeout_peers():
     tdc = []
@@ -141,6 +143,8 @@ Beacon = Application(
         'serialize': lambda _, bm: serialize_bm(bm),
         'deserialize': lambda _, blob: deserialize_bm(blob),
         'start': lambda _: periodic_beacon(MODEM_INTERSECT_RTX_TIMES),
+        'get_seen': lambda _: seen_bm,
+        'get_sent': lambda _: sent_bm,
     }
 )
 beacon_app_id = Beacon.id

@@ -1579,6 +1579,8 @@ class TestBeaconApplication(unittest.TestCase):
         Packager.peers.clear()
         mock_interface1.castbox.clear()
         castbox.clear()
+        Beacon.invoke('get_seen').clear()
+        Beacon.invoke('get_sent').clear()
         return super().setUp()
 
     def tearDown(self) -> None:
@@ -1587,6 +1589,8 @@ class TestBeaconApplication(unittest.TestCase):
         Packager.peers.clear()
         mock_interface1.castbox.clear()
         castbox.clear()
+        Beacon.invoke('get_seen').clear()
+        Beacon.invoke('get_sent').clear()
         return super().tearDown()
 
     def test_invoke_broadcast(self):
@@ -1594,7 +1598,9 @@ class TestBeaconApplication(unittest.TestCase):
         assert len(Packager.peers) == 0
         assert len(mock_interface1.castbox) == 0
         Packager.add_application(Beacon)
+        assert len(Beacon.invoke('get_sent')) == 0
         Beacon.invoke('broadcast')
+        assert len(Beacon.invoke('get_sent')) == 1
         assert len(mock_interface1.castbox) == 1
         assert len(castbox) == 0
         asyncio.run(Packager.process())
@@ -1616,8 +1622,10 @@ class TestBeaconApplication(unittest.TestCase):
         Packager.node_id = b'changed for testing'
         assert len(InterAppInterface.outbox) == 0
         asyncio.run(Packager.process())
+        assert len(Beacon.invoke('get_seen')) == 0
         for bm in bmsgs:
             Packager.deliver(bm, InterAppInterface, b'mac0')
+        assert len(Beacon.invoke('get_seen')) > 0
         asyncio.run(Packager.process())
         assert len(Packager.peers) == 1
         assert len(iai_box) == 1
