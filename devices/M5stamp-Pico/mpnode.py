@@ -114,6 +114,7 @@ def tree_send_hook(*args, **kwargs):
 SpanningTree.add_hook('receive', tree_recv_hook)
 SpanningTree.add_hook('broadcast', tree_brdcst_hook)
 SpanningTree.add_hook('send', tree_send_hook)
+SpanningTree.add_hook('request_address_assignment', debug_name('SpanningTree.request_address_assignment'))
 
 def ping_report_callback(*args, **kwargs):
     print('Ping report:')
