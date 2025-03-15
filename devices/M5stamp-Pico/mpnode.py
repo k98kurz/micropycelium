@@ -1,7 +1,9 @@
 from asyncio import sleep_ms, run, gather
 from collections import deque
 from machine import Pin
-from micropycelium import Packager, debug, ESPNowInterface, Beacon, Gossip, SpanningTree, Ping
+from micropycelium import (
+    Packager, debug, ESPNowInterface, Beacon, Gossip, SpanningTree, Ping
+)
 from neopixel import NeoPixel
 
 def write_file(fname: str, data: str):
