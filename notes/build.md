@@ -3,6 +3,14 @@
 Note that the devices I use for testing are ESP-32 devices from M5stack. This
 guide assumes a `~/Documents/repos` directory where all repositories will exist.
 
+## Node Customization
+
+Several node implementations are provided in the `devices` directory. Modify
+the `mpnode.py` file to customize the node's behavior before you deploy. If you
+do not want it frozen into the firmware, you can instead use it as a main.py
+file; freezing it into the firmware makes deployment easier (main.py file is
+just 2 lines).
+
 ## Environment Setup
 
 First, if you are using ESP32, ensure that the esp-idf tool is installed
@@ -17,13 +25,15 @@ cd esp-idf
 
 Then set the paths for the local forks/clones of the micropython and
 micropycelium repos, as well as the device to which the firmware will be
-deployed:
+deployed and the mpnode code to use (optional; you can bundle your own
+node; this just makes the main.py file 2 lines and thus easier to deploy):
 
 ```bash
 source ~/Documents/repos/esp-idf/export.sh
 MICROPYTHON_PATH=$HOME/Documents/repos/micropython
 MICROPYCELIUM_PATH=$HOME/Documents/repos/micropycelium
 DEVICE=/dev/ttyACM0
+MPNODE=M5stamp-Pico
 ```
 
 ## Build and Deploy Firmware
@@ -35,6 +45,7 @@ path within the micropython fork and deploy to connected device:
 python make.py > build/micropycelium.py
 pushd $MICROPYTHON_PATH/ports/esp32
 cp $MICROPYCELIUM_PATH/build/micropycelium.py modules/
+cp $MICROPYCELIUM_PATH/devices/$MPNODE/mpnode.py modules/
 make submodules && make && make PORT=$DEVICE deploy
 popd
 ```

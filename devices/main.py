@@ -1,0 +1,3 @@
+import mpnode
+
+mpnode.start()
