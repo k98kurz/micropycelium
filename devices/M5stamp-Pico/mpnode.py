@@ -58,9 +58,18 @@ treebrdcst = (255, 126, 126)
 treesend = (126, 126, 255)
 
 # add some hooks
+def hexify(thing):
+    if type(thing) is list:
+        return [hexify(i) for i in thing]
+    elif type(thing) is tuple:
+        return tuple(hexify(i) for i in thing)
+    elif type(thing) is bytes:
+        return thing.hex()
+    else:
+        return repr(thing)
 def debug_name(name: str):
     def inner(*args):
-        args = [a.hex() if isinstance(a, bytes) else repr(a) for a in args]
+        args = [hexify(a) for a in args]
         debug(name, *args)
     return inner
 def bcn_recv_hook(*args, **kwargs):
@@ -155,7 +164,6 @@ def start():
         monitor_btn(btn, btnq, 800),
     ))
 
-add_hooks()
 Beacon.invoke('start')
 Gossip.invoke('start')
 SpanningTree.invoke('start')

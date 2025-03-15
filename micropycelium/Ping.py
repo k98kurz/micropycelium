@@ -278,9 +278,10 @@ def run_ping_test(
     topic_id = sha256(Ping.id + node_id).digest()[:16]
     topic_id += PingOp.REQUEST.to_bytes(1, 'big')
     nonce = randint(0, 255)
+    now = int(time())*1000
     for i in range(count):
         Packager.new_events.append(Event(
-            timeout * i * 1000,
+            now + timeout * i * 1000,
             topic_id + i.to_bytes(1, 'big'),
             ping_request,
             node_id,
@@ -288,7 +289,7 @@ def run_ping_test(
             nonce,
         ))
     Packager.new_events.append(Event(
-        timeout * count * 1000,
+        now + timeout * count * 1000,
         topic_id + count.to_bytes(1, 'big'),
         report_ping_test,
         nonce,
@@ -310,16 +311,17 @@ def run_gossip_ping_test(
     topic_id = sha256(Ping.id + node_id).digest()[:16]
     topic_id += PingOp.GOSSIP_REQUEST.to_bytes(1, 'big')
     nonce = randint(0, 255)
+    now = int(time())*1000
     for i in range(count):
         Packager.new_events.append(Event(
-            timeout * i * 1000,
+            now + timeout * i * 1000,
             topic_id + i.to_bytes(1, 'big'),
             ping_gossip_request,
             node_id,
             nonce,
         ))
     Packager.new_events.append(Event(
-        timeout * count * 1000,
+        now + timeout * count * 1000,
         topic_id + count.to_bytes(1, 'big'),
         report_ping_test,
         nonce,
