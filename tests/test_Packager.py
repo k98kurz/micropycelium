@@ -592,17 +592,7 @@ class TestPackager(unittest.TestCase):
         mock_interface1.inbox.clear()
         mock_interface1.outbox.clear()
         mock_interface1.castbox.clear()
-        Packager.interfaces.clear()
-        Packager.node_addrs.clear()
-        Packager.peers.clear()
-        Packager.inverse_peers.clear()
-        Packager.routes.clear()
-        Packager.apps.clear()
-        Packager.in_seqs.clear()
-        Packager.schedule.clear()
-        Packager.new_events.clear()
-        Packager.cancel_events.clear()
-        Packager.sleepskip.clear()
+        Packager.reset()
         return super().setUp()
 
     def tearDown(self) -> None:
@@ -613,17 +603,7 @@ class TestPackager(unittest.TestCase):
         mock_interface1.inbox.clear()
         mock_interface1.outbox.clear()
         mock_interface1.castbox.clear()
-        Packager.interfaces.clear()
-        Packager.node_addrs.clear()
-        Packager.peers.clear()
-        Packager.inverse_peers.clear()
-        Packager.routes.clear()
-        Packager.apps.clear()
-        Packager.in_seqs.clear()
-        Packager.schedule.clear()
-        Packager.new_events.clear()
-        Packager.cancel_events.clear()
-        Packager.sleepskip.clear()
+        Packager.reset()
         return super().tearDown()
 
     def test_add_interface_remove_interface_e2e(self):
@@ -1574,9 +1554,7 @@ class TestPackager(unittest.TestCase):
 
 class TestBeaconApplication(unittest.TestCase):
     def setUp(self) -> None:
-        Packager.apps.clear()
-        Packager.interfaces.clear()
-        Packager.peers.clear()
+        Packager.reset()
         mock_interface1.castbox.clear()
         castbox.clear()
         Beacon.invoke('get_seen').clear()
@@ -1584,9 +1562,7 @@ class TestBeaconApplication(unittest.TestCase):
         return super().setUp()
 
     def tearDown(self) -> None:
-        Packager.apps.clear()
-        Packager.interfaces.clear()
-        Packager.peers.clear()
+        Packager.reset()
         mock_interface1.castbox.clear()
         castbox.clear()
         Beacon.invoke('get_seen').clear()
@@ -1652,9 +1628,7 @@ class TestBeaconApplication(unittest.TestCase):
 
 class TestGossipApplication(unittest.TestCase):
     def setUp(self) -> None:
-        Packager.apps.clear()
-        Packager.interfaces.clear()
-        Packager.peers.clear()
+        Packager.reset()
         mock_interface1.castbox.clear()
         mock_interface1.outbox.clear()
         castbox.clear()
@@ -1667,9 +1641,7 @@ class TestGossipApplication(unittest.TestCase):
         return super().setUp()
 
     def tearDown(self) -> None:
-        Packager.apps.clear()
-        Packager.interfaces.clear()
-        Packager.peers.clear()
+        Packager.reset()
         mock_interface1.castbox.clear()
         mock_interface1.outbox.clear()
         castbox.clear()
@@ -1901,14 +1873,7 @@ class TestGossipApplication(unittest.TestCase):
 
 class TestSpanningTreeApplication(unittest.TestCase):
     def setUp(self) -> None:
-        Packager.schedule.clear()
-        Packager.new_events.clear()
-        Packager.apps.clear()
-        Packager.interfaces.clear()
-        Packager.peers.clear()
-        Packager.inverse_peers.clear()
-        Packager.routes.clear()
-        Packager.node_addrs.clear()
+        Packager.reset()
         mock_interface1.castbox.clear()
         mock_interface1.outbox.clear()
         mock_interface1.inbox.clear()
@@ -1920,14 +1885,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
 
     def tearDown(self) -> None:
         SpanningTree.invoke('stop')
-        Packager.schedule.clear()
-        Packager.new_events.clear()
-        Packager.apps.clear()
-        Packager.interfaces.clear()
-        Packager.peers.clear()
-        Packager.inverse_peers.clear()
-        Packager.routes.clear()
-        Packager.node_addrs.clear()
+        Packager.reset()
         mock_interface1.castbox.clear()
         mock_interface1.outbox.clear()
         mock_interface1.inbox.clear()
@@ -1935,7 +1893,6 @@ class TestSpanningTreeApplication(unittest.TestCase):
         inbox.clear()
         outbox.clear()
         SpanningTree.invoke('get_seen').clear()
-        asyncio.run(Packager.process())
         return super().tearDown()
 
     def test_start_and_stop_e2e(self):

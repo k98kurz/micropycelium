@@ -1387,7 +1387,6 @@ class Packager:
     seq_id: int = 0
     packet_id: int = 0
     seq_cache: dict[int, Sequence] = {} # to-do
-    apps: dict[bytes, object] = {}
     in_seqs: dict[int, InSequence] = {}
     peers: dict[bytes, Peer] = {}
     inverse_peers: dict[tuple[bytes, bytes], bytes] = {} # map (mac, intrfc.id): peer_id
@@ -1401,6 +1400,25 @@ class Packager:
     running: bool = False
     sleepskip: deque[bool] = deque([], 10)
     _hooks: dict[str, list[Callable]] = {}
+
+    @classmethod
+    def reset(cls):
+        cls.interfaces.clear()
+        cls.seq_id = 0
+        cls.packet_id = 0
+        cls.seq_cache.clear()
+        cls.in_seqs.clear()
+        cls.peers.clear()
+        cls.inverse_peers.clear()
+        cls.routes.clear()
+        cls.node_addrs.clear()
+        cls.apps.clear()
+        cls.schedule.clear()
+        cls.new_events.clear()
+        cls.cancel_events.clear()
+        cls.running = False
+        cls.sleepskip.clear()
+        cls._hooks.clear()
 
     @classmethod
     def add_hook(cls, name: str, hook: Callable):
