@@ -36,6 +36,7 @@ python make.py > build/micropycelium.py
 pushd $MICROPYTHON_PATH/ports/esp32
 cp $MICROPYCELIUM_PATH/build/micropycelium.py modules/
 make submodules && make && make PORT=$DEVICE deploy
+popd
 ```
 
 Note that if there are any other custom modules you want to include in the
