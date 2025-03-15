@@ -2282,6 +2282,7 @@ class TestPingApplication(unittest.TestCase):
         pm = PingMessage(
             PingOp.REQUEST,
             randint(0, 255),
+            dTree,
             int(time()),
             0,
             0,
@@ -2296,6 +2297,7 @@ class TestPingApplication(unittest.TestCase):
         p = Package.unpack(packet.body)
         pm = Ping.invoke('deserialize_pm', p.blob)
         assert pm.op == PingOp.RESPOND, pm.op
+        assert pm.metric == dTree
         assert pm.ts1 > 0
         assert pm.ts2 > 0
         assert pm.ts3 == 0
@@ -2319,6 +2321,7 @@ class TestPingApplication(unittest.TestCase):
         pm = PingMessage(
             PingOp.REQUEST,
             randint(0, 255),
+            dCPL,
             ts1,
             0,
             0,
@@ -2336,6 +2339,7 @@ class TestPingApplication(unittest.TestCase):
         p = Package.unpack(packet.body)
         pm = Ping.invoke('deserialize_pm', p.blob)
         assert pm.op == PingOp.RESPOND, pm.op
+        assert pm.metric == dCPL
         assert pm.ts1 == ts1
         assert pm.ts2 > 0
         assert pm.ts3 == 0
@@ -2360,6 +2364,7 @@ class TestPingApplication(unittest.TestCase):
         pm = PingMessage(
             PingOp.RESPOND,
             randint(0, 255),
+            dTree,
             ts1,
             ts2,
             0,
@@ -2429,6 +2434,7 @@ class TestPingApplication(unittest.TestCase):
         pm = PingMessage(
             PingOp.GOSSIP_REQUEST,
             randint(0, 255),
+            dTree,
             ts1,
             0,
             0,
@@ -2452,6 +2458,106 @@ class TestPingApplication(unittest.TestCase):
         assert pm.ts1 == ts1
         assert pm.ts2 >= ts1
         assert pm.ts3 == 0
+
+    def test_ping_test_adds_new_events(self):
+        remote_id = urandom(32)
+        remote_addr = Address.from_str('1-21::')
+        local_addr = Address.from_str('1-12::')
+        Packager.set_addr(local_addr)
+        assert len(Packager.new_events) == 0
+        Ping.invoke('ping', remote_id, 5, addr=remote_addr)
+        assert len(Packager.new_events) == 6
+        # report event
+        ev = Packager.new_events[-1]
+        assert ev.args[-1] == remote_addr
+
+    def test_gossip_ping_test_adds_new_events(self):
+        remote_id = urandom(32)
+        remote_addr = Address.from_str('1-21::')
+        local_addr = Address.from_str('1-12::')
+        Packager.set_addr(local_addr)
+        assert len(Packager.new_events) == 0
+        Ping.invoke('gossip_ping', remote_id, 2, addr=remote_addr)
+        assert len(Packager.new_events) == 3
+        # report event
+        ev = Packager.new_events[-1]
+        assert ev.args[-1] == remote_addr
+
+    def test_report_ping_test(self):
+        responses = Ping.invoke('get_ping_responses')
+        nonce = randint(0, 255)
+        count = 4
+        timeout = 30
+        half_trip = timeout/2
+        ts1s = [
+            int(time())-timeout*4-1,
+            int(time())-timeout*3-2,
+            int(time())-timeout*2+1,
+            int(time())-timeout+2,
+        ]
+        ts2s = [
+            int(time())-timeout*3-half_trip,
+            int(time())-timeout*2-half_trip,
+            int(time())-timeout-half_trip,
+            int(time())-half_trip,
+        ]
+        ts3s = [
+            int(time())-timeout*3-1,
+            int(time())-timeout*2-2,
+            int(time())-timeout+1,
+            int(time())+2,
+        ]
+        remote_id = urandom(32)
+        remote_addr = Address.from_str('1-21::')
+        local_addr = Address.from_str('1-12::')
+        metric = dCPL if randint(0, 1) == 0 else dTree
+        mode = 'routed dCPL' if metric == dCPL else 'routed dTree'
+        for i in range(count):
+            responses.append(PingMessage(
+                PingOp.RESPOND,
+                nonce,
+                metric,
+                ts1s[i],
+                ts2s[i],
+                ts3s[i],
+                local_addr.tree_state,
+                local_addr.address,
+                Packager.node_id
+            ))
+        assert len(responses) == count
+        report = Ping.invoke('report_ping_test', nonce, count, remote_id, remote_addr)
+        assert len(responses) == 0
+        assert report['mode'] == mode
+        assert report['remote_id'] == remote_id.hex()
+        assert report['remote_addr'] == remote_addr
+        assert report['count'] == count
+        assert report['there']['avg'] == 15
+        assert report['there']['min'] <= report['there']['avg']
+        assert report['there']['max'] >= report['there']['avg']
+        assert report['back']['avg'] == 15
+        assert report['back']['min'] <= report['back']['avg']
+        assert report['back']['max'] >= report['back']['avg']
+        assert report['round_trip']['avg'] == 30
+        assert report['round_trip']['min'] <= report['round_trip']['avg']
+        assert report['round_trip']['max'] >= report['round_trip']['avg']
+
+        # test gossip ping report
+        for i in range(count):
+            responses.append(PingMessage(
+                PingOp.GOSSIP_RESPOND,
+                nonce,
+                dCPL,
+                ts1s[i],
+                ts2s[i],
+                ts3s[i],
+                local_addr.tree_state,
+                local_addr.address,
+                Packager.node_id
+            ))
+        assert len(responses) == count
+        report = Ping.invoke('report_ping_test', nonce, count, remote_id, remote_addr)
+        assert len(responses) == 0
+        assert report['mode'] == 'gossip'
 
 
 if __name__ == '__main__':
