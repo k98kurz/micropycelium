@@ -377,6 +377,14 @@ class TestAddress(unittest.TestCase):
         assert adstr == '176-2410::85', adstr
         assert repr(addr) == 'Address(176-2410::85)', repr(addr)
         assert addr == Address.from_str(adstr)
+        addr = Address(176, coords=[2,1,0,0,4] + [0] * 27)
+        adstr = str(addr)
+        assert adstr == '176-210040::', adstr
+        assert repr(addr) == 'Address(176-210040::)', repr(addr)
+        assert addr == Address.from_str(adstr)
+        assert len(addr.coords) == 32
+        addr = Address.from_str(adstr)
+        assert len(addr.coords) == 5
 
     def test_encode(self):
         coords = [1, 3, 7, 8, 129]

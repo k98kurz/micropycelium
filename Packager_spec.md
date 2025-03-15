@@ -777,7 +777,7 @@ If a node drops its parent in the tree from the peer list, it will broadcast its
 own root election claim, restarting the process of acquiring an address from the
 peer that is closest to the root from the peers that respond to the broadcast.
 
-## Coordinates
+## Coordinates and Addresses
 
 Addresses will encode up to 32 coordinates, each representing the index of a
 child at the parent. This will allow for a network of between 16 tree levels at
@@ -806,6 +806,13 @@ Examples:
 - (3, 1) => 0b0011 0b0001
 - (8, 3) => 0b1000000 0b0011
 - (4, 12) => 0b0100 0b10000100
+
+Addresses have a user-friendly string representation with the following format:
+`123-235783::`. The number before the dash is the decimal int representation of
+the tree state. The string after the dash is the coordinate encoded as a hex
+string in which trailing or internal stretches of 00 are replaced with a double
+colon. The empty coordinate replacement will compress only the first instance of
+at least 2 consecutive null bytes (4 coordinates of zero).
 
 ## Routing
 

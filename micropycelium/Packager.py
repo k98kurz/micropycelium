@@ -1079,12 +1079,16 @@ class Address:
         addr = list(self.address.hex())
         addr = [addr[i] + addr[i+1] for i in range(0, len(addr), 2)]
         formatted, empty = '', False
-        for pair in addr:
+        for i in range(len(addr)):
+            pair = addr[i]
             if pair != '00':
                 formatted += pair
             elif not empty:
-                formatted += '::'
-                empty = True
+                if len(addr) > i + 1 and addr[i+1] != '00':
+                    formatted += '00'
+                else:
+                    formatted += '::'
+                    empty = True
             elif formatted[-2:] != '::':
                 formatted += pair
 
