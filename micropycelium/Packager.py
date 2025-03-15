@@ -1441,7 +1441,7 @@ class Packager:
     @classmethod
     def remove_interface(cls, interface: Interface):
         """Removes a network interface."""
-        cls.call_hook('remove_interface', cls, interface)
+        cls.call_hook('remove_interface', interface)
         cls.interfaces.remove(interface)
 
     @classmethod
@@ -1449,7 +1449,7 @@ class Packager:
         """Adds a peer to the local peer list. Packager will be able to
             send Packages to all such peers.
         """
-        cls.call_hook('add_peer', cls, peer_id, interfaces)
+        cls.call_hook('add_peer', peer_id, interfaces)
         if peer_id not in cls.peers:
             cls.peers[peer_id] = Peer(peer_id, interfaces)
         peer = cls.peers[peer_id]
