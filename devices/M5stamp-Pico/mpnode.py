@@ -65,6 +65,8 @@ def hexify(thing):
         return tuple(hexify(i) for i in thing)
     elif type(thing) is bytes:
         return thing.hex()
+    elif type(thing) is dict:
+        return {hexify(k): hexify(v) for k, v in thing.items()}
     else:
         return repr(thing)
 def debug_name(name: str):
@@ -114,10 +116,13 @@ def tree_send_hook(*args, **kwargs):
 SpanningTree.add_hook('receive', tree_recv_hook)
 SpanningTree.add_hook('broadcast', tree_brdcst_hook)
 SpanningTree.add_hook('send', tree_send_hook)
+SpanningTree.add_hook('respond', debug_name('SpanningTree.respond'))
+SpanningTree.add_hook('assign_address', debug_name('SpanningTree.assign_address'))
 SpanningTree.add_hook('request_address_assignment', debug_name('SpanningTree.request_address_assignment'))
 
 def ping_report_cb(report):
     print('Ping report:')
+    report = hexify(report)
     for k, v in report.items():
         if isinstance(v, dict):
             print(f'  {k}:')
