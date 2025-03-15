@@ -2486,7 +2486,7 @@ class TestPingApplication(unittest.TestCase):
         assert len(Packager.new_events) == 3
         # report event
         ev = Packager.new_events[-1]
-        assert ev.args[-1] == remote_addr
+        assert ev.args[-2] == remote_addr
 
     def test_report_ping_test(self):
         responses = Ping.invoke('get_ping_responses')

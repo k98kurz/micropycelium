@@ -303,7 +303,8 @@ def run_ping_test(
 
 def run_gossip_ping_test(
         node_id: bytes|str, count: int = 4, timeout: int = 60,
-        addr: Address|None = None
+        addr: Address|None = None,
+        callback: Callable|None = None
     ):
     """Ping a node count times through Gossip, scheduling a series of
         pings after a delays calculated by multiplying the index by the
@@ -331,6 +332,7 @@ def run_gossip_ping_test(
         count,
         node_id,
         addr,
+        callback,
     ))
 
 def start():

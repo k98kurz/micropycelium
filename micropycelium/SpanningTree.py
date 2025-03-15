@@ -105,6 +105,8 @@ def receive_tm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
     tmsg = deserialize_tm(blob)
     seen_tm.append(tmsg)
     peer_id = Packager.inverse_peers.get((mac, intrfc.id), None)
+    their_score = claim_score(tmsg.claim)
+    our_score = claim_score(current_best_root_id)
 
     if tmsg.op == TreeOp.SEND:
         if tmsg.node_id is not None and tmsg.node_id != Packager.node_id:
@@ -114,8 +116,6 @@ def receive_tm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
             if peer_id not in Packager.peers:
                 # gossip message for app/service discovery; do not respond
                 return
-        their_score = claim_score(tmsg.claim)
-        our_score = claim_score(current_best_root_id)
         if their_score < our_score:
             # add the claim to the known claims
             addr = Address(tree_state(tmsg.claim), address=tmsg.address)
@@ -126,7 +126,7 @@ def receive_tm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
             SpanningTree.invoke('respond', peer_id)
     elif tmsg.op == TreeOp.RESPOND:
         # received a response to a periodic broadcast
-        if claim_score(tmsg.claim) < claim_score(current_best_root_id):
+        if their_score < our_score:
             # add the claim to the known claims
             addr = Address(tree_state(tmsg.claim), address=tmsg.address)
             root = Address(tree_state(tmsg.claim), coords=[])
