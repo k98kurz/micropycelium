@@ -1686,7 +1686,7 @@ class TestGossipApplication(unittest.TestCase):
         Packager.add_application(Gossip)
         topic_id = sha256(b'topic').digest()[:16]
         data = b'data'
-        gm = GossipMessage(GossipOp.MESSAGE, topic_id, data)
+        gm = GossipMessage(GossipOp.PUBLISH, topic_id, data)
         message_id = sha256(Gossip.invoke('serialize_gm', gm)).digest()[:16]
 
         assert len(mock_interface1.castbox) == 0
@@ -1709,7 +1709,23 @@ class TestGossipApplication(unittest.TestCase):
         Gossip.invoke('unsubscribe', topic_id, test_app.id)
         assert len(Gossip.invoke('get_subscriptions')) == 0
 
-    def test_deliver_gossip_rebroadcasts_small_messages(self):
+    def test_deliver_gossip_rebroadcasts_small_published_messages(self):
+        Packager.add_interface(mock_interface1)
+        Packager.add_application(Gossip)
+        topic_id = sha256(b'topic').digest()[:16]
+        data = b'data'
+        gm = GossipMessage(GossipOp.PUBLISH, topic_id, data)
+        assert len(mock_interface1.castbox) == 0
+        Gossip.invoke('deliver_gossip', gm)
+        assert len(mock_interface1.castbox) == 1
+        packet = Packet.unpack(mock_interface1.castbox.popleft().data)
+        p = Package.unpack(packet.body)
+        gm = Gossip.invoke('deserialize_gm', p.blob)
+        assert gm.op == GossipOp.PUBLISH, gm.op
+        assert gm.topic_id == topic_id
+        assert gm.data == data
+
+    def test_deliver_gossip_message_does_not_rebroadcast(self):
         Packager.add_interface(mock_interface1)
         Packager.add_application(Gossip)
         topic_id = sha256(b'topic').digest()[:16]
@@ -1717,20 +1733,14 @@ class TestGossipApplication(unittest.TestCase):
         gm = GossipMessage(GossipOp.MESSAGE, topic_id, data)
         assert len(mock_interface1.castbox) == 0
         Gossip.invoke('deliver_gossip', gm)
-        assert len(mock_interface1.castbox) == 1
-        packet = Packet.unpack(mock_interface1.castbox.popleft().data)
-        p = Package.unpack(packet.body)
-        gm = Gossip.invoke('deserialize_gm', p.blob)
-        assert gm.op == GossipOp.MESSAGE, gm.op
-        assert gm.topic_id == topic_id
-        assert gm.data == data
+        assert len(mock_interface1.castbox) == 0
 
     def test_deliver_gossip_broadcasts_notification_for_large_messages(self):
         Packager.add_interface(mock_interface1)
         Packager.add_application(Gossip)
         topic_id = sha256(b'topic').digest()[:16]
         data = b'data' * 100
-        gm = GossipMessage(GossipOp.MESSAGE, topic_id, data)
+        gm = GossipMessage(GossipOp.PUBLISH, topic_id, data)
         message_id = sha256(Gossip.invoke('serialize_gm', gm)).digest()[:16]
         Gossip.invoke('deliver_gossip', gm)
         assert len(mock_interface1.castbox) == 1
@@ -2178,7 +2188,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
         p = Package.unpack(packet.body)
         assert p.app_id == Gossip.id
         gm = Gossip.invoke('deserialize_gm', p.blob)
-        assert gm.op == GossipOp.MESSAGE, gm.op
+        assert gm.op == GossipOp.PUBLISH, gm.op
         assert gm.topic_id == SpanningTree.id, gm.topic_id
         tm = SpanningTree.invoke('deserialize', gm.data)
         assert tm.op == TreeOp.SEND, tm.op
@@ -2198,7 +2208,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
         packet = Packet.unpack(mock_interface1.castbox.popleft().data)
         p = Package.unpack(packet.body)
         gm = Gossip.invoke('deserialize_gm', p.blob)
-        assert gm.op == GossipOp.MESSAGE, gm.op
+        assert gm.op == GossipOp.PUBLISH, gm.op
         assert gm.topic_id == SpanningTree.id, gm.topic_id
 
     def test_receive_gossip_message_from_peer_adds_route(self):
@@ -2213,7 +2223,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
         Packager.add_peer(peer_id, [(b'mac0', mock_interface1)])
         tm = TreeMessage(TreeOp.SEND, another_node_id, addr.address, another_node_id)
         blob = SpanningTree.invoke('serialize', tm)
-        gm = GossipMessage(GossipOp.MESSAGE, SpanningTree.id, blob)
+        gm = GossipMessage(GossipOp.PUBLISH, SpanningTree.id, blob)
         package = Package.from_blob(
             Gossip.id, Gossip.invoke('serialize_gm', gm)
         )

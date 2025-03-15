@@ -39,8 +39,9 @@ GossipOp = enum(
     REQUEST = 0,
     REQUEST_IDS = 1,
     NOTIFY = 15,
-    MESSAGE = 240,
-    MESSAGE_IDS = 241,
+    PUBLISH = 240,
+    MESSAGE = 241,
+    MESSAGE_IDS = 242,
 )
 GossipMessage = namedtuple("GossipMessage", ['op', 'topic_id', 'data'])
 # map of topic_id to list of application_ids
@@ -68,7 +69,7 @@ def receive_gm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
     elif gm.op == GossipOp.NOTIFY:
         if message_cache.get(gm.data) is None and peer_id is not None:
             request_gossip_message(gm.data, peer_id)
-    elif gm.op == GossipOp.MESSAGE:
+    elif gm.op in (GossipOp.PUBLISH, GossipOp.MESSAGE):
         deliver_gossip(gm)
     elif gm.op == GossipOp.MESSAGE_IDS:
         if len(gm.data) % 16 or peer_id is None:
@@ -82,22 +83,26 @@ def receive_gm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
                 request_gossip_message(id, peer_id)
 
 def publish_gossip(topic_id: bytes, data: bytes):
-    gm = GossipMessage(GossipOp.MESSAGE, topic_id, data)
+    gm = GossipMessage(GossipOp.PUBLISH, topic_id, data)
     deliver_gossip(gm)
 
 def deliver_gossip(gm: GossipMessage):
     gm_id = sha256(serialize_gm(gm)).digest()[:16]
     if gm_id in seen:
         return
-    # add to cache
-    seen.append(gm_id)
-    message_cache.add(gm_id, gm, ttl=1000)
+    # add to cache if it is a PUBLISH
+    if gm.op == GossipOp.PUBLISH:
+        seen.append(gm_id)
+        message_cache.add(gm_id, gm, ttl=1000)
     # deliver to subscribed applications
     for app_id in subscriptions.get(gm.topic_id, []):
         app = Packager.apps.get(app_id, None)
         if app is None:
             continue
         app.receive(gm.data, InterAppInterface, gossip_app_id)
+    # skip forward if it was a MESSAGE and not a PUBLISH
+    if gm.op == GossipOp.MESSAGE:
+        return
     # forward or notify
     if len(gm.data) > 235 - 17 - 32:
         notify_gossip(gm.topic_id, gm_id)
@@ -119,7 +124,13 @@ def respond_gossip_request(peer_id: bytes, gm_id: bytes):
     gm: GossipMessage|None = message_cache.get(gm_id)
     if gm is None:
         return
-    Packager.send(gossip_app_id, serialize_gm(gm), peer_id)
+    if len(gm.data) > 235 - 17 - 32:
+        # was a request from a notification; do not modify the op
+        Packager.send(gossip_app_id, serialize_gm(gm), peer_id)
+    else:
+        # was a request following message ids; modify the op so it is not forwarded
+        new_gm = GossipMessage(GossipOp.MESSAGE, gm.topic_id, gm.data)
+        Packager.send(gossip_app_id, serialize_gm(new_gm), peer_id)
 
 def request_gossip_ids(topic_id: bytes, peer_id: bytes):
     gm = GossipMessage(GossipOp.REQUEST_IDS, topic_id, Packager.node_id)
