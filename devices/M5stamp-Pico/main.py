@@ -40,6 +40,7 @@ async def monitor_btn(p: Pin, q: deque, debounce_ms: int, inverse: bool = True):
         if (inverse and not p.value()) or (not inverse and p.value()):
             q.append(1)
             Beacon.invoke('start')
+            SpanningTree.invoke('broadcast')
             await sleep_ms(debounce_ms)
         await sleep_ms(1)
 

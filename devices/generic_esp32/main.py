@@ -1,7 +1,7 @@
 from asyncio import sleep_ms, run, gather
 from collections import deque
 from machine import Pin
-from micropycelium import Packager, debug, ESPNowInterface, Beacon
+from micropycelium import Packager, debug, ESPNowInterface, Beacon, Gossip, SpanningTree
 
 def write_file(fname: str, data: str):
     with open(f'/{fname}', 'w') as f:
@@ -30,25 +30,37 @@ async def monitor_btn(p: Pin, q: deque, debounce_ms: int):
         if not p.value():
             q.append(1)
             Beacon.invoke('start')
+            SpanningTree.invoke('broadcast')
             await sleep_ms(debounce_ms)
         await sleep_ms(1)
 
 # add some hooks
-def recv_hook(*args, **kwargs):
+def bcn_recv_hook(*args, **kwargs):
     debug('Beacon.receive')
-def brdcst_hook(*args, **kwargs):
+def bcn_brdcst_hook(*args, **kwargs):
     debug('Beacon.broadcast')
-def send_hook(*args, **kwargs):
+def bcn_respond_hook(*args, **kwargs):
+    debug('Beacon.respond')
+def bcn_send_hook(*args, **kwargs):
     debug('Beacon.send')
 
-Beacon.add_hook('receive', recv_hook)
-Beacon.add_hook('broadcast', brdcst_hook)
-Beacon.add_hook('send', send_hook)
+Beacon.add_hook('receive', bcn_recv_hook)
+Beacon.add_hook('broadcast', bcn_brdcst_hook)
+Beacon.add_hook('respond', bcn_respond_hook)
+Beacon.add_hook('send', bcn_send_hook)
 
 def debug_name(name: str):
     def inner(*args):
         debug(name)
     return inner
+
+Gossip.add_hook('receive', debug_name('Gossip.receive'))
+Gossip.add_hook('publish', debug_name('Gossip.publish'))
+Gossip.add_hook('respond', debug_name('Gossip.respond'))
+
+SpanningTree.add_hook('receive', debug_name('SpanningTree.receive'))
+SpanningTree.add_hook('broadcast', debug_name('SpanningTree.broadcast'))
+SpanningTree.add_hook('send', debug_name('SpanningTree.send'))
 
 # debug hooks
 hooks_added = False
@@ -70,6 +82,8 @@ def add_hooks():
     Packager.add_hook('_send_datagram', debug_name('Packager._send_datagram'))
     Packager.add_hook('deliver', debug_name('Packager.deliver'))
     Packager.add_hook('add_peer', debug_name('Packager.add_peer'))
+    Packager.add_hook('add_route', debug_name('Packager.add_route'))
+    Packager.add_hook('set_addr', debug_name('Packager.set_addr'))
     Packager.add_hook('remove_peer', debug_name('Packager.remove_peer'))
     Packager.add_hook('modemsleep', debug_name('modemsleep'))
     Packager.add_hook('sleepskip', debug_name('sleepskip'))
@@ -80,6 +94,7 @@ def add_hooks():
 def start():
     run(Packager.work(use_modem_sleep=True))
 
-Beacon.invoke('start')
 add_hooks()
+Beacon.invoke('start')
+SpanningTree.invoke('start')
 start()
