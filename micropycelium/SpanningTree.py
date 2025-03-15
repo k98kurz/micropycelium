@@ -21,6 +21,7 @@ except ImportError:
 from binascii import crc32
 from collections import deque, namedtuple
 from random import randint
+from struct import pack, unpack
 from time import time
 
 
@@ -75,14 +76,10 @@ def claim_score(node_id: bytes, overlay_idx: int = 0) -> int:
     return int.from_bytes(xor(node_id, root_id_targets[overlay_idx]), 'big')
 
 def serialize_tm(tmsg: TreeMessage):
-    return tmsg.op.to_bytes(1, 'big') + tmsg.claim + tmsg.address + tmsg.node_id
+    return pack('!B32s16s32s', tmsg.op, tmsg.claim, tmsg.address, tmsg.node_id)
 
 def deserialize_tm(blob: bytes) -> TreeMessage:
-    op = blob[0]
-    claim = blob[1:33]
-    addr_and_id = blob[33:]
-    node_id = addr_and_id[16:] if len(addr_and_id) > 16 else None
-    address = addr_and_id[:16]
+    op, claim, address, node_id = unpack('!B32s16s32s', blob)
     return TreeMessage(op, claim, address, node_id)
 
 def lwst_avlbl_coord() -> int|None:
@@ -138,7 +135,7 @@ def receive_tm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
         # received an address assignment request
         if tree_state(tmsg.claim) == Packager.node_addrs[-1].tree_state:
             # respond with the address assignment
-            coords = list(Packager.node_addrs[0].coords)
+            coords = list(Packager.node_addrs[-1].coords)
             coord = lwst_avlbl_coord()
             if coord is None or peer_id is None:
                 # no available coordinates, or peer_id not found, so reject the request
@@ -195,7 +192,7 @@ def request_address_assignment(pid: bytes, claim: bytes):
     Packager.send(tree_app_id, serialize_tm(tmsg), pid)
 
 def assign_address(pid: bytes, coords: list[int]):
-    addr = Address(tree_state(current_best_root_id), Packager.node_id, coords)
+    addr = Address(tree_state(current_best_root_id), coords=coords)
     tmsg = TreeMessage(
         TreeOp.ASSIGN_ADDRESS,
         current_best_root_id,
@@ -253,7 +250,7 @@ def maintain_tree():
         best_claim, _, peer_id = claims[0]
         if claim_score(best_claim) < claim_score(Packager.node_id):
             # request an address assignment from the best claim
-            request_address_assignment(peer_id, best_claim)
+            SpanningTree.invoke('request_address_assignment', peer_id, best_claim)
             # schedule the next maintenance event
             schedule_tree_maintenance()
         else:

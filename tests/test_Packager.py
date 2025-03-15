@@ -2059,6 +2059,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
         claim_score = lambda pid: SpanningTree.invoke('claim_score', pid)
         SpanningTree.invoke('start')
         local_claim_score = claim_score(Packager.node_id)
+        local_addr = Packager.node_addrs[-1]
         assert len(Packager.node_id) == 32, len(Packager.node_id)
 
         # add a peer with a worse claim score peer_id
@@ -2092,6 +2093,8 @@ class TestSpanningTreeApplication(unittest.TestCase):
         assert tm.op == TreeOp.ASSIGN_ADDRESS, tm.op
         assert tm.claim == Packager.node_id, (tm.claim.hex(), Packager.node_id.hex())
         assert len(SpanningTree.invoke('get_current_children')) == 1
+        addr = Address(tree_state(tm.claim), address=tm.address)
+        assert addr.coords == local_addr.coords + [1], (addr.coords, local_addr.coords)
         SpanningTree.invoke('get_current_children').clear()
 
     def test_receive_ASSIGN_ADDRESS_with_worse_claim_does_not_change_address(self):
