@@ -40,8 +40,8 @@ GossipOp = enum(
     REQUEST_IDS = 1,
     NOTIFY = 15,
     PUBLISH = 240,
-    MESSAGE = 241,
-    MESSAGE_IDS = 242,
+    RESPOND = 254,
+    RESPOND_IDS = 255,
 )
 GossipMessage = namedtuple("GossipMessage", ['op', 'topic_id', 'data'])
 # map of topic_id to list of application_ids
@@ -69,9 +69,9 @@ def receive_gm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
     elif gm.op == GossipOp.NOTIFY:
         if message_cache.get(gm.data) is None and peer_id is not None:
             request_gossip_message(gm.data, peer_id)
-    elif gm.op in (GossipOp.PUBLISH, GossipOp.MESSAGE):
+    elif gm.op in (GossipOp.PUBLISH, GossipOp.RESPOND):
         deliver_gossip(gm)
-    elif gm.op == GossipOp.MESSAGE_IDS:
+    elif gm.op == GossipOp.RESPOND_IDS:
         if len(gm.data) % 16 or peer_id is None:
             # malformed or cannot contact originating node
             return
@@ -100,8 +100,8 @@ def deliver_gossip(gm: GossipMessage):
         if app is None:
             continue
         app.receive(gm.data, InterAppInterface, gossip_app_id)
-    # skip forward if it was a MESSAGE and not a PUBLISH
-    if gm.op == GossipOp.MESSAGE:
+    # skip forward/notify if it was a RESPOND and not a PUBLISH
+    if gm.op == GossipOp.RESPOND:
         return
     # forward or notify
     if len(gm.data) > 235 - 17 - 32:
@@ -129,7 +129,7 @@ def respond_gossip_request(peer_id: bytes, gm_id: bytes):
         Packager.send(gossip_app_id, serialize_gm(gm), peer_id)
     else:
         # was a request following message ids; modify the op so it is not forwarded
-        new_gm = GossipMessage(GossipOp.MESSAGE, gm.topic_id, gm.data)
+        new_gm = GossipMessage(GossipOp.RESPOND, gm.topic_id, gm.data)
         Packager.send(gossip_app_id, serialize_gm(new_gm), peer_id)
 
 def request_gossip_ids(topic_id: bytes, peer_id: bytes):
@@ -146,7 +146,7 @@ def schedule_request_gossip_ids(topic_id: bytes, peer_id: bytes):
 
 def respond_gossip_ids(peer_id: bytes, topic_id: bytes):
     ids = list(message_cache.items.keys())
-    gm = GossipMessage(GossipOp.MESSAGE_IDS, topic_id, b''.join(ids))
+    gm = GossipMessage(GossipOp.RESPOND_IDS, topic_id, b''.join(ids))
     Packager.send(gossip_app_id, serialize_gm(gm), peer_id)
 
 def subscribe_gossip(topic_id: bytes, app_id: bytes):
@@ -181,7 +181,9 @@ Gossip = Application(
         'publish': lambda _, topic_id, data: publish_gossip(topic_id, data),
         'notify': lambda _, topic_id, data: notify_gossip(topic_id, data),
         'respond': lambda _, topic_id, data: respond_gossip_request(topic_id, data),
-        'request': lambda _, topic_id, data: request_gossip_message(topic_id, data),
+        'respond_ids': lambda _, peer_id, topic_id: respond_gossip_ids(peer_id, topic_id),
+        'request': lambda _, topic_id, peer_id: request_gossip_message(topic_id, peer_id),
+        'request_ids': lambda _, topic_id, peer_id: request_gossip_ids(topic_id, peer_id),
         'subscribe': lambda _, topic_id, app_id: subscribe_gossip(topic_id, app_id),
         'unsubscribe': lambda _, topic_id, app_id: unsubscribe_gossip(topic_id, app_id),
         'deliver_gossip': lambda _, gm: deliver_gossip(gm),

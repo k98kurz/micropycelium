@@ -960,49 +960,97 @@ application to find each other across the network, a gossip application will be
 included. This application will use broadcasts and sends to transmit Packages to
 peers and thus disseminate them across the network.
 
-There are three types of gossip Packages: a Message, a Notification, and a
-Request. Each Package body will start with a 1-byte `type` field which will be
-0xf0 for a Message, 0x0f for a Notification, and 0x00 for a Request.
+## Message Types and Serialization
 
-A Message Package contains the following:
+There are six types of gossip Messages (Package bodies): Publish, Notify,
+Request, Request IDs, Respond, and Respond IDs. Messages are serialized as
+follows:
 
-- 1 type: 0xf0
+- 1 type
+- 16 id_field
+- 0+ data
+
+A Request Message contains the following:
+
+- 1 type: 0x00 (0)
+- 16 message_id: the half_sha256 of the serialized Publish Message received in a
+  Notify Message
+- 32 node_id: the node_id of requester
+
+A Request IDs Message contains the following:
+
+- 1 type: 0x01 (1)
+- 16 topic_id: half_sha256 of the topic data
+- 32 node_id: the node_id of requester
+
+A Notify Message contains the following:
+
+- 1 type: 0x0f (15)
+- 16 topic_id: half_sha256 of the topic data
+- 16 message_id: the half_sha256 of the serialized Publish Message
+
+A Publish Message contains the following:
+
+- 1 type: 0xf0 (240)
 - 16 topic_id: half_sha256 of the topic data
 - 0+ data: the data for the topic subscribers to injest
 
-A Notification Package contains the following:
+A Respond Message contains the following:
 
-- 1 type: 0x0f
-- 16 message_id: the half_sha256 of the serialized Message
+- 1 type: 0xfe (254)
+- 16 message_id: the half_sha256 of the serialized Publish Message received in a
+  Notify Message
+- 0+ data: the data for the topic subscribers to injest
 
-A Request Package contains the following:
+A Respond IDs Message contains the following:
 
-- 1 type: 0x00
-- 16 message_id: the half_sha256 of the serialized Message received in a
-Notification
+- 1 type: 0xff (255)
+- 16 topic_id: half_sha256 of the topic data
+- 0+ data: the Message IDs available for the topic
 
 ## Publish
 
-Makes a Message out of a topic_id and data, then delivers the Message locally.
+Makes a Publish Message out of a topic_id and data, then delivers the Publish
+Message locally, which then broadcasts a Publish or Notify Message to peers,
+depending on the size of the data.
 
 ## Deliver
 
-When a Message is delivered locally, the node broadcasts either the Message if
-it can fit in a single packet or a Notification for the Message. If it
-broadcasts a Notification, then it awaits Requests from its peers and responds
+When a Publish Message is delivered locally, the node broadcasts either the
+Message if it can fit in a single packet or a Notify for the Publish. If it
+broadcasts a Notify, then it awaits Requests from its peers and responds
 by sending the Message. The Message is also put into a cache to mark it as seen
 so that future deliveries of the same Message are rejected and future
 Notifications for the Message ID are ignored.
 
 ## Notify
 
-When a Notification is received, if the Message ID is not in the cache, the node
-will send a Request to the peer that sent the Notification.
+When a Notify Message is received, if the Message ID is not in the cache, the
+node will send a Request to the peer that sent the Notify.
 
 ## Respond
 
 When a Request is received, if a Message with the requested ID is in the cache,
-the node will send the Message to the peer that sent the Request.
+the node will send the Message to the peer that sent the Request. If the
+requested Message can fit into a single packet, the message type will be changed
+to a Respond to avoid further forwarding by the recipient; otherwise, it will
+assume that this was a response to a Notify.
+
+## Respond IDs
+
+When a Request IDs is received, the node will send a Respond IDs for each topic
+ID for which an application is subscribed.
+
+## Request
+
+When a Notify is received for an unseen Message ID, the node will send a Request.
+When a list of Message IDs is received, the node will send a Request for each
+unseen Message ID.
+
+## Request IDs
+
+When a new peer is added, the node will send a Request IDs for each topic ID for
+which an application is subscribed.
 
 ## Subscribe
 

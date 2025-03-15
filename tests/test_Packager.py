@@ -1702,7 +1702,7 @@ class TestGossipApplication(unittest.TestCase):
         Packager.add_application(Gossip)
         topic_id = sha256(b'topic').digest()[:16]
         data = b'data'
-        gm = GossipMessage(GossipOp.MESSAGE, topic_id, data)
+        gm = GossipMessage(GossipOp.RESPOND, topic_id, data)
         assert len(mock_interface1.castbox) == 0
         Gossip.invoke('deliver_gossip', gm)
         assert len(mock_interface1.castbox) == 0
@@ -1729,7 +1729,7 @@ class TestGossipApplication(unittest.TestCase):
         Packager.add_application(test_app)
         topic_id = sha256(b'topic').digest()[:16]
         data =  b'data'
-        gm = GossipMessage(GossipOp.MESSAGE, topic_id, data)
+        gm = GossipMessage(GossipOp.RESPOND, topic_id, data)
 
         Gossip.invoke('subscribe', topic_id, test_app.id)
         assert len(Gossip.invoke('get_subscriptions')) == 1
@@ -1744,7 +1744,7 @@ class TestGossipApplication(unittest.TestCase):
         Packager.add_peer(b'peer0', [(b'mac0', mock_interface1)])
 
         topic_id = sha256(b'topic').digest()[:16]
-        gm = GossipMessage(GossipOp.MESSAGE, topic_id, b'test data')
+        gm = GossipMessage(GossipOp.RESPOND, topic_id, b'test data')
         message_id = sha256(Gossip.invoke('serialize_gm', gm)).digest()[:16]
         Gossip.invoke('get_seen').append(message_id)
         blob = Gossip.invoke('serialize_gm', gm)
@@ -1762,7 +1762,7 @@ class TestGossipApplication(unittest.TestCase):
         Packager.add_peer(b'peer0', [(b'mac0', mock_interface1)])
 
         topic_id = sha256(b'topic').digest()[:16]
-        og_gm = GossipMessage(GossipOp.MESSAGE, topic_id, b'test data')
+        og_gm = GossipMessage(GossipOp.RESPOND, topic_id, b'test data')
         message_id = sha256(Gossip.invoke('serialize_gm', og_gm)).digest()[:16]
         gm = GossipMessage(GossipOp.NOTIFY, topic_id, message_id)
         blob = Gossip.invoke('serialize_gm', gm)
@@ -1784,7 +1784,7 @@ class TestGossipApplication(unittest.TestCase):
         Packager.add_peer(b'peer0', [(b'mac0', mock_interface1)])
 
         topic_id = sha256(b'topic').digest()[:16]
-        og_gm = GossipMessage(GossipOp.MESSAGE, topic_id, b'test data')
+        og_gm = GossipMessage(GossipOp.RESPOND, topic_id, b'test data')
         message_id = sha256(Gossip.invoke('serialize_gm', og_gm)).digest()[:16]
         Gossip.invoke('get_message_cache').add(message_id, og_gm)
         gm = GossipMessage(GossipOp.NOTIFY, topic_id, message_id)
@@ -1801,7 +1801,7 @@ class TestGossipApplication(unittest.TestCase):
         Packager.add_peer(b'peer0', [(b'mac0', mock_interface1)])
 
         topic_id = sha256(b'topic').digest()[:16]
-        og_gm = GossipMessage(GossipOp.MESSAGE, topic_id, b'test data')
+        og_gm = GossipMessage(GossipOp.RESPOND, topic_id, b'test data')
         message_id = sha256(Gossip.invoke('serialize_gm', og_gm)).digest()[:16]
         Gossip.invoke('get_message_cache').add(message_id, og_gm)
         gm = GossipMessage(GossipOp.REQUEST, message_id, b'some node id')
@@ -1823,7 +1823,7 @@ class TestGossipApplication(unittest.TestCase):
 
         topic_id = sha256(b'topic').digest()[:16]
         og_gms = [
-            GossipMessage(GossipOp.MESSAGE, topic_id, b'data'+i.to_bytes(1, 'big'))
+            GossipMessage(GossipOp.RESPOND, topic_id, b'data'+i.to_bytes(1, 'big'))
             for i in range(3)
         ]
         message_ids = [
@@ -1842,7 +1842,7 @@ class TestGossipApplication(unittest.TestCase):
         packet = Packet.unpack(mock_interface1.outbox.popleft().data)
         p = Package.unpack(packet.body)
         gm = Gossip.invoke('deserialize_gm', p.blob)
-        assert gm.op == GossipOp.MESSAGE_IDS, gm.op
+        assert gm.op == GossipOp.RESPOND_IDS, gm.op
         assert gm.topic_id == topic_id
         assert gm.data == b''.join(message_ids)
 
@@ -1854,7 +1854,7 @@ class TestGossipApplication(unittest.TestCase):
 
         topic_id = sha256(b'topic').digest()[:16]
         og_gms = [
-            GossipMessage(GossipOp.MESSAGE, topic_id, b'data'+i.to_bytes(1, 'big'))
+            GossipMessage(GossipOp.RESPOND, topic_id, b'data'+i.to_bytes(1, 'big'))
             for i in range(3)
         ]
         message_ids = [
@@ -1863,7 +1863,7 @@ class TestGossipApplication(unittest.TestCase):
         ]
         # add one to the cache
         Gossip.invoke('get_message_cache').add(message_ids[0], og_gms[0])
-        gm = GossipMessage(GossipOp.MESSAGE_IDS, topic_id, b''.join(message_ids))
+        gm = GossipMessage(GossipOp.RESPOND_IDS, topic_id, b''.join(message_ids))
         blob = Gossip.invoke('serialize_gm', gm)
 
         assert len(mock_interface1.outbox) == 0
