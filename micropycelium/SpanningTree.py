@@ -113,7 +113,7 @@ def receive_tm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
             Packager.add_route(
                 tmsg.node_id, Address(tree_state(tmsg.claim), address=tmsg.address)
             )
-            if peer_id not in Packager.peers:
+            if tmsg.node_id != peer_id:
                 # gossip message for app/service discovery; do not respond
                 return
         if their_score < our_score:
@@ -145,12 +145,12 @@ def receive_tm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
             SpanningTree.invoke('assign_address', peer_id, coords)
     elif tmsg.op == TreeOp.ASSIGN_ADDRESS:
         # received an address assignment response
-        if claim_score(tmsg.claim) < claim_score(current_best_root_id):
+        if their_score < our_score and tmsg.node_id != Packager.node_id:
             # accept the address and set the new best claim
-            Packager.set_addr(Address(tree_state(tmsg.claim), tmsg.address))
             current_best_root_id = tmsg.claim
             current_parent = peer_id
             current_children.clear()
+            Packager.set_addr(Address(tree_state(tmsg.claim), tmsg.address))
         else:
             # we have a better claim, so respond with it
             SpanningTree.invoke('respond', peer_id)
@@ -197,7 +197,7 @@ def assign_address(pid: bytes, coords: list[int]):
         TreeOp.ASSIGN_ADDRESS,
         current_best_root_id,
         addr.address,
-        pid
+        Packager.node_id
     )
     Packager.send(tree_app_id, serialize_tm(tmsg), pid)
 
