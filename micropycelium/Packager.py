@@ -1222,12 +1222,14 @@ class Peer:
         self.queue = deque([], 10)
 
     def set_addr(self, addr: Address):
-        """Appends the Address to the peer's address deque, maintaining
-            at most 2 addresses.
+        """Appends the Address to the peer's address deque, first
+            removing any old addresses with the same tree state.
         """
+        addrs = [self.addrs.popleft() for _ in range(len(self.addrs))]
+        for a in addrs:
+            if a.tree_state != addr.tree_state:
+                self.addrs.append(a)
         self.addrs.append(addr)
-        while len(self.addrs) > 2:
-            self.addrs.popleft()
 
     @property
     def can_tx(self) -> bool:
@@ -1395,6 +1397,7 @@ class Packager:
     peers: dict[bytes, Peer] = {}
     inverse_peers: dict[tuple[bytes, bytes], bytes] = {} # map (mac, intrfc.id): peer_id
     routes: dict[Address, bytes] = {}
+    inverse_routes: dict[bytes, deque[Address]] = {}
     node_id: bytes = b''
     node_addrs: deque[Address] = deque([], 2)
     apps: dict[bytes, Application] = {}
@@ -1415,6 +1418,7 @@ class Packager:
         cls.peers.clear()
         cls.inverse_peers.clear()
         cls.routes.clear()
+        cls.inverse_routes.clear()
         cls.node_addrs.clear()
         cls.apps.clear()
         cls.schedule.clear()
@@ -1494,6 +1498,8 @@ class Packager:
             for addr in peer.addrs:
                 if addr in cls.routes:
                     cls.routes.pop(addr)
+            if peer.id in cls.inverse_routes:
+                del cls.inverse_routes[peer.id]
             for mac, intrfc in peer.interfaces:
                 if (mac, intrfc.id) in cls.inverse_peers:
                     del cls.inverse_peers[(mac, intrfc.id)]
@@ -1502,23 +1508,34 @@ class Packager:
     def add_route(cls, node_id: bytes, address: Address):
         """Adds an address for a peer. Will also store the previous
             Address for the peer to maintain routability during tree
-            state transitions.
+            state transitions if the new tree state is different
+            (maintains only one route per tree state).
         """
         cls.call_hook('add_route', node_id, address)
         if node_id in cls.peers:
             addrs = cls.peers[node_id].addrs
             if address not in addrs:
-                if len(addrs) > 1:
-                    cls.routes.pop(addrs[0])
                 cls.peers[node_id].set_addr(address)
         cls.routes[address] = node_id
+        if node_id not in cls.inverse_routes:
+            cls.inverse_routes[node_id] = deque([], 2)
+        cls.inverse_routes[node_id].append(address)
 
     @classmethod
     def remove_route(cls, address: Address):
         """Removes the route to the peer with the given address."""
         cls.call_hook('remove_route', address)
-        if address in cls.routes:
-            cls.routes.pop(address)
+        if address not in cls.routes:
+            return
+        peer_id = cls.routes.pop(address)
+        if peer_id in cls.inverse_routes:
+            addrs = [
+                cls.inverse_routes[peer_id].popleft()
+                for _ in range(len(cls.inverse_routes[peer_id]))
+            ]
+            for a in addrs:
+                if a != address:
+                    cls.inverse_routes[peer_id].append(a)
 
     @classmethod
     def set_addr(cls, addr: Address):
@@ -1639,10 +1656,11 @@ class Packager:
             peer = cls.peers[node_id]
         else:
             # find the address for the given node_id
-            for addr, pid in cls.routes.items():
-                if pid == node_id:
-                    to_addr = addr
-                    break
+            if node_id not in cls.inverse_routes:
+                return False
+            for addr in cls.inverse_routes[node_id]:
+                to_addr = addr
+                break
             if not to_addr:
                 return False
             next_hop = cls.next_hop(cls.node_addrs[-1].tree_state, to_addr, metric)
@@ -1708,10 +1726,10 @@ class Packager:
             intrfcs = cls.peers[node_id].interfaces
             intrfcs.sort(key=lambda mi: mi[1].bitrate, reverse=True)
             return (intrfcs[0][0], intrfcs[0][1], cls.peers[node_id])
-        elif node_id in (nid for _, nid in cls.routes.items()):
+        elif node_id in cls.inverse_routes:
             # known node reachable via routing; prepare to find next hop
             # set to_addr
-            addrs = [addr for addr, pid in cls.routes.items() if pid == node_id]
+            addrs = cls.inverse_routes[node_id]
             nowaddrs = [a for a in addrs if a.tree_state == cls.node_addrs[-1].tree_state]
             if len(nowaddrs):
                 to_addr = nowaddrs[0]
@@ -1812,7 +1830,7 @@ class Packager:
         if node_id in cls.peers:
             # direct neighbors
             mac, intrfc, peer = cls.get_interface(node_id)
-        elif node_id in (nid for _, nid in cls.routes.items()):
+        elif node_id in cls.inverse_routes:
             # known node reachable via routing
             mac, intrfc, peer = cls.get_interface(node_id)
         elif 'to_addr' in packet.fields and 'from_addr' in packet.fields:
