@@ -1924,6 +1924,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
         return super().tearDown()
 
     def test_start_and_stop_e2e(self):
+        Packager.add_interface(mock_interface1)
         Packager.add_application(SpanningTree)
         Packager.add_application(Gossip)
         assert len(Packager._hooks.get('remove_peer', [])) == 0
@@ -2222,6 +2223,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
 class TestPingApplication(unittest.TestCase):
     def setUp(self) -> None:
         Packager.reset()
+        Packager.add_interface(mock_interface1)
         mock_interface1.castbox.clear()
         mock_interface1.outbox.clear()
         mock_interface1.inbox.clear()
@@ -2244,7 +2246,6 @@ class TestPingApplication(unittest.TestCase):
         return super().tearDown()
 
     def test_request_sends_ping_request(self):
-        Packager.add_interface(mock_interface1)
         Packager.add_application(Ping)
         peer_id = urandom(32)
         peer_addr = Address.from_str('1-10::')
@@ -2267,7 +2268,6 @@ class TestPingApplication(unittest.TestCase):
         assert pm.tree_state == Packager.node_addrs[-1].tree_state
 
     def test_respond_sends_ping_response(self):
-        Packager.add_interface(mock_interface1)
         Packager.add_application(Ping)
         peer_id = urandom(32)
         peer_addr = Address.from_str('1-10::')
@@ -2283,6 +2283,8 @@ class TestPingApplication(unittest.TestCase):
             PingOp.REQUEST,
             randint(0, 255),
             int(time()),
+            0,
+            0,
             remote_addr.tree_state,
             remote_addr.address,
             remote_id
@@ -2294,12 +2296,14 @@ class TestPingApplication(unittest.TestCase):
         p = Package.unpack(packet.body)
         pm = Ping.invoke('deserialize_pm', p.blob)
         assert pm.op == PingOp.RESPOND, pm.op
+        assert pm.ts1 > 0
+        assert pm.ts2 > 0
+        assert pm.ts3 == 0
         assert pm.node_id == remote_id, (pm.node_id.hex(), remote_id.hex())
         assert pm.address == remote_addr.address, (pm.address.hex(), remote_addr.address.hex())
         assert pm.tree_state == remote_addr.tree_state
 
     def test_receive_ping_request_sends_ping_response(self):
-        Packager.add_interface(mock_interface1)
         Packager.add_application(Ping)
         peer_id = urandom(32)
         peer_addr = Address.from_str('1-10::')
@@ -2311,10 +2315,13 @@ class TestPingApplication(unittest.TestCase):
         Packager.add_route(peer_id, peer_addr)
         Packager.add_route(remote_id, remote_addr)
         assert len(mock_interface1.outbox) == 0
+        ts1 = int(time())
         pm = PingMessage(
             PingOp.REQUEST,
             randint(0, 255),
-            int(time()),
+            ts1,
+            0,
+            0,
             remote_addr.tree_state,
             remote_addr.address,
             remote_id
@@ -2329,12 +2336,14 @@ class TestPingApplication(unittest.TestCase):
         p = Package.unpack(packet.body)
         pm = Ping.invoke('deserialize_pm', p.blob)
         assert pm.op == PingOp.RESPOND, pm.op
+        assert pm.ts1 == ts1
+        assert pm.ts2 > 0
+        assert pm.ts3 == 0
         assert pm.node_id == remote_id, (pm.node_id.hex(), remote_id.hex())
         assert pm.address == remote_addr.address, (pm.address.hex(), remote_addr.address.hex())
         assert pm.tree_state == remote_addr.tree_state
 
     def test_receive_ping_response_adds_to_deque(self):
-        Packager.add_interface(mock_interface1)
         Packager.add_application(Ping)
         peer_id = urandom(32)
         peer_addr = Address.from_str('1-10::')
@@ -2346,10 +2355,14 @@ class TestPingApplication(unittest.TestCase):
         Packager.add_route(peer_id, peer_addr)
         Packager.add_route(remote_id, remote_addr)
         assert len(Ping.invoke('get_ping_responses')) == 0
+        ts1 = int(time())-2
+        ts2 = int(time())-1
         pm = PingMessage(
             PingOp.RESPOND,
             randint(0, 255),
-            int(time()),
+            ts1,
+            ts2,
+            0,
             local_addr.tree_state,
             local_addr.address,
             Packager.node_id
@@ -2360,6 +2373,85 @@ class TestPingApplication(unittest.TestCase):
         )
         Packager.deliver(package, mock_interface1, b'mac0')
         assert len(Ping.invoke('get_ping_responses')) == 1
+        pm = Ping.invoke('get_ping_responses').popleft()
+        assert pm.op == PingOp.RESPOND, pm.op
+        assert pm.ts1 == ts1
+        assert pm.ts2 == ts2
+        assert pm.ts3 >= ts2
+        assert pm.node_id == Packager.node_id, (pm.node_id.hex(), Packager.node_id.hex())
+        assert pm.address == local_addr.address, (pm.address.hex(), local_addr.address.hex())
+        assert pm.tree_state == local_addr.tree_state
+
+    def test_gossip_ping_request_sends_gossip_request(self):
+        Packager.add_application(Ping)
+        Packager.add_application(Gossip)
+        peer_id = urandom(32)
+        peer_addr = Address.from_str('1-10::')
+        remote_id = urandom(32)
+        remote_addr = Address.from_str('1-15::')
+        local_addr = Address.from_str('1-::')
+        topic_id = sha256(Ping.id + remote_id).digest()[:16]
+        Packager.add_peer(peer_id, [(b'mac0', mock_interface1)])
+        Packager.set_addr(local_addr)
+        Packager.add_route(peer_id, peer_addr)
+        Packager.add_route(remote_id, remote_addr)
+        assert len(mock_interface1.castbox) == 0
+        Ping.invoke('gossip_request', remote_id)
+        assert len(mock_interface1.castbox) == 1
+        packet = Packet.unpack(mock_interface1.castbox.popleft().data)
+        p = Package.unpack(packet.body)
+        gm = Gossip.invoke('deserialize_gm', p.blob)
+        assert gm.op == GossipOp.PUBLISH, gm.op
+        assert gm.topic_id == topic_id, (gm.topic_id.hex(), topic_id.hex())
+        pm = Ping.invoke('deserialize_pm', gm.data)
+        assert pm.op == PingOp.GOSSIP_REQUEST, pm.op
+        assert pm.node_id == Packager.node_id, (pm.node_id.hex(), Packager.node_id.hex())
+        assert pm.address == local_addr.address, (pm.address.hex(), local_addr.address.hex())
+        assert pm.tree_state == local_addr.tree_state
+        assert pm.ts1 >= int(time())-1
+        assert pm.ts2 == 0
+        assert pm.ts3 == 0
+
+    def test_gossip_ping_respond_sends_gossip_respond(self):
+        Packager.add_application(Ping)
+        Packager.add_application(Gossip)
+        peer_id = urandom(32)
+        peer_addr = Address.from_str('1-10::')
+        remote_id = urandom(32)
+        remote_addr = Address.from_str('1-15::')
+        local_addr = Address.from_str('1-::')
+        topic_id = sha256(Ping.id + remote_id).digest()[:16]
+        Packager.add_peer(peer_id, [(b'mac0', mock_interface1)])
+        Packager.set_addr(local_addr)
+        Packager.add_route(peer_id, peer_addr)
+        Packager.add_route(remote_id, remote_addr)
+        ts1 = int(time())-1
+        pm = PingMessage(
+            PingOp.GOSSIP_REQUEST,
+            randint(0, 255),
+            ts1,
+            0,
+            0,
+            remote_addr.tree_state,
+            remote_addr.address,
+            remote_id
+        )
+        assert len(mock_interface1.castbox) == 0
+        Ping.invoke('gossip_respond', pm)
+        assert len(mock_interface1.castbox) == 1
+        packet = Packet.unpack(mock_interface1.castbox.popleft().data)
+        p = Package.unpack(packet.body)
+        gm = Gossip.invoke('deserialize_gm', p.blob)
+        assert gm.op == GossipOp.PUBLISH, gm.op
+        assert gm.topic_id == topic_id, (gm.topic_id.hex(), topic_id.hex())
+        pm = Ping.invoke('deserialize_pm', gm.data)
+        assert pm.op == PingOp.GOSSIP_RESPOND, pm.op
+        assert pm.node_id == remote_id, (pm.node_id.hex(), remote_id.hex())
+        assert pm.address == remote_addr.address, (pm.address.hex(), remote_addr.address.hex())
+        assert pm.tree_state == remote_addr.tree_state
+        assert pm.ts1 == ts1
+        assert pm.ts2 >= ts1
+        assert pm.ts3 == 0
 
 
 if __name__ == '__main__':

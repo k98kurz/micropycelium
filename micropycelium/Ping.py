@@ -22,6 +22,7 @@ from binascii import crc32
 from collections import deque, namedtuple
 from hashlib import sha256
 from random import randint
+from struct import pack, unpack
 from time import time
 
 
@@ -40,28 +41,27 @@ PingOp = enum(
 
 PingMessage = namedtuple(
     "PingMessage",
-    ['op', 'nonce', 'ts', 'tree_state', 'address', 'node_id']
+    ['op', 'nonce', 'ts1', 'ts2', 'ts3', 'tree_state', 'address', 'node_id']
 )
 
 ping_responses: deque[PingMessage] = deque([], 10)
 gossip_app_id = bytes.fromhex('849969c1f22797d66f5a94db2afe634a')
 
 def serialize_pm(pm: PingMessage) -> bytes:
-    return pm.op.to_bytes(1, 'big') + \
-        pm.nonce.to_bytes(1, 'big') + \
-        pm.ts.to_bytes(4, 'big') + \
-        pm.tree_state.to_bytes(1, 'big') + \
-        pm.address + \
+    return pack(
+        '!BBIIIB16s32s',
+        pm.op,
+        pm.nonce,
+        pm.ts1,
+        pm.ts2,
+        pm.ts3,
+        pm.tree_state,
+        pm.address,
         pm.node_id
+    )
 
 def deserialize_pm(blob: bytes) -> PingMessage:
-    op = blob[0]
-    nonce = blob[1]
-    ts = int.from_bytes(blob[2:6], 'big')
-    tree_state = blob[6]
-    address = blob[7:23]
-    node_id = blob[23:]
-    return PingMessage(op, nonce, ts, tree_state, address, node_id)
+    return PingMessage(*unpack('!BBIIIB16s32s', blob))
 
 def receive_pm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
     pm = deserialize_pm(blob)
@@ -83,6 +83,8 @@ def ping_request(node_id: bytes|str) -> bool:
         PingOp.REQUEST,
         randint(0, 255),
         int(time()),
+        0,
+        0,
         Packager.node_addrs[-1].tree_state,
         Packager.node_addrs[-1].address,
         Packager.node_id
@@ -94,7 +96,9 @@ def ping_respond(pm: PingMessage):
     pm = PingMessage(
         PingOp.RESPOND,
         pm.nonce,
-        pm.ts,
+        pm.ts1,
+        int(time()),
+        0,
         pm.tree_state,
         pm.address,
         pm.node_id
@@ -102,7 +106,16 @@ def ping_respond(pm: PingMessage):
     return Packager.send(Ping.id, serialize_pm(pm), pm.node_id)
 
 def ping_response_received(pm: PingMessage):
-    ping_responses.append(pm)
+    ping_responses.append(PingMessage(
+        pm.op,
+        pm.nonce,
+        pm.ts1,
+        pm.ts2,
+        int(time()),
+        pm.tree_state,
+        pm.address,
+        pm.node_id
+    ))
 
 def ping_gossip_request(node_id: bytes|str) -> bool:
     """Send a gossip request to the given node id. Returns False if the
@@ -117,6 +130,8 @@ def ping_gossip_request(node_id: bytes|str) -> bool:
         PingOp.GOSSIP_REQUEST,
         randint(0, 255),
         int(time()),
+        0,
+        0,
         Packager.node_addrs[-1].tree_state,
         Packager.node_addrs[-1].address,
         Packager.node_id
@@ -133,7 +148,9 @@ def ping_gossip_respond(pm: PingMessage) -> bool:
     pm = PingMessage(
         PingOp.GOSSIP_RESPOND,
         pm.nonce,
-        pm.ts,
+        pm.ts1,
+        int(time()),
+        0,
         pm.tree_state,
         pm.address,
         pm.node_id
@@ -143,7 +160,16 @@ def ping_gossip_respond(pm: PingMessage) -> bool:
     return True
 
 def ping_gossip_response_received(pm: PingMessage):
-    ping_responses.append(pm)
+    ping_responses.append(PingMessage(
+        pm.op,
+        pm.nonce,
+        pm.ts1,
+        pm.ts2,
+        int(time()),
+        pm.tree_state,
+        pm.address,
+        pm.node_id
+    ))
 
 def ping_list_routes():
     """List all routes known to this node."""
