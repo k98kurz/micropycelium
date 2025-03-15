@@ -908,7 +908,9 @@ class Datagram:
         self.addr = addr
 
     def __repr__(self) -> str:
-        return f'Datagram(data={self.data}, intrfc_id={self.intrfc_id}, addr={self.addr})'
+        return f'Datagram(data={self.data.hex()}, ' +\
+            f'intrfc_id={self.intrfc_id.hex() if self.intrfc_id else None}, ' +\
+            f'addr={self.addr.hex() if self.addr else None})'
 
 
 # @micropython.native
@@ -1600,7 +1602,7 @@ class Packager:
         for intrfc in chosen_intrfcs:
             br = intrfc.broadcast
             for p in packets:
-                br(Datagram(p.pack()))
+                br(Datagram(p.pack(), intrfc.id))
         return True
 
     @classmethod
