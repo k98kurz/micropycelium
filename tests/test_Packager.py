@@ -1933,7 +1933,9 @@ class TestSpanningTreeApplication(unittest.TestCase):
         assert len(Packager._hooks.get('remove_peer', [])) == 1
         assert len(Gossip.invoke('get_subscriptions')) == 1
         assert len(Packager.new_events) == 1
+        assert len(Packager.schedule.keys()) == 0
         asyncio.run(Packager.process())
+        assert len(Packager.new_events) == 0
         assert len(Packager.schedule.keys()) == 1
         assert SpanningTree.id+b's' in Packager.schedule
         assert len(Packager.new_events) == 0
@@ -2472,7 +2474,7 @@ class TestPingApplication(unittest.TestCase):
         assert len(Packager.new_events) == 6
         # report event
         ev = Packager.new_events[-1]
-        assert ev.args[-1] == remote_addr
+        assert ev.args[-2] == remote_addr
 
     def test_gossip_ping_test_adds_new_events(self):
         remote_id = urandom(32)

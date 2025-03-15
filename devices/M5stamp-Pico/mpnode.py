@@ -116,9 +116,9 @@ SpanningTree.add_hook('broadcast', tree_brdcst_hook)
 SpanningTree.add_hook('send', tree_send_hook)
 SpanningTree.add_hook('request_address_assignment', debug_name('SpanningTree.request_address_assignment'))
 
-def ping_report_callback(*args, **kwargs):
+def ping_report_cb(report):
     print('Ping report:')
-    for k, v in kwargs.items():
+    for k, v in report.items():
         if isinstance(v, dict):
             print(f'  {k}:')
             for k2, v2 in v.items():

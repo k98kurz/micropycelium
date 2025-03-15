@@ -268,7 +268,8 @@ def report_ping_test(
 
 def run_ping_test(
         node_id: bytes|str, count: int = 4, timeout: int = 30,
-        addr: Address|None = None, metric: int = dTree
+        addr: Address|None = None, metric: int = dTree,
+        callback: Callable|None = None
     ):
     """Ping a node count times, scheduling a series of pings after a
         delays calculated by multiplying the index by the timeout. Also
@@ -279,6 +280,7 @@ def run_ping_test(
     topic_id += PingOp.REQUEST.to_bytes(1, 'big')
     nonce = randint(0, 255)
     now = int(time())*1000
+    addr = addr if addr is not None else Packager.inverse_routes.get(node_id, None)
     for i in range(count):
         Packager.new_events.append(Event(
             now + timeout * i * 1000,
@@ -296,6 +298,7 @@ def run_ping_test(
         count,
         node_id,
         addr,
+        callback,
     ))
 
 def run_gossip_ping_test(
