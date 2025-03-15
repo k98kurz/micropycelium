@@ -1801,7 +1801,7 @@ class Packager:
     def send_packet(cls, packet: Packet, node_id: bytes = None) -> bool:
         """Attempts to send a Packet either to a specific node or toward
             the to_addr field (decrement ttl); if flags.error is set,
-            send toward the from_addr field (no ttl decrement). Returns
+            send toward the from_addr field (increment ttl). Returns
             False if it cannot be sent.
         """
         cls.call_hook('send_packet', packet, node_id)
