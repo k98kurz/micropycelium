@@ -2530,7 +2530,7 @@ class TestPingApplication(unittest.TestCase):
                 Packager.node_id
             ))
         assert len(responses) == count
-        report = Ping.invoke('report_ping_test', nonce, count, remote_id, remote_addr)
+        report = Ping.invoke('report_ping_test', nonce, remote_id, remote_addr)
         assert len(responses) == 0
         assert report['mode'] == mode
         assert report['remote_id'] == remote_id.hex()
@@ -2560,7 +2560,7 @@ class TestPingApplication(unittest.TestCase):
                 Packager.node_id
             ))
         assert len(responses) == count
-        report = Ping.invoke('report_ping_test', nonce, count, remote_id, remote_addr)
+        report = Ping.invoke('report_ping_test', nonce, remote_id, remote_addr)
         assert len(responses) == 0
         assert report['mode'] == 'gossip'
 

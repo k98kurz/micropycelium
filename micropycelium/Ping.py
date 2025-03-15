@@ -77,6 +77,10 @@ def receive_pm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
         Ping.invoke('respond', pm)
     elif pm.op == PingOp.RESPOND:
         Ping.invoke('response_received', pm)
+    elif pm.op == PingOp.GOSSIP_REQUEST:
+        Ping.invoke('gossip_respond', pm)
+    elif pm.op == PingOp.GOSSIP_RESPOND:
+        Ping.invoke('gossip_response_received', pm)
 
 def ping_request(
         node_id: bytes|str, metric: int = dTree, nonce: int|None = None
@@ -192,8 +196,8 @@ def ping_list_routes():
         print(f'\t{node_id.hex()}: {addr.coords} {addr.address.hex()}')
 
 def report_ping_test(
-        nonce: int, count: int, remote_id: bytes|str,
-        remote_addr: Address|None = None, callback: Callable|None = None
+        nonce: int, remote_id: bytes|str, remote_addr: Address|None = None,
+        callback: Callable|None = None
     ) -> dict:
     """Generate a report of the ping test results."""
     # take all relevant pms, then put the rest back
@@ -208,6 +212,12 @@ def report_ping_test(
         else:
             ping_responses.append(pm)
     # generate report
+    count = len(relevant_pms)
+    if count == 0:
+        report = {'error': 'no responses'}
+        if callback is not None:
+            callback(report)
+        return report
     report = {
         'mode': '',
         'remote_id': remote_id if type(remote_id) == str else remote_id.hex(),
@@ -280,7 +290,7 @@ def run_ping_test(
     topic_id += PingOp.REQUEST.to_bytes(1, 'big')
     nonce = randint(0, 255)
     now = int(time())*1000
-    addr = addr if addr is not None else Packager.inverse_routes.get(node_id, None)
+    addr = addr if addr is not None else Packager.inverse_routes.get(node_id, None)[-1]
     for i in range(count):
         Packager.new_events.append(Event(
             now + timeout * i * 1000,
@@ -295,7 +305,6 @@ def run_ping_test(
         topic_id + count.to_bytes(1, 'big'),
         report_ping_test,
         nonce,
-        count,
         node_id,
         addr,
         callback,
@@ -329,7 +338,6 @@ def run_gossip_ping_test(
         topic_id + count.to_bytes(1, 'big'),
         report_ping_test,
         nonce,
-        count,
         node_id,
         addr,
         callback,
