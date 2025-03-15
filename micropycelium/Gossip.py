@@ -136,6 +136,14 @@ def request_gossip_ids(topic_id: bytes, peer_id: bytes):
     gm = GossipMessage(GossipOp.REQUEST_IDS, topic_id, Packager.node_id)
     Packager.send(gossip_app_id, serialize_gm(gm), peer_id)
 
+def schedule_request_gossip_ids(topic_id: bytes, peer_id: bytes):
+    Packager.new_events.append(Event(
+        0,
+        gossip_app_id + b'r',
+        request_gossip_ids,
+        topic_id, peer_id,
+    ))
+
 def respond_gossip_ids(peer_id: bytes, topic_id: bytes):
     ids = list(message_cache.items.keys())
     gm = GossipMessage(GossipOp.MESSAGE_IDS, topic_id, b''.join(ids))
@@ -152,6 +160,18 @@ def unsubscribe_gossip(topic_id: bytes, app_id: bytes):
     if topic_id in subscriptions and len(subscriptions[topic_id]) == 0:
         del subscriptions[topic_id]
 
+def add_peer_callback(_, pid: bytes, intrfcs: list[tuple[bytes, Interface]]):
+    if pid not in Packager.peers:
+        for topic_id in subscriptions:
+            schedule_request_gossip_ids(topic_id, pid)
+
+def start():
+    Packager.add_hook('add_peer', add_peer_callback)
+
+def stop():
+    Packager.remove_hook('add_peer', add_peer_callback)
+
+
 Gossip = Application(
     name='Gossip',
     description='Dev Gossip App',
@@ -165,6 +185,8 @@ Gossip = Application(
         'subscribe': lambda _, topic_id, app_id: subscribe_gossip(topic_id, app_id),
         'unsubscribe': lambda _, topic_id, app_id: unsubscribe_gossip(topic_id, app_id),
         'deliver_gossip': lambda _, gm: deliver_gossip(gm),
+        'start': lambda _: start(),
+        'stop': lambda _: stop(),
         'get_seen': lambda _: seen,
         'get_subscriptions': lambda _: subscriptions,
         'get_message_cache': lambda _: message_cache,

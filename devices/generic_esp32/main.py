@@ -96,5 +96,6 @@ def start():
 
 add_hooks()
 Beacon.invoke('start')
+Gossip.invoke('start')
 SpanningTree.invoke('start')
 start()

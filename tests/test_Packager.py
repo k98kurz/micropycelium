@@ -1870,6 +1870,26 @@ class TestGossipApplication(unittest.TestCase):
         Gossip.receive(blob, mock_interface1, b'mac0')
         assert len(mock_interface1.outbox) == 2, len(mock_interface1.outbox)
 
+    def test_start_and_stop_and_add_peer_hook(self):
+        Packager.add_application(Gossip)
+        Packager.add_interface(mock_interface1)
+        Gossip.invoke('subscribe', b'topic', test_app.id)
+        assert len(Packager._hooks.get('add_peer', [])) == 0
+        Gossip.invoke('start')
+        assert len(Packager._hooks.get('add_peer', [])) == 1
+        assert len(mock_interface1.outbox) == 0
+        assert len(Packager.new_events) == 0
+        Packager.add_peer(b'peer0', [(b'mac0', mock_interface1)])
+        assert len(Packager.new_events) == 1
+        assert len(Packager.schedule) == 0
+        asyncio.run(Packager.process())
+        assert len(Packager.new_events) == 0
+        assert len(Packager.schedule) == 0
+        assert len(mock_interface1.outbox) == 1, \
+            (mock_interface1.outbox, mock_interface1.castbox, mock_interface1.inbox)
+        Gossip.invoke('stop')
+        assert len(Packager._hooks.get('add_peer', [])) == 0
+
 
 class TestSpanningTreeApplication(unittest.TestCase):
     def setUp(self) -> None:
