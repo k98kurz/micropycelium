@@ -126,7 +126,7 @@ def receive_tm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
             known_claims.append((tmsg.claim, addr.dTree(root, addr), peer_id))
         elif our_score < their_score:
             # we have a better claim, so respond with it
-            respond_tree_message(peer_id)
+            SpanningTree.invoke('respond', peer_id)
     elif tmsg.op == TreeOp.RESPOND:
         # received a response to a periodic broadcast
         if claim_score(tmsg.claim) < claim_score(current_best_root_id):
@@ -145,7 +145,7 @@ def receive_tm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
                 return
             coords.append(coord)
             current_children[peer_id] = coord
-            assign_address(peer_id, coords)
+            SpanningTree.invoke('assign_address', peer_id, coords)
     elif tmsg.op == TreeOp.ASSIGN_ADDRESS:
         # received an address assignment response
         if claim_score(tmsg.claim) < claim_score(current_best_root_id):
@@ -156,7 +156,7 @@ def receive_tm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
             current_children.clear()
         else:
             # we have a better claim, so respond with it
-            respond_tree_message(peer_id)
+            SpanningTree.invoke('respond', peer_id)
 
 def broadcast_tree_message():
     tmsg = TreeMessage(
@@ -208,7 +208,7 @@ def periodic_tree_message(count: int):
     """Broadcasts count times with a 30ms delay between."""
     if count <= 0:
         return schedule_tree_maintenance()
-    broadcast_tree_message()
+    SpanningTree.invoke('broadcast')
     Packager.new_events.append(Event(
         now() + MODEM_INTERSECT_INTERVAL,
         tree_app_id,
