@@ -160,7 +160,7 @@ def add_hooks():
 
 def start():
     run(gather(
-        Packager.work(use_modem_sleep=True),
+        Packager.work(use_modem_sleep=False),
         rloop(),
         monitor_btn(btn, btnq, 800),
     ))
