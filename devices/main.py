@@ -1,4 +1,4 @@
-from micropycelium import Packager
+from micropycelium import Packager, Address
 import mpnode
 
 Packager.add_hook('add_peer', mpnode.debug_name('Packager.add_peer'))

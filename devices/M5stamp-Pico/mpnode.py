@@ -68,7 +68,7 @@ def hexify(thing):
     elif type(thing) is dict:
         return {hexify(k): hexify(v) for k, v in thing.items()}
     else:
-        return repr(thing)
+        return thing if type(thing) is str else repr(thing)
 def debug_name(name: str):
     def inner(*args):
         args = [hexify(a) for a in args]
@@ -124,12 +124,7 @@ def ping_report_cb(report):
     print('Ping report:')
     report = hexify(report)
     for k, v in report.items():
-        if isinstance(v, dict):
-            print(f'  {k}:')
-            for k2, v2 in v.items():
-                print(f'    {k2}: {v2}')
-        else:
-            print(f'  {k}: {v}')
+        print(f'  {k}: {v}')
 
 Ping.add_hook('request', debug_name('Ping.request'))
 Ping.add_hook('respond', debug_name('Ping.respond'))
