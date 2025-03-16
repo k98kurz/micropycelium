@@ -27,7 +27,7 @@ from collections import deque, namedtuple
 from hashlib import sha256
 from random import randint
 from struct import pack, unpack
-from time import time
+from time import time, time_ns
 from typing import Callable
 
 
@@ -54,7 +54,7 @@ gossip_app_id = bytes.fromhex('849969c1f22797d66f5a94db2afe634a')
 
 def serialize_pm(pm: PingMessage) -> bytes:
     return pack(
-        '!BBBIIIB16s32s',
+        '!BBBQQQB16s32s',
         pm.op,
         pm.nonce,
         pm.metric,
@@ -67,7 +67,7 @@ def serialize_pm(pm: PingMessage) -> bytes:
     )
 
 def deserialize_pm(blob: bytes) -> PingMessage:
-    return PingMessage(*unpack('!BBBIIIB16s32s', blob))
+    return PingMessage(*unpack('!BBBQQQB16s32s', blob))
 
 def receive_pm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
     pm = deserialize_pm(blob)
@@ -95,7 +95,7 @@ def ping_request(
         PingOp.REQUEST,
         nonce if nonce is not None else randint(0, 255),
         metric,
-        int(time()),
+        int(time_ns() / 1_000_000),
         0,
         0,
         Packager.node_addrs[-1].tree_state,
@@ -196,8 +196,8 @@ def ping_list_routes():
         print(f'\t{node_id.hex()}: {addr.coords} {addr.address.hex()}')
 
 def report_ping_test(
-        nonce: int, remote_id: bytes|str, remote_addr: Address|None = None,
-        callback: Callable|None = None
+        nonce: int, mode: str, remote_id: bytes|str,
+        remote_addr: Address|None = None, callback: Callable|None = None
     ) -> dict:
     """Generate a report of the ping test results."""
     # take all relevant pms, then put the rest back
@@ -214,12 +214,17 @@ def report_ping_test(
     # generate report
     count = len(relevant_pms)
     if count == 0:
-        report = {'error': 'no responses'}
+        report = {
+            'error': 'no responses',
+            'remote_id': remote_id if type(remote_id) == str else remote_id.hex(),
+            'remote_addr': remote_addr,
+            'mode': mode,
+        }
         if callback is not None:
             callback(report)
         return report
     report = {
-        'mode': '',
+        'mode': mode,
         'remote_id': remote_id if type(remote_id) == str else remote_id.hex(),
         'remote_addr': remote_addr,
         'count': count,
@@ -239,14 +244,6 @@ def report_ping_test(
             'avg': 0,
         }
     }
-    if relevant_pms[0].op == PingOp.GOSSIP_RESPOND:
-        report['mode'] = 'gossip'
-    elif relevant_pms[0].metric == dTree:
-        report['mode'] = 'routed dTree'
-    elif relevant_pms[0].metric == dCPL:
-        report['mode'] = 'routed dCPL'
-    else:
-        report['mode'] = 'routed unknown metric'
     for pm in relevant_pms:
         delay = pm.ts3 - pm.ts1
         there = pm.ts2 - pm.ts1
@@ -289,7 +286,7 @@ def run_ping_test(
     topic_id = sha256(Ping.id + node_id).digest()[:16]
     topic_id += PingOp.REQUEST.to_bytes(1, 'big')
     nonce = randint(0, 255)
-    now = int(time())*1000
+    now = int(time_ns() / 1_000_000)
     addr = addr if addr is not None else Packager.inverse_routes.get(node_id, [None])[-1]
     for i in range(count):
         Packager.new_events.append(Event(
@@ -305,6 +302,7 @@ def run_ping_test(
         topic_id + count.to_bytes(1, 'big'),
         report_ping_test,
         nonce,
+        'routed dTree' if metric == dTree else 'routed dCPL' if metric == dCPL else 'unknown metric',
         node_id,
         addr,
         callback,
@@ -324,7 +322,7 @@ def run_gossip_ping_test(
     topic_id = sha256(Ping.id + node_id).digest()[:16]
     topic_id += PingOp.GOSSIP_REQUEST.to_bytes(1, 'big')
     nonce = randint(0, 255)
-    now = int(time())*1000
+    now = int(time_ns() / 1_000_000)
     for i in range(count):
         Packager.new_events.append(Event(
             now + timeout * i * 1000,
@@ -338,6 +336,7 @@ def run_gossip_ping_test(
         topic_id + count.to_bytes(1, 'big'),
         report_ping_test,
         nonce,
+        'gossip',
         node_id,
         addr,
         callback,

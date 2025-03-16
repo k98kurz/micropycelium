@@ -22,7 +22,7 @@ from binascii import crc32
 from collections import deque, namedtuple
 from random import randint
 from struct import pack, unpack
-from time import time
+from time import time_ns
 
 
 def enum(**enums):
@@ -47,7 +47,7 @@ root_id_targets = (
     b'5678' * 8,
     b'8765' * 8,
 )
-now = lambda: int(time()*1000)
+now = lambda: int(time_ns() / 1_000_000)
 TreeMessage = namedtuple("TreeMessage", ['op', 'claim', 'address', 'node_id'])
 seen_tm: deque[TreeMessage] = deque([], 10)
 tree_app_id = b''
@@ -257,10 +257,11 @@ def maintain_tree():
         # begin broadcasting
         periodic_tree_message(MODEM_INTERSECT_RTX_TIMES)
 
-    tree_maintenance_rounds += 1
-    if tree_maintenance_rounds >= 5:
-        tree_maintenance_rounds = 0
-        send_gossip_tree_message()
+    # tree_maintenance_rounds += 1
+    # if tree_maintenance_rounds >= 5:
+    #     tree_maintenance_rounds = 0
+        # send_gossip_tree_message()
+    send_gossip_tree_message()
     # schedule the next maintenance event
     schedule_tree_maintenance()
 

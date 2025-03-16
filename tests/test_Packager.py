@@ -1603,6 +1603,7 @@ class TestBeaconApplication(unittest.TestCase):
             )
             for bm in Beacon.invoke('get_bmsgs', b'\x00')
         ]
+        original_id = Packager.node_id
         Packager.node_id = b'changed for testing'
         assert len(InterAppInterface.outbox) == 0
         asyncio.run(Packager.process())
@@ -1615,6 +1616,7 @@ class TestBeaconApplication(unittest.TestCase):
         assert len(iai_box) == 1
         asyncio.run(Packager.process())
         assert len(iai_box) == 0
+        Packager.node_id = original_id
 
     def test_start_broadcasts_and_schedules_event(self):
         Packager.add_interface(InterAppInterface)
@@ -1881,20 +1883,24 @@ class TestGossipApplication(unittest.TestCase):
     def test_start_and_stop_and_add_peer_hook(self):
         Packager.add_application(Gossip)
         Packager.add_interface(mock_interface1)
-        Gossip.invoke('subscribe', b'topic', test_app.id)
+        topic_id = sha256(b'topic').digest()[:16]
+        Gossip.invoke('subscribe', topic_id, test_app.id)
         assert len(Packager._hooks.get('add_peer', [])) == 0
         Gossip.invoke('start')
         assert len(Packager._hooks.get('add_peer', [])) == 1
         assert len(mock_interface1.outbox) == 0
-        assert len(Packager.new_events) == 0
-        Packager.add_peer(b'peer0', [(b'mac0', mock_interface1)])
         assert len(Packager.new_events) == 1
+        peer_id = urandom(32)
+        Packager.add_peer(peer_id, [(b'mac0', mock_interface1)])
+        assert len(Packager.new_events) == 2
         assert len(Packager.schedule) == 0
         asyncio.run(Packager.process())
         assert len(Packager.new_events) == 0
-        assert len(Packager.schedule) == 0
+        assert len(Packager.schedule) == 1, \
+            (Packager.schedule, list(Packager.schedule.keys()))
         assert len(mock_interface1.outbox) == 1, \
-            (mock_interface1.outbox, mock_interface1.castbox, mock_interface1.inbox)
+            (list(mock_interface1.outbox), list(mock_interface1.castbox),
+             list(mock_interface1.inbox))
         Gossip.invoke('stop')
         assert len(Packager._hooks.get('add_peer', [])) == 0
 
@@ -2530,7 +2536,7 @@ class TestPingApplication(unittest.TestCase):
                 Packager.node_id
             ))
         assert len(responses) == count
-        report = Ping.invoke('report_ping_test', nonce, remote_id, remote_addr)
+        report = Ping.invoke('report_ping_test', nonce, mode, remote_id, remote_addr)
         assert len(responses) == 0
         assert report['mode'] == mode
         assert report['remote_id'] == remote_id.hex()
@@ -2560,7 +2566,7 @@ class TestPingApplication(unittest.TestCase):
                 Packager.node_id
             ))
         assert len(responses) == count
-        report = Ping.invoke('report_ping_test', nonce, remote_id, remote_addr)
+        report = Ping.invoke('report_ping_test', nonce, 'gossip', remote_id, remote_addr)
         assert len(responses) == 0
         assert report['mode'] == 'gossip'
 

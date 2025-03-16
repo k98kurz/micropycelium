@@ -5,7 +5,7 @@ from machine import unique_id
 from math import ceil
 from random import randint
 from struct import pack, unpack
-from time import time
+from time import time, time_ns
 import asyncio
 import espnow
 import micropython
@@ -44,8 +44,12 @@ MODEM_INTERSECT_INTERVAL = micropython.const(int(0.9 * MODEM_WAKE_MS))
 MODEM_INTERSECT_RTX_TIMES = micropython.const(
     int((MODEM_SLEEP_MS+MODEM_WAKE_MS)/MODEM_INTERSECT_INTERVAL) + 1
 )
+SEQ_SYNC_DELAY_MS = micropython.const(10_000)
 dTree = micropython.const(0)
 dCPL = micropython.const(1)
+
+def time_ms():
+    return int(time_ns()/1_000_000)
 
 def debug(*args):
     if DEBUG:
@@ -1225,7 +1229,7 @@ class Peer:
         self.addrs = deque([], 2)
         self.timeout = 4
         self.throttle = 0
-        self.last_rx = int(time() * 1000)
+        self.last_rx = time_ms()
         self.queue = deque([], 10)
 
     def set_addr(self, addr: Address):
@@ -1240,7 +1244,7 @@ class Peer:
 
     @property
     def can_tx(self) -> bool:
-        return self.last_rx + 800 > int(time() * 1000)
+        return self.last_rx + 800 > time_ms()
 
 
 # @micropython.native
@@ -1358,7 +1362,7 @@ class Cache:
         # if we hit the limit, remove the item that has the lowest expiry
         if len(self.items) >= self.limit:
             self.remove_lowest_expiry()
-        expiry = int(time() * 1000) + ttl
+        expiry = time_ms() + ttl * 1000
         self.items[key] = (expiry, value)
         if expiry < self.lowest_expiry or self.lowest_expiry == -1:
             self.lowest_expiry = expiry
@@ -1366,7 +1370,7 @@ class Cache:
     def get(self, key: bytes) -> object|None:
         if key in self.items:
             pair = self.items[key]
-            if pair[0] < int(time() * 1000):
+            if pair[0] < time_ms():
                 self.items.pop(key)
                 return None
             return pair[1]
@@ -1386,7 +1390,7 @@ class Cache:
     def invalidate_expired(self):
         keys_to_remove = []
         for key, value in self.items.items():
-            if value[0] < int(time() * 1000):
+            if value[0] < time_ms():
                 keys_to_remove.append(key)
         for key in keys_to_remove:
             self.items.pop(key)
@@ -1491,7 +1495,7 @@ class Packager:
                 peer.interfaces.append((mac, intrfc))
             if (mac, intrfc.id) not in cls.inverse_peers:
                 cls.inverse_peers[(mac, intrfc.id)] = peer_id
-        peer.last_rx = int(time()*1000)
+        peer.last_rx = time_ms()
         peer.timeout = 4
 
     @classmethod
@@ -1765,7 +1769,7 @@ class Packager:
         """
         cls.call_hook('rns', peer_id, intrfc_id, retries)
         eid = b'rns'+peer_id+intrfc_id
-        now = int(time()*1000)
+        now = time_ms()
         if eid in [e.id for e in cls.new_events]:
             return # do not add a duplicate event
 
@@ -1928,7 +1932,7 @@ class Packager:
         seq.retry -= 1
         eid = b'SS' + seq.seq.id.to_bytes(2, 'big')
         cls.queue_event(Event(
-            int(time()+30)*1000,
+            time_ms() + SEQ_SYNC_DELAY_MS,
             eid,
             cls.sync_sequence,
             seq_id
@@ -2001,7 +2005,7 @@ class Packager:
             else:
                 # schedule sequence sync event
                 cls.queue_event(Event(
-                    int(time() + 30)*1000,
+                    time_ms() + SEQ_SYNC_DELAY_MS,
                     eid,
                     cls.sync_sequence,
                     seq_id
@@ -2012,7 +2016,7 @@ class Packager:
             peer = cls.peers[src]
             eid = b'rns'+peer.id+intrfc.id
             cls.cancel_events.append(eid)
-            peer.last_rx = int(time()*1000)
+            peer.last_rx = time_ms()
             return
         elif p.flags.rns and len(src):
             # peer sent RNS: send NIA
@@ -2129,7 +2133,7 @@ class Packager:
         # handle scheduled events
         ce = []
         cos = []
-        now = int(time()*1000)
+        now = time_ms()
         for eid, event in cls.schedule.items():
             if now >= event.ts:
                 t = event.handler(*event.args, **event.kwargs)
@@ -2168,12 +2172,12 @@ class Packager:
         cls.call_hook('work', interval_ms, use_modem_sleep, modem_sleep_ms, modem_active_ms)
         cls.running = True
         modem_cycle = 0
-        ts = int(time()*1000)
+        ts = time_ms()
         while cls.running:
             await cls.process()
             await asyncio.sleep(interval_ms / 1000)
             if use_modem_sleep:
-                modem_cycle = int(time()*1000) - ts
+                modem_cycle = time_ms() - ts
                 if modem_cycle > modem_active_ms:
                     modem_cycle = 0
                     if len(cls.sleepskip):
@@ -2184,7 +2188,7 @@ class Packager:
                         lightsleep(modem_sleep_ms)
                         for intrfc in cls.interfaces:
                             intrfc.wake()
-                    ts = int(time()*1000)
+                    ts = time_ms()
 
     @classmethod
     def stop(cls):

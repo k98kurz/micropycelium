@@ -26,7 +26,7 @@ from binascii import crc32
 from collections import deque, namedtuple
 from hashlib import sha256
 from random import randint
-from time import time
+from time import time_ns
 
 
 def enum(**enums):
@@ -90,8 +90,8 @@ def deliver_gossip(gm: GossipMessage):
     gm_id = sha256(serialize_gm(gm)).digest()[:16]
     if gm_id in seen:
         return
-    # add to cache if it is a PUBLISH
-    if gm.op == GossipOp.PUBLISH:
+    # add to cache if it is a PUBLISH or RESPOND
+    if gm.op in (GossipOp.PUBLISH, GossipOp.RESPOND):
         seen.append(gm_id)
         message_cache.add(gm_id, gm, ttl=1000)
     # deliver to subscribed applications
@@ -100,8 +100,8 @@ def deliver_gossip(gm: GossipMessage):
         if app is None:
             continue
         app.receive(gm.data, InterAppInterface, gossip_app_id)
-    # skip forward/notify if it was a RESPOND and not a PUBLISH
-    if gm.op == GossipOp.RESPOND:
+    # skip forward/notify if it was a RESPOND and the size is not too large for simple PUBLISH
+    if gm.op == GossipOp.RESPOND and len(gm.data) <= 235 - 17 - 32:
         return
     # forward or notify
     if len(gm.data) > 235 - 17 - 32:
@@ -139,7 +139,7 @@ def request_gossip_ids(topic_id: bytes, peer_id: bytes):
 def schedule_request_gossip_ids(topic_id: bytes, peer_id: bytes):
     Packager.new_events.append(Event(
         0,
-        gossip_app_id + b'r',
+        sha256(gossip_app_id + topic_id + peer_id).digest()[:16],
         request_gossip_ids,
         topic_id, peer_id,
     ))
@@ -152,7 +152,8 @@ def respond_gossip_ids(peer_id: bytes, topic_id: bytes):
 def subscribe_gossip(topic_id: bytes, app_id: bytes):
     if topic_id not in subscriptions:
         subscriptions[topic_id] = []
-    subscriptions[topic_id].append(app_id)
+    if app_id not in subscriptions[topic_id]:
+        subscriptions[topic_id].append(app_id)
 
 def unsubscribe_gossip(topic_id: bytes, app_id: bytes):
     if topic_id in subscriptions and app_id in subscriptions[topic_id]:
@@ -165,8 +166,26 @@ def add_peer_callback(_, pid: bytes, intrfcs: list[tuple[bytes, Interface]]):
         for topic_id in subscriptions:
             schedule_request_gossip_ids(topic_id, pid)
 
+def sync_all_peers():
+    for pid in Packager.peers:
+        for topic_id in subscriptions:
+            Gossip.invoke('request_ids', topic_id, pid)
+
+    Packager.new_events.append(Event(
+        int(time_ns() / 1_000_000) + 60_000,
+        Gossip.id,
+        sync_all_peers,
+    ))
+
 def start():
     Packager.add_hook('add_peer', add_peer_callback)
+    if Gossip.id in Packager.schedule:
+        return
+    Packager.new_events.append(Event(
+        int(time_ns() / 1_000_000) + 30_000,
+        Gossip.id,
+        sync_all_peers,
+    ))
 
 def stop():
     Packager.remove_hook('add_peer', add_peer_callback)
@@ -187,6 +206,7 @@ Gossip = Application(
         'subscribe': lambda _, topic_id, app_id: subscribe_gossip(topic_id, app_id),
         'unsubscribe': lambda _, topic_id, app_id: unsubscribe_gossip(topic_id, app_id),
         'deliver_gossip': lambda _, gm: deliver_gossip(gm),
+        'sync': lambda _: sync_all_peers(),
         'start': lambda _: start(),
         'stop': lambda _: stop(),
         'get_seen': lambda _: seen,
