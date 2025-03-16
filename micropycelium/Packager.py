@@ -98,6 +98,12 @@ def clear(d: deque|list):
     while len(d) > 0:
         d.pop()
 
+def enum(**enums):
+    """Enum workaround for micropython. CC BY-SA 4.0
+        https://stackoverflow.com/a/1695250
+    """
+    return type('Enum', (), enums)
+
 
 Field = namedtuple("Field", ["name", "length", "type", "max_length"])
 

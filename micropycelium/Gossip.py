@@ -1,5 +1,6 @@
 try:
     from Packager import (
+        enum,
         Packager,
         Address,
         Application,
@@ -12,6 +13,7 @@ try:
     )
 except ImportError:
     from .Packager import (
+        enum,
         Packager,
         Address,
         Application,
@@ -28,12 +30,6 @@ from hashlib import sha256
 from random import randint
 from time import time_ns
 
-
-def enum(**enums):
-    """Enum workaround for micropython. CC BY-SA 4.0
-        https://stackoverflow.com/a/1695250
-    """
-    return type('Enum', (), enums)
 
 GossipOp = enum(
     REQUEST = 0,

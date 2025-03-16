@@ -1,5 +1,6 @@
 try:
     from Packager import (
+        enum,
         Packager,
         Address,
         Application,
@@ -12,6 +13,7 @@ try:
     )
 except ImportError:
     from .Packager import (
+        enum,
         Packager,
         Address,
         Application,
@@ -30,12 +32,6 @@ from struct import pack, unpack
 from time import time, time_ns
 from typing import Callable
 
-
-def enum(**enums):
-    """Enum workaround for micropython. CC BY-SA 4.0
-        https://stackoverflow.com/a/1695250
-    """
-    return type('Enum', (), enums)
 
 PingOp = enum(
     REQUEST = 0,
