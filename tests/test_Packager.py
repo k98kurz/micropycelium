@@ -2536,7 +2536,9 @@ class TestPingApplication(unittest.TestCase):
                 Packager.node_id
             ))
         assert len(responses) == count
-        report = Ping.invoke('report_ping_test', nonce, mode, remote_id, remote_addr)
+        report = Ping.invoke(
+            'report_ping_test', nonce, mode, 4, remote_id, remote_addr
+        )
         assert len(responses) == 0
         assert report['mode'] == mode
         assert report['remote_id'] == remote_id.hex()
@@ -2551,6 +2553,7 @@ class TestPingApplication(unittest.TestCase):
         assert report['round_trip']['avg'] == 30
         assert report['round_trip']['min'] <= report['round_trip']['avg']
         assert report['round_trip']['max'] >= report['round_trip']['avg']
+        assert report['success_rate'] == '100%'
 
         # test gossip ping report
         for i in range(count):
@@ -2566,9 +2569,12 @@ class TestPingApplication(unittest.TestCase):
                 Packager.node_id
             ))
         assert len(responses) == count
-        report = Ping.invoke('report_ping_test', nonce, 'gossip', remote_id, remote_addr)
+        report = Ping.invoke(
+            'report_ping_test', nonce, 'gossip', 4, remote_id, remote_addr
+        )
         assert len(responses) == 0
         assert report['mode'] == 'gossip'
+        assert report['success_rate'] == '100%'
 
 
 if __name__ == '__main__':

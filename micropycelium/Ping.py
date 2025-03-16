@@ -196,7 +196,7 @@ def ping_list_routes():
         print(f'\t{node_id.hex()}: {addr.coords} {addr.address.hex()}')
 
 def report_ping_test(
-        nonce: int, mode: str, remote_id: bytes|str,
+        nonce: int, mode: str, expected_count: int, remote_id: bytes|str,
         remote_addr: Address|None = None, callback: Callable|None = None
     ) -> dict:
     """Generate a report of the ping test results."""
@@ -219,6 +219,8 @@ def report_ping_test(
             'remote_id': remote_id if type(remote_id) == str else remote_id.hex(),
             'remote_addr': remote_addr,
             'mode': mode,
+            'expected_count': expected_count,
+            'success_rate': '0%',
         }
         if callback is not None:
             callback(report)
@@ -228,6 +230,8 @@ def report_ping_test(
         'remote_id': remote_id if type(remote_id) == str else remote_id.hex(),
         'remote_addr': remote_addr,
         'count': count,
+        'expected_count': expected_count,
+        'success_rate': f"{int(count / expected_count * 100)}%",
         'there': {
             'min': 10**9,
             'max': 0,
@@ -303,6 +307,7 @@ def run_ping_test(
         report_ping_test,
         nonce,
         'routed dTree' if metric == dTree else 'routed dCPL' if metric == dCPL else 'unknown metric',
+        count,
         node_id,
         addr,
         callback,
@@ -337,6 +342,7 @@ def run_gossip_ping_test(
         report_ping_test,
         nonce,
         'gossip',
+        count,
         node_id,
         addr,
         callback,
