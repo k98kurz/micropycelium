@@ -290,7 +290,7 @@ def run_ping_test(
     topic_id += PingOp.REQUEST.to_bytes(1, 'big')
     nonce = randint(0, 255)
     now = int(time())*1000
-    addr = addr if addr is not None else Packager.inverse_routes.get(node_id, None)[-1]
+    addr = addr if addr is not None else Packager.inverse_routes.get(node_id, [None])[-1]
     for i in range(count):
         Packager.new_events.append(Event(
             now + timeout * i * 1000,

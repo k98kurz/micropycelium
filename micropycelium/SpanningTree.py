@@ -94,8 +94,7 @@ def remove_peer(_, pid: bytes):
     if pid in current_children:
         del current_children[pid]
     # remove the peer from the known claims
-    claims = list(known_claims)
-    known_claims.clear()
+    claims = [known_claims.popleft() for _ in range(len(known_claims))]
     for claim, dTree, peer_id in claims:
         if peer_id != pid:
             known_claims.append((claim, dTree, peer_id))
@@ -248,11 +247,9 @@ def maintain_tree():
         claims = list(known_claims)
         claims.sort(key=lambda t: claim_score(t[0]) + t[1])
         best_claim, _, peer_id = claims[0]
-        if claim_score(best_claim) < claim_score(Packager.node_id):
+        if claim_score(best_claim) < claim_score(current_best_root_id):
             # request an address assignment from the best claim
             SpanningTree.invoke('request_address_assignment', peer_id, best_claim)
-            # schedule the next maintenance event
-            schedule_tree_maintenance()
         else:
             # we have the best claim, so begin broadcasting it
             periodic_tree_message(MODEM_INTERSECT_RTX_TIMES)
@@ -264,6 +261,8 @@ def maintain_tree():
     if tree_maintenance_rounds >= 5:
         tree_maintenance_rounds = 0
         send_gossip_tree_message()
+    # schedule the next maintenance event
+    schedule_tree_maintenance()
 
 def schedule_tree_maintenance():
     """Schedules the tree maintenance event for 60s in the future."""

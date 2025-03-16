@@ -90,6 +90,11 @@ def trace(cls_or_fn, prefix: str = ''):
     else:
         return cls_or_fn
 
+def clear(d: deque|list):
+    while len(d) > 0:
+        d.pop()
+
+
 Field = namedtuple("Field", ["name", "length", "type", "max_length"])
 
 
@@ -1421,13 +1426,13 @@ class Packager:
         cls.inverse_peers.clear()
         cls.routes.clear()
         cls.inverse_routes.clear()
-        cls.node_addrs.clear()
+        clear(cls.node_addrs)
         cls.apps.clear()
         cls.schedule.clear()
-        cls.new_events.clear()
-        cls.cancel_events.clear()
+        clear(cls.new_events)
+        clear(cls.cancel_events)
         cls.running = False
-        cls.sleepskip.clear()
+        clear(cls.sleepskip)
         cls._hooks.clear()
 
     @classmethod
