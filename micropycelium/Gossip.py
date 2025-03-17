@@ -43,7 +43,7 @@ GossipMessage = namedtuple("GossipMessage", ['op', 'topic_id', 'data'])
 # map of topic_id to list of application_ids
 subscriptions: dict[bytes, list[bytes]] = {}
 # buffer of seen message ids (half_sha256)
-seen: deque[bytes] = deque([], 100)
+seen_gm: deque[bytes] = deque([], 100)
 # cache of GossipMessages
 message_cache: Cache = Cache(limit=100)
 # id of this gossip application
@@ -75,7 +75,7 @@ def receive_gm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
         for i in range(0, len(gm.data), 16):
             ids.append(gm.data[i:i+16])
         for id in ids:
-            if message_cache.get(id) is None:
+            if id not in seen_gm:
                 request_gossip_message(id, peer_id)
 
 def publish_gossip(topic_id: bytes, data: bytes):
@@ -84,12 +84,12 @@ def publish_gossip(topic_id: bytes, data: bytes):
 
 def deliver_gossip(gm: GossipMessage):
     gm_id = sha256(serialize_gm(gm)).digest()[:16]
-    if gm_id in seen:
+    if gm_id in seen_gm:
         return
     # add to cache if it is a PUBLISH or RESPOND
     if gm.op in (GossipOp.PUBLISH, GossipOp.RESPOND):
-        seen.append(gm_id)
-        message_cache.add(gm_id, gm, ttl=1000)
+        seen_gm.append(gm_id)
+        message_cache.add(gm_id, gm, ttl=300)
     # deliver to subscribed applications
     for app_id in subscriptions.get(gm.topic_id, []):
         app = Packager.apps.get(app_id, None)
@@ -142,7 +142,10 @@ def schedule_request_gossip_ids(topic_id: bytes, peer_id: bytes):
     ))
 
 def respond_gossip_ids(peer_id: bytes, topic_id: bytes):
-    ids = list(message_cache.items.keys())
+    ids = []
+    for gm_id, (_, gm) in message_cache.items.items():
+        if gm.topic_id == topic_id:
+            ids.append(gm_id)
     gm = GossipMessage(GossipOp.RESPOND_IDS, topic_id, b''.join(ids))
     Packager.send(gossip_app_id, serialize_gm(gm), peer_id)
 
@@ -213,7 +216,7 @@ Gossip = Application(
         'sync': lambda _: sync_all_peers(),
         'start': lambda _: start(),
         'stop': lambda _: stop(),
-        'get_seen': lambda _: seen,
+        'get_seen': lambda _: seen_gm,
         'get_subscriptions': lambda _: subscriptions,
         'get_cache': lambda _: message_cache,
         'get_messages': lambda _, topic_id: get_messages(topic_id),

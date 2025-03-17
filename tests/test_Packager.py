@@ -1106,7 +1106,7 @@ class TestPackager(unittest.TestCase):
         # example network structure from the VOUTE paper for routing s -> e:
         # s [1] <-> r [] <-> e [2] <-> [2, 1] <-> v [2, 1, 1] <-> u [2, 1, 1, 1]
         # s <-> u
-        tree_state = b'\x00'
+        tree_state = 0
         local_addr = Address(tree_state, coords=[1])
         Packager.node_id = b'0' * 32
         Packager.set_addr(local_addr)
@@ -1147,7 +1147,7 @@ class TestPackager(unittest.TestCase):
             {
                 'packet_id': 0,
                 'ttl': 250,
-                'tree_state': b'0',
+                'tree_state': tree_state,
                 'to_addr': to_addr.address,
                 'from_addr': local_addr.address,
                 'body': blob,
@@ -1862,7 +1862,8 @@ class TestGossipApplication(unittest.TestCase):
         Packager.add_interface(mock_interface1)
         Packager.add_application(Gossip)
         Packager.add_application(test_app)
-        Packager.add_peer(b'peer0', [(b'mac0', mock_interface1)])
+        peer_id = urandom(32)
+        Packager.add_peer(peer_id, [(b'mac0', mock_interface1)])
 
         topic_id = sha256(b'topic').digest()[:16]
         og_gms = [
@@ -1874,7 +1875,7 @@ class TestGossipApplication(unittest.TestCase):
             for gm in og_gms
         ]
         # add one to the cache
-        Gossip.invoke('get_cache').add(message_ids[0], og_gms[0])
+        Gossip.invoke('get_seen').append(message_ids[0])
         gm = GossipMessage(GossipOp.RESPOND_IDS, topic_id, b''.join(message_ids))
         blob = Gossip.invoke('serialize_gm', gm)
 

@@ -1,7 +1,7 @@
 from binascii import crc32
 from collections import namedtuple, deque
 from hashlib import sha256
-from machine import unique_id
+from machine import unique_id, reset
 from math import ceil
 from random import randint
 from struct import pack, unpack
@@ -1562,12 +1562,17 @@ class Packager:
     def set_addr(cls, addr: Address):
         """Sets the current tree embedding address for this node,
             preserving the previous address to maintain routability
-            between tree state transitions.
+            between tree state transitions. If the new address shares a
+            tree state with a previous address, the previous address
+            will be removed prior to adding the new address; otherwise,
+            the new address will just be added.
         """
         cls.call_hook('set_addr', addr)
+        addrs = [cls.node_addrs.popleft() for _ in range(len(cls.node_addrs))]
+        for a in addrs:
+            if a.tree_state != addr.tree_state:
+                cls.node_addrs.append(a)
         cls.node_addrs.append(addr)
-        while len(cls.node_addrs) > 2:
-            cls.node_addrs.popleft()
 
     @classmethod
     def broadcast(cls, app_id: bytes, blob: bytes, interface: Interface|None = None) -> bool:
@@ -1626,13 +1631,13 @@ class Packager:
 
     @classmethod
     def next_hop(
-        cls, tree_state: bytes, to_addr: Address, metric: int = dTree
+        cls, to_addr: Address, metric: int = dTree
     ) -> tuple[Peer, Address]|None:
         """Returns the next hop for the given to_addr if one can be
             found for the given tree_state. Returns None if no next
             hop can be found.
         """
-        cls.call_hook('next_hop', to_addr, tree_state, metric)
+        cls.call_hook('next_hop', to_addr, metric)
         if to_addr in cls.routes:
             peer_id = cls.routes[to_addr]
             if peer_id in cls.peers:
@@ -1642,7 +1647,7 @@ class Packager:
         peers: list[tuple[Peer, Address]] = []
         for peer in cls.peers.values():
             for addr in peer.addrs:
-                if addr.tree_state == tree_state:
+                if addr.tree_state == to_addr.tree_state:
                     peers.append((peer, addr))
 
         # bail; should result in an error response
@@ -1684,7 +1689,7 @@ class Packager:
                 break
             if not to_addr:
                 return False
-            next_hop = cls.next_hop(cls.node_addrs[-1].tree_state, to_addr, metric)
+            next_hop = cls.next_hop(to_addr, metric)
             if not next_hop:
                 return False
             peer = next_hop[0]
@@ -1758,11 +1763,10 @@ class Packager:
 
         if to_addr:
             # unknown node; find next hop
-            next_hop = cls.next_hop(cls.node_addrs[-1].tree_state, to_addr, metric)
+            next_hop = cls.next_hop(to_addr, metric)
             if not next_hop:
                 return (None, None, None)
             peer = next_hop[0]
-            addr = next_hop[1]
             if peer.id in exclude:
                 return (None, None, None)
             intrfcs = peer.interfaces
@@ -1965,7 +1969,8 @@ class Packager:
             return
         src = b'' # source of Packet
         if 'to_addr' in p.fields:
-            if p.fields['to_addr'] not in [a.address for a in cls.node_addrs]:
+            addr = Address(p.fields['tree_state'], p.fields['to_addr'])
+            if addr not in cls.node_addrs:
                 # forward
                 cls.send_packet(p)
                 return
