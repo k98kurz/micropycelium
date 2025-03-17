@@ -1,6 +1,6 @@
 from asyncio import sleep_ms, run, gather
 from collections import deque
-from machine import Pin
+from machine import Pin, reset
 from micropycelium import (
     Packager, debug, ESPNowInterface, Beacon, Gossip, SpanningTree, Ping,
     DebugApp, DebugOp,
@@ -163,11 +163,14 @@ def add_hooks():
     Packager.add_hook('sleepskip', debug_name('sleepskip'))
 
 def start():
-    run(gather(
-        Packager.work(use_modem_sleep=False),
-        rloop(),
-        monitor_btn(btn, btnq, 800),
-    ))
+    try:
+        run(gather(
+            Packager.work(use_modem_sleep=False),
+            rloop(),
+            monitor_btn(btn, btnq, 800),
+        ))
+    except OSError:
+        reset()
 
 Beacon.invoke('start')
 Gossip.invoke('start')
