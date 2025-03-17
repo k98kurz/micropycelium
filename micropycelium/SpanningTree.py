@@ -52,7 +52,7 @@ tree_maintenance_rounds = 0
 
 current_children: dict[bytes, int] = {} # map of child peer ids to coordinates
 current_parent: bytes = b''
-tree_last_ts = time()
+tree_last_ts = int(time())
 # tuple of (claim, dTree from root, peer_id)
 known_claims: deque[tuple[bytes, int, bytes]] = deque([], 10)
 
@@ -60,7 +60,7 @@ known_claims: deque[tuple[bytes, int, bytes]] = deque([], 10)
 current_best_root_id = Packager.node_id
 Packager.set_addr(Address(tree_state(Packager.node_id), coords=[]))
 
-tree_age = lambda: time() - tree_last_ts
+tree_age = lambda: int(time()) - tree_last_ts
 is_root = lambda: Packager.node_id == current_best_root_id
 
 def xor(b1: bytes, b2: bytes) -> bytes:
@@ -119,7 +119,7 @@ def receive_tm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
             # add the claim to the known claims
             addr = Address(tree_state(tmsg.claim), address=tmsg.address)
             root = Address(tree_state(tmsg.claim), coords=[])
-            known_claims.append((tmsg.claim, time()-tmsg.age, addr.dTree(root, addr), peer_id))
+            known_claims.append((tmsg.claim, int(time())-tmsg.age, addr.dTree(root, addr), peer_id))
         elif our_score < their_score:
             # we have a better claim, so respond with it
             SpanningTree.invoke('respond', peer_id)
@@ -129,7 +129,7 @@ def receive_tm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
             # add the claim to the known claims
             addr = Address(tree_state(tmsg.claim), address=tmsg.address)
             root = Address(tree_state(tmsg.claim), coords=[])
-            known_claims.append((tmsg.claim, time()-tmsg.age, addr.dTree(root, addr), peer_id))
+            known_claims.append((tmsg.claim, int(time())-tmsg.age, addr.dTree(root, addr), peer_id))
     elif tmsg.op == TreeOp.REQUEST_ADDRESS_ASSIGNMENT:
         # received an address assignment request
         if tree_state(tmsg.claim) == Packager.node_addrs[-1].tree_state:
@@ -156,7 +156,7 @@ def receive_tm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
 
     # update the tree last ts if the message is from the parent
     if tmsg.node_id == current_parent:
-        tree_last_ts = time() - tmsg.age
+        tree_last_ts = int(time()) - tmsg.age
 
 def broadcast_tree_message():
     tmsg = TreeMessage(
@@ -260,7 +260,7 @@ def maintain_tree():
     # remove expired claims
     claims = [known_claims.pop() for _ in range(len(known_claims))]
     for claim, ts, dTree, peer_id in claims:
-        if time() - ts < SpanningTree.params['max_tree_age']:
+        if int(time()) - ts < SpanningTree.params['max_tree_age']:
             known_claims.append((claim, ts, dTree, peer_id))
 
     # check if there is no parent and there are known claims
@@ -274,12 +274,12 @@ def maintain_tree():
             SpanningTree.invoke('request_address_assignment', peer_id, best_claim)
         else:
             # we have the best claim, so begin broadcasting it
-            tree_last_ts = time()
+            tree_last_ts = int(time())
             periodic_tree_message(SpanningTree.params['broadcast_count'])
     else:
         # begin broadcasting
         if current_best_root_id == Packager.node_id:
-            tree_last_ts = time()
+            tree_last_ts = int(time())
         periodic_tree_message(SpanningTree.params['broadcast_count'])
 
     # tree_maintenance_rounds += 1
