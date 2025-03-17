@@ -98,6 +98,7 @@ def deliver_gossip(gm: GossipMessage):
         app.receive(gm.data, InterAppInterface, gossip_app_id)
     # skip forward/notify if it was a RESPOND and the size is not too large for simple PUBLISH
     if gm.op == GossipOp.RESPOND and len(gm.data) <= 235 - 17 - 32:
+        # i.e. it is not a new message; it is a response to a sync request
         return
     # forward or notify
     if len(gm.data) > 235 - 17 - 32:
@@ -168,7 +169,7 @@ def sync_all_peers():
             Gossip.invoke('request_ids', topic_id, pid)
 
     Packager.new_events.append(Event(
-        int(time_ns() / 1_000_000) + 60_000,
+        int(time_ns() / 1_000_000) + Gossip.params['schedule_delay']*1000,
         Gossip.id,
         sync_all_peers,
     ))
@@ -178,7 +179,7 @@ def start():
     if Gossip.id in Packager.schedule:
         return
     Packager.new_events.append(Event(
-        int(time_ns() / 1_000_000) + 30_000,
+        int(time_ns() / 1_000_000) + Gossip.params['start_delay']*1000,
         Gossip.id,
         sync_all_peers,
     ))
@@ -210,6 +211,10 @@ Gossip = Application(
         'get_message_cache': lambda _: message_cache,
         'serialize_gm': lambda _, gm: serialize_gm(gm),
         'deserialize_gm': lambda _, blob: deserialize_gm(blob),
+    },
+    params={
+        'start_delay': 10,
+        'schedule_delay': 20,
     }
 )
 gossip_app_id = Gossip.id
