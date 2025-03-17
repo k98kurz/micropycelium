@@ -1918,6 +1918,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
         inbox.clear()
         outbox.clear()
         SpanningTree.invoke('get_seen').clear()
+        SpanningTree.invoke('get_known_claims').clear()
         return super().setUp()
 
     def tearDown(self) -> None:
@@ -1930,6 +1931,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
         inbox.clear()
         outbox.clear()
         SpanningTree.invoke('get_seen').clear()
+        SpanningTree.invoke('get_known_claims').clear()
         return super().tearDown()
 
     def test_start_and_stop_e2e(self):

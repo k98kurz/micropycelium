@@ -115,17 +115,17 @@ def receive_tm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
             if tmsg.node_id != peer_id:
                 # gossip message for app/service discovery; do not respond
                 return
-        if their_score < our_score and tmsg.age < SpanningTree.params['max_tree_age']:
+        if tmsg.age < SpanningTree.params['max_tree_age']:
             # add the claim to the known claims
             addr = Address(tree_state(tmsg.claim), address=tmsg.address)
             root = Address(tree_state(tmsg.claim), coords=[])
             known_claims.append((tmsg.claim, int(time())-tmsg.age, addr.dTree(root, addr), peer_id))
-        elif our_score < their_score:
+        if our_score < their_score:
             # we have a better claim, so respond with it
             SpanningTree.invoke('respond', peer_id)
     elif tmsg.op == TreeOp.RESPOND:
         # received a response to a periodic broadcast
-        if their_score < our_score:
+        if tmsg.age < SpanningTree.params['max_tree_age']:
             # add the claim to the known claims
             addr = Address(tree_state(tmsg.claim), address=tmsg.address)
             root = Address(tree_state(tmsg.claim), coords=[])
