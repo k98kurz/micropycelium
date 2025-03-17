@@ -8,6 +8,9 @@ def unique_id() -> bytes:
 def lightsleep(ms):
     sleep(ms/1000)
 
+def reset():
+    ...
+
 class Pin:
     _val: int
     _mode: int
