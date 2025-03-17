@@ -170,6 +170,7 @@ def start():
             monitor_btn(btn, btnq, 800),
         ))
     except OSError:
+        print('OSError encountered; resetting device')
         reset()
 
 Beacon.invoke('start')

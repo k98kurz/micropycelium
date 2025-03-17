@@ -1647,7 +1647,7 @@ class TestGossipApplication(unittest.TestCase):
         outbox.clear()
         inbox.clear()
         Gossip.invoke('get_seen').clear()
-        Gossip.invoke('get_message_cache').clear()
+        Gossip.invoke('get_cache').clear()
         Gossip.invoke('get_subscriptions').clear()
         app_blobs.clear()
         return super().setUp()
@@ -1660,7 +1660,7 @@ class TestGossipApplication(unittest.TestCase):
         outbox.clear()
         inbox.clear()
         Gossip.invoke('get_seen').clear()
-        Gossip.invoke('get_message_cache').clear()
+        Gossip.invoke('get_cache').clear()
         Gossip.invoke('get_subscriptions').clear()
         app_blobs.clear()
         return super().tearDown()
@@ -1675,14 +1675,14 @@ class TestGossipApplication(unittest.TestCase):
 
         assert len(mock_interface1.castbox) == 0
         assert message_id not in Gossip.invoke('get_seen'), Gossip.invoke('get_seen')
-        assert Gossip.invoke('get_message_cache').get(message_id) is None
+        assert Gossip.invoke('get_cache').get(message_id) is None
         Gossip.invoke('publish', topic_id, data)
         assert len(mock_interface1.castbox) == 1
         asyncio.run(Packager.process())
         assert len(mock_interface1.castbox) == 0
         assert len(castbox) == 1
         assert message_id in Gossip.invoke('get_seen')
-        assert Gossip.invoke('get_message_cache').get(message_id) is not None
+        assert Gossip.invoke('get_cache').get(message_id) is not None
 
     def test_subscribe_and_unsubscribe(self):
         Packager.add_interface(mock_interface1)
@@ -1798,7 +1798,7 @@ class TestGossipApplication(unittest.TestCase):
         topic_id = sha256(b'topic').digest()[:16]
         og_gm = GossipMessage(GossipOp.RESPOND, topic_id, b'test data')
         message_id = sha256(Gossip.invoke('serialize_gm', og_gm)).digest()[:16]
-        Gossip.invoke('get_message_cache').add(message_id, og_gm)
+        Gossip.invoke('get_cache').add(message_id, og_gm)
         gm = GossipMessage(GossipOp.NOTIFY, topic_id, message_id)
         blob = Gossip.invoke('serialize_gm', gm)
 
@@ -1815,7 +1815,7 @@ class TestGossipApplication(unittest.TestCase):
         topic_id = sha256(b'topic').digest()[:16]
         og_gm = GossipMessage(GossipOp.RESPOND, topic_id, b'test data')
         message_id = sha256(Gossip.invoke('serialize_gm', og_gm)).digest()[:16]
-        Gossip.invoke('get_message_cache').add(message_id, og_gm)
+        Gossip.invoke('get_cache').add(message_id, og_gm)
         gm = GossipMessage(GossipOp.REQUEST, message_id, b'some node id')
         blob = Gossip.invoke('serialize_gm', gm)
 
@@ -1843,7 +1843,7 @@ class TestGossipApplication(unittest.TestCase):
             for gm in og_gms
         ]
         for i in range(len(message_ids)):
-            Gossip.invoke('get_message_cache').add(message_ids[i], og_gms[i])
+            Gossip.invoke('get_cache').add(message_ids[i], og_gms[i])
 
         gm = GossipMessage(GossipOp.REQUEST_IDS, topic_id, b'some node id')
         blob = Gossip.invoke('serialize_gm', gm)
@@ -1874,7 +1874,7 @@ class TestGossipApplication(unittest.TestCase):
             for gm in og_gms
         ]
         # add one to the cache
-        Gossip.invoke('get_message_cache').add(message_ids[0], og_gms[0])
+        Gossip.invoke('get_cache').add(message_ids[0], og_gms[0])
         gm = GossipMessage(GossipOp.RESPOND_IDS, topic_id, b''.join(message_ids))
         blob = Gossip.invoke('serialize_gm', gm)
 
@@ -1988,7 +1988,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
 
         # receive a SEND from that peer
         SpanningTree.invoke('start')
-        tm = TreeMessage(TreeOp.SEND, now(), peer_id, b'\x00' * 16, peer_id)
+        tm = TreeMessage(TreeOp.SEND, now(), 0, peer_id, b'\x00' * 16, peer_id)
         package = Package.from_blob(
             SpanningTree.id, SpanningTree.invoke('serialize', tm)
         )
@@ -2025,7 +2025,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
 
         # receive a SEND from that peer
         SpanningTree.invoke('start')
-        tm = TreeMessage(TreeOp.SEND, now(), peer_id, b'\x00' * 16, peer_id)
+        tm = TreeMessage(TreeOp.SEND, now(), 0, peer_id, b'\x00' * 16, peer_id)
         package = Package.from_blob(
             SpanningTree.id, SpanningTree.invoke('serialize', tm)
         )
@@ -2054,7 +2054,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
 
         # receive a RESPOND from that peer
         SpanningTree.invoke('start')
-        tm = TreeMessage(TreeOp.RESPOND, now(), peer_id, b'\x00' * 16, peer_id)
+        tm = TreeMessage(TreeOp.RESPOND, now(), 0, peer_id, b'\x00' * 16, peer_id)
         package = Package.from_blob(
             SpanningTree.id, SpanningTree.invoke('serialize', tm)
         )
@@ -2085,7 +2085,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
         # receive a REQUEST_ADDRESS_ASSIGNMENT from that peer
         SpanningTree.invoke('start')
         tm = TreeMessage(
-            TreeOp.REQUEST_ADDRESS_ASSIGNMENT, now(), Packager.node_id,
+            TreeOp.REQUEST_ADDRESS_ASSIGNMENT, now(), 0, Packager.node_id,
             b'\x00' * 16, peer_id
         )
         package = Package.from_blob(
@@ -2126,7 +2126,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
         # receive an ASSIGN_ADDRESS from that peer
         SpanningTree.invoke('start')
         tm = TreeMessage(
-            TreeOp.ASSIGN_ADDRESS, now(), peer_id, b'\x10' + b'\x00' * 15,
+            TreeOp.ASSIGN_ADDRESS, now(), 0, peer_id, b'\x10' + b'\x00' * 15,
             peer_id
         )
         package = Package.from_blob(
@@ -2158,7 +2158,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
         # receive an ASSIGN_ADDRESS from that peer
         SpanningTree.invoke('start')
         tm = TreeMessage(
-            TreeOp.ASSIGN_ADDRESS, now(), peer_id, b'\x10' + b'\x00' * 15,
+            TreeOp.ASSIGN_ADDRESS, now(), 0, peer_id, b'\x10' + b'\x00' * 15,
             peer_id
         )
         package = Package.from_blob(
@@ -2215,7 +2215,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
         addr = Address(tree_state(another_node_id), urandom(16))
         Packager.add_peer(peer_id, [(b'mac0', mock_interface1)])
         tm = TreeMessage(
-            TreeOp.SEND, now(), another_node_id, addr.address, another_node_id
+            TreeOp.SEND, now(), 0, another_node_id, addr.address, another_node_id
         )
         blob = SpanningTree.invoke('serialize', tm)
         gm = GossipMessage(GossipOp.PUBLISH, SpanningTree.id, blob)

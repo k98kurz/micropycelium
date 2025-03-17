@@ -187,6 +187,13 @@ def start():
 def stop():
     Packager.remove_hook('add_peer', add_peer_callback)
 
+def get_messages(topic_id: bytes):
+    res = []
+    for _, val in message_cache.items.items():
+        if val[1].topic_id == topic_id:
+            res.append(val[1])
+    return res
+
 
 Gossip = Application(
     name='Gossip',
@@ -208,7 +215,8 @@ Gossip = Application(
         'stop': lambda _: stop(),
         'get_seen': lambda _: seen,
         'get_subscriptions': lambda _: subscriptions,
-        'get_message_cache': lambda _: message_cache,
+        'get_cache': lambda _: message_cache,
+        'get_messages': lambda _, topic_id: get_messages(topic_id),
         'serialize_gm': lambda _, gm: serialize_gm(gm),
         'deserialize_gm': lambda _, blob: deserialize_gm(blob),
     },

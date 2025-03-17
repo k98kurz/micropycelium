@@ -24,7 +24,7 @@ from binascii import crc32
 from collections import deque, namedtuple
 from random import randint
 from struct import pack, unpack
-from time import time_ns
+from time import time, time_ns
 
 
 TreeOp = enum(
@@ -44,7 +44,7 @@ root_id_targets = (
     b'8765' * 8,
 )
 now = lambda: int(time_ns() / 1_000_000)
-TreeMessage = namedtuple("TreeMessage", ['op', 'ts', 'claim', 'address', 'node_id'])
+TreeMessage = namedtuple("TreeMessage", ['op', 'ts', 'age', 'claim', 'address', 'node_id'])
 seen_tm: deque[TreeMessage] = deque([], 10)
 tree_app_id = b''
 gossip_app_id = bytes.fromhex('849969c1f22797d66f5a94db2afe634a')
@@ -52,12 +52,16 @@ tree_maintenance_rounds = 0
 
 current_children: dict[bytes, int] = {} # map of child peer ids to coordinates
 current_parent: bytes = b''
+tree_last_ts = time()
 # tuple of (claim, dTree from root, peer_id)
 known_claims: deque[tuple[bytes, int, bytes]] = deque([], 10)
 
 # elect self as initial root
 current_best_root_id = Packager.node_id
 Packager.set_addr(Address(tree_state(Packager.node_id), coords=[]))
+
+tree_age = lambda: time() - tree_last_ts
+is_root = lambda: Packager.node_id == current_best_root_id
 
 def xor(b1: bytes, b2: bytes) -> bytes:
     """XOR two equal-length byte strings together."""
@@ -72,11 +76,11 @@ def claim_score(node_id: bytes, overlay_idx: int = 0) -> int:
     return int.from_bytes(xor(node_id, root_id_targets[overlay_idx]), 'big')
 
 def serialize_tm(tmsg: TreeMessage):
-    return pack('!BQ32s16s32s', tmsg.op, tmsg.ts, tmsg.claim, tmsg.address, tmsg.node_id)
+    return pack('!BQB32s16s32s', tmsg.op, tmsg.ts, tmsg.age, tmsg.claim, tmsg.address, tmsg.node_id)
 
 def deserialize_tm(blob: bytes) -> TreeMessage:
-    op, ts, claim, address, node_id = unpack('!BQ32s16s32s', blob)
-    return TreeMessage(op, ts, claim, address, node_id)
+    op, ts, age, claim, address, node_id = unpack('!BQB32s16s32s', blob)
+    return TreeMessage(op, ts, age, claim, address, node_id)
 
 def lwst_avlbl_coord() -> int|None:
     vals = set(current_children.values())
@@ -96,7 +100,7 @@ def remove_peer(_, pid: bytes):
             known_claims.append((claim, dTree, peer_id))
 
 def receive_tm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
-    global current_best_root_id, current_parent
+    global current_best_root_id, current_parent, tree_last_ts
     tmsg = deserialize_tm(blob)
     seen_tm.append(tmsg)
     peer_id = Packager.inverse_peers.get((mac, intrfc.id), None)
@@ -111,11 +115,11 @@ def receive_tm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
             if tmsg.node_id != peer_id:
                 # gossip message for app/service discovery; do not respond
                 return
-        if their_score < our_score:
+        if their_score < our_score and tmsg.age < SpanningTree.params['max_tree_age']:
             # add the claim to the known claims
             addr = Address(tree_state(tmsg.claim), address=tmsg.address)
             root = Address(tree_state(tmsg.claim), coords=[])
-            known_claims.append((tmsg.claim, addr.dTree(root, addr), peer_id))
+            known_claims.append((tmsg.claim, time()-tmsg.age, addr.dTree(root, addr), peer_id))
         elif our_score < their_score:
             # we have a better claim, so respond with it
             SpanningTree.invoke('respond', peer_id)
@@ -125,7 +129,7 @@ def receive_tm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
             # add the claim to the known claims
             addr = Address(tree_state(tmsg.claim), address=tmsg.address)
             root = Address(tree_state(tmsg.claim), coords=[])
-            known_claims.append((tmsg.claim, addr.dTree(root, addr), peer_id))
+            known_claims.append((tmsg.claim, time()-tmsg.age, addr.dTree(root, addr), peer_id))
     elif tmsg.op == TreeOp.REQUEST_ADDRESS_ASSIGNMENT:
         # received an address assignment request
         if tree_state(tmsg.claim) == Packager.node_addrs[-1].tree_state:
@@ -150,10 +154,15 @@ def receive_tm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
             # we have a better claim, so respond with it
             SpanningTree.invoke('respond', peer_id)
 
+    # update the tree last ts if the message is from the parent
+    if tmsg.node_id == current_parent:
+        tree_last_ts = time() - tmsg.age
+
 def broadcast_tree_message():
     tmsg = TreeMessage(
         TreeOp.SEND,
         now(),
+        tree_age(),
         current_best_root_id,
         Packager.node_addrs[-1].address,
         Packager.node_id
@@ -164,6 +173,7 @@ def send_tree_message(pid: bytes):
     tmsg = TreeMessage(
         TreeOp.SEND,
         now(),
+        tree_age(),
         current_best_root_id,
         Packager.node_addrs[-1].address,
         Packager.node_id
@@ -174,6 +184,7 @@ def respond_tree_message(pid: bytes):
     tmsg = TreeMessage(
         TreeOp.RESPOND,
         now(),
+        tree_age(),
         current_best_root_id,
         Packager.node_addrs[-1].address,
         Packager.node_id
@@ -184,6 +195,7 @@ def request_address_assignment(pid: bytes, claim: bytes):
     tmsg = TreeMessage(
         TreeOp.REQUEST_ADDRESS_ASSIGNMENT,
         now(),
+        0,
         claim,
         b'\x00' * 16,
         Packager.node_id
@@ -195,6 +207,7 @@ def assign_address(pid: bytes, coords: list[int]):
     tmsg = TreeMessage(
         TreeOp.ASSIGN_ADDRESS,
         now(),
+        tree_age(),
         current_best_root_id,
         addr.address,
         Packager.node_id
@@ -207,7 +220,7 @@ def periodic_tree_message(count: int):
         return schedule_tree_maintenance()
     SpanningTree.invoke('broadcast')
     Packager.new_events.append(Event(
-        now() + MODEM_INTERSECT_INTERVAL,
+        now() + SpanningTree.params['broadcast_interval'],
         tree_app_id,
         periodic_tree_message,
         count - 1
@@ -219,6 +232,7 @@ def send_gossip_tree_message(addr: Address|None = None):
         tm = TreeMessage(
             TreeOp.SEND,
             now(),
+            tree_age(),
             current_best_root_id,
             addr.address if addr is not None else Packager.node_addrs[-1].address,
             Packager.node_id
@@ -232,31 +246,41 @@ def maintain_tree():
         3) begin the periodic_tree_message event; 4) send a gossip
         message every 5th maintenance event.
     """
-    global current_best_root_id, current_parent, current_children, tree_maintenance_rounds
+    global current_best_root_id, current_parent, current_children
+    global tree_maintenance_rounds, tree_last_ts
 
-    # check if parent has disconnected
-    if current_parent != b'' and current_parent not in Packager.peers:
-        # parent has disconnected, reset the local state
+    # check if tree is too old
+    if tree_age() > SpanningTree.params['max_tree_age']:
+        # reset the local state
         current_best_root_id = Packager.node_id
         current_parent = b''
         current_children.clear()
         Packager.set_addr(Address(tree_state(Packager.node_id), coords=[]))
+
+    # remove expired claims
+    claims = [known_claims.pop() for _ in range(len(known_claims))]
+    for claim, ts, dTree, peer_id in claims:
+        if time() - ts < SpanningTree.params['max_tree_age']:
+            known_claims.append((claim, ts, dTree, peer_id))
 
     # check if there is no parent and there are known claims
     if current_parent == b'' and len(known_claims) > 0:
         # get the best known claim (and shortest distance from root)
         claims = list(known_claims)
         claims.sort(key=lambda t: claim_score(t[0]) + t[1])
-        best_claim, _, peer_id = claims[0]
+        best_claim, ts, _, peer_id = claims[0]
         if claim_score(best_claim) < claim_score(current_best_root_id):
             # request an address assignment from the best claim
             SpanningTree.invoke('request_address_assignment', peer_id, best_claim)
         else:
             # we have the best claim, so begin broadcasting it
-            periodic_tree_message(MODEM_INTERSECT_RTX_TIMES)
+            tree_last_ts = time()
+            periodic_tree_message(SpanningTree.params['broadcast_count'])
     else:
         # begin broadcasting
-        periodic_tree_message(MODEM_INTERSECT_RTX_TIMES)
+        if current_best_root_id == Packager.node_id:
+            tree_last_ts = time()
+        periodic_tree_message(SpanningTree.params['broadcast_count'])
 
     # tree_maintenance_rounds += 1
     # if tree_maintenance_rounds >= 5:
@@ -268,10 +292,8 @@ def maintain_tree():
 
 def schedule_tree_maintenance():
     """Schedules the tree maintenance event for 60s in the future."""
-    if tree_app_id+b's' in Packager.schedule:
-        return
     Packager.new_events.append(Event(
-        now() + SpanningTree.params['tree_maintenance_delay']*1000,
+        now() + SpanningTree.params['tree_maintenance_delay'],
         tree_app_id+b's',
         maintain_tree,
     ))
@@ -280,15 +302,15 @@ def set_addr_gossip_callback(_, addr: Address):
     send_gossip_tree_message(addr)
 
 def schedule_start():
-    """Schedules the app to start broadcasting with a random delay up to 30s."""
+    """Schedules the app to start broadcasting with a random delay up to
+        params['max_start_delay'] ms.
+    """
     global current_best_root_id
-    if tree_app_id+b's' in Packager.schedule:
-        return
     Packager.add_hook('remove_peer', remove_peer)
     current_best_root_id = Packager.node_id
     Packager.set_addr(Address(tree_state(Packager.node_id), coords=[]))
     Packager.new_events.append(Event(
-        now() + randint(0, SpanningTree.params['max_start_delay']) * 1000,
+        now() + randint(0, SpanningTree.params['max_start_delay']),
         tree_app_id + b's',
         maintain_tree,
     ))
@@ -334,8 +356,12 @@ SpanningTree = Application(
         'get_seen': lambda _: seen_tm,
     },
     params={
-        'max_start_delay': 10,
-        'tree_maintenance_delay': 20,
+        'max_start_delay': 10_000,
+        'tree_maintenance_delay': 20_000,
+        'max_tree_age': 60,
+        # 'broadcast_count': MODEM_INTERSECT_RTX_TIMES,
+        'broadcast_count': 1,
+        'broadcast_interval': MODEM_INTERSECT_INTERVAL,
     }
 )
 tree_app_id = SpanningTree.id

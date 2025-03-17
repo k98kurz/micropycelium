@@ -1,6 +1,6 @@
 from asyncio import sleep_ms, run, gather
 from collections import deque
-from machine import Pin
+from machine import Pin, reset
 from micropycelium import (
     Packager, debug, ESPNowInterface, Beacon, Gossip, SpanningTree, Ping
 )
@@ -112,7 +112,11 @@ def add_hooks():
 # to use a button, create a Pin and a deque, then use run(gather(Packager.work(), monitor_btn(pin, queue, 300)))
 
 def start():
-    run(Packager.work(use_modem_sleep=True))
+    try:
+        run(Packager.work(use_modem_sleep=True))
+    except OSError:
+        print('OSError encountered; resetting device')
+        reset()
 
 add_hooks()
 Beacon.invoke('start')

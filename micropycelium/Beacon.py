@@ -111,7 +111,7 @@ def periodic_beacon(count: int):
         return schedule_beacon()
     Beacon.invoke('broadcast')
     Packager.new_events.append(Event(
-        now() + MODEM_INTERSECT_INTERVAL,
+        now() + Beacon.params['beacon_period'],
         beacon_app_id,
         periodic_beacon,
         count - 1
@@ -124,10 +124,10 @@ def schedule_beacon():
     if beacon_app_id+b's' in Packager.schedule:
         return
     Packager.new_events.append(Event(
-        now() + 60_000,
+        now() + Beacon.params['beacon_interval'],
         beacon_app_id+b's',
         periodic_beacon,
-        MODEM_INTERSECT_RTX_TIMES
+        Beacon.params['beacon_count']
     ))
 
 Beacon = Application(
@@ -142,9 +142,16 @@ Beacon = Application(
         'get_bmsgs': lambda _, op: get_bmsgs(op),
         'serialize': lambda _, bm: serialize_bm(bm),
         'deserialize': lambda _, blob: deserialize_bm(blob),
-        'start': lambda _: periodic_beacon(MODEM_INTERSECT_RTX_TIMES),
+        # 'start': lambda _: periodic_beacon(MODEM_INTERSECT_RTX_TIMES),
+        'start': lambda _: periodic_beacon(2),
         'get_seen': lambda _: seen_bm,
         'get_sent': lambda _: sent_bm,
+    },
+    params={
+        'beacon_interval': 60_000,
+        'beacon_period': MODEM_INTERSECT_INTERVAL,
+        # 'beacon_count': MODEM_INTERSECT_RTX_TIMES,
+        'beacon_count': 1,
     }
 )
 beacon_app_id = Beacon.id
