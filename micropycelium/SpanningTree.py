@@ -44,7 +44,7 @@ root_id_targets = (
     b'8765' * 8,
 )
 now = lambda: int(time_ns() / 1_000_000)
-TreeMessage = namedtuple("TreeMessage", ['op', 'claim', 'address', 'node_id'])
+TreeMessage = namedtuple("TreeMessage", ['op', 'ts', 'claim', 'address', 'node_id'])
 seen_tm: deque[TreeMessage] = deque([], 10)
 tree_app_id = b''
 gossip_app_id = bytes.fromhex('849969c1f22797d66f5a94db2afe634a')
@@ -72,11 +72,11 @@ def claim_score(node_id: bytes, overlay_idx: int = 0) -> int:
     return int.from_bytes(xor(node_id, root_id_targets[overlay_idx]), 'big')
 
 def serialize_tm(tmsg: TreeMessage):
-    return pack('!B32s16s32s', tmsg.op, tmsg.claim, tmsg.address, tmsg.node_id)
+    return pack('!BQ32s16s32s', tmsg.op, tmsg.ts, tmsg.claim, tmsg.address, tmsg.node_id)
 
 def deserialize_tm(blob: bytes) -> TreeMessage:
-    op, claim, address, node_id = unpack('!B32s16s32s', blob)
-    return TreeMessage(op, claim, address, node_id)
+    op, ts, claim, address, node_id = unpack('!BQ32s16s32s', blob)
+    return TreeMessage(op, ts, claim, address, node_id)
 
 def lwst_avlbl_coord() -> int|None:
     vals = set(current_children.values())
@@ -153,6 +153,7 @@ def receive_tm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
 def broadcast_tree_message():
     tmsg = TreeMessage(
         TreeOp.SEND,
+        now(),
         current_best_root_id,
         Packager.node_addrs[-1].address,
         Packager.node_id
@@ -162,6 +163,7 @@ def broadcast_tree_message():
 def send_tree_message(pid: bytes):
     tmsg = TreeMessage(
         TreeOp.SEND,
+        now(),
         current_best_root_id,
         Packager.node_addrs[-1].address,
         Packager.node_id
@@ -171,6 +173,7 @@ def send_tree_message(pid: bytes):
 def respond_tree_message(pid: bytes):
     tmsg = TreeMessage(
         TreeOp.RESPOND,
+        now(),
         current_best_root_id,
         Packager.node_addrs[-1].address,
         Packager.node_id
@@ -180,6 +183,7 @@ def respond_tree_message(pid: bytes):
 def request_address_assignment(pid: bytes, claim: bytes):
     tmsg = TreeMessage(
         TreeOp.REQUEST_ADDRESS_ASSIGNMENT,
+        now(),
         claim,
         b'\x00' * 16,
         Packager.node_id
@@ -190,6 +194,7 @@ def assign_address(pid: bytes, coords: list[int]):
     addr = Address(tree_state(current_best_root_id), coords=coords)
     tmsg = TreeMessage(
         TreeOp.ASSIGN_ADDRESS,
+        now(),
         current_best_root_id,
         addr.address,
         Packager.node_id
@@ -213,6 +218,7 @@ def send_gossip_tree_message(addr: Address|None = None):
     if Gossip is not None:
         tm = TreeMessage(
             TreeOp.SEND,
+            now(),
             current_best_root_id,
             addr.address if addr is not None else Packager.node_addrs[-1].address,
             Packager.node_id
@@ -229,13 +235,12 @@ def maintain_tree():
     global current_best_root_id, current_parent, current_children, tree_maintenance_rounds
 
     # check if parent has disconnected
-    if current_parent != b'':
-        if current_parent not in Packager.peers:
-            # parent has disconnected, reset the local state
-            current_best_root_id = Packager.node_id
-            current_parent = b''
-            current_children.clear()
-            Packager.set_addr(Address(tree_state(Packager.node_id), coords=[]))
+    if current_parent != b'' and current_parent not in Packager.peers:
+        # parent has disconnected, reset the local state
+        current_best_root_id = Packager.node_id
+        current_parent = b''
+        current_children.clear()
+        Packager.set_addr(Address(tree_state(Packager.node_id), coords=[]))
 
     # check if there is no parent and there are known claims
     if current_parent == b'' and len(known_claims) > 0:
@@ -266,7 +271,7 @@ def schedule_tree_maintenance():
     if tree_app_id+b's' in Packager.schedule:
         return
     Packager.new_events.append(Event(
-        now() + 60_000,
+        now() + SpanningTree.params['tree_maintenance_delay']*1000,
         tree_app_id+b's',
         maintain_tree,
     ))
@@ -283,7 +288,7 @@ def schedule_start():
     current_best_root_id = Packager.node_id
     Packager.set_addr(Address(tree_state(Packager.node_id), coords=[]))
     Packager.new_events.append(Event(
-        now() + randint(0, 30) * 1000,
+        now() + randint(0, SpanningTree.params['max_start_delay']) * 1000,
         tree_app_id + b's',
         maintain_tree,
     ))
@@ -327,6 +332,10 @@ SpanningTree = Application(
         'get_current_best_root_id': lambda _: current_best_root_id,
         'send_gossip_tree_message': lambda _: send_gossip_tree_message(),
         'get_seen': lambda _: seen_tm,
+    },
+    params={
+        'max_start_delay': 10,
+        'tree_maintenance_delay': 20,
     }
 )
 tree_app_id = SpanningTree.id

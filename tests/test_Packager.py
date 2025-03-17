@@ -5,7 +5,7 @@ from context import *
 from hashlib import sha256
 from os import urandom
 from random import randint
-from time import time, sleep
+from time import time, sleep, time_ns
 import unittest
 
 
@@ -200,6 +200,8 @@ def xor_diff(b1: bytes, b2: bytes) -> tuple[str, str]:
             b3[i] = b1[i] if i < len(b1) else 255
             b4[i] = b2[i] if i < len(b2) else 255
     return (b3.hex(), b4.hex())
+
+now = lambda: int(time_ns() / 1_000_000_000)
 
 
 class TestSequence(unittest.TestCase):
@@ -1986,7 +1988,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
 
         # receive a SEND from that peer
         SpanningTree.invoke('start')
-        tm = TreeMessage(TreeOp.SEND, peer_id, b'\x00' * 16, peer_id)
+        tm = TreeMessage(TreeOp.SEND, now(), peer_id, b'\x00' * 16, peer_id)
         package = Package.from_blob(
             SpanningTree.id, SpanningTree.invoke('serialize', tm)
         )
@@ -2023,7 +2025,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
 
         # receive a SEND from that peer
         SpanningTree.invoke('start')
-        tm = TreeMessage(TreeOp.SEND, peer_id, b'\x00' * 16, peer_id)
+        tm = TreeMessage(TreeOp.SEND, now(), peer_id, b'\x00' * 16, peer_id)
         package = Package.from_blob(
             SpanningTree.id, SpanningTree.invoke('serialize', tm)
         )
@@ -2052,7 +2054,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
 
         # receive a RESPOND from that peer
         SpanningTree.invoke('start')
-        tm = TreeMessage(TreeOp.RESPOND, peer_id, b'\x00' * 16, peer_id)
+        tm = TreeMessage(TreeOp.RESPOND, now(), peer_id, b'\x00' * 16, peer_id)
         package = Package.from_blob(
             SpanningTree.id, SpanningTree.invoke('serialize', tm)
         )
@@ -2083,10 +2085,8 @@ class TestSpanningTreeApplication(unittest.TestCase):
         # receive a REQUEST_ADDRESS_ASSIGNMENT from that peer
         SpanningTree.invoke('start')
         tm = TreeMessage(
-            TreeOp.REQUEST_ADDRESS_ASSIGNMENT,
-            Packager.node_id,
-            b'\x00' * 16,
-            peer_id
+            TreeOp.REQUEST_ADDRESS_ASSIGNMENT, now(), Packager.node_id,
+            b'\x00' * 16, peer_id
         )
         package = Package.from_blob(
             SpanningTree.id, SpanningTree.invoke('serialize', tm)
@@ -2126,9 +2126,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
         # receive an ASSIGN_ADDRESS from that peer
         SpanningTree.invoke('start')
         tm = TreeMessage(
-            TreeOp.ASSIGN_ADDRESS,
-            peer_id,
-            b'\x10' + b'\x00' * 15,
+            TreeOp.ASSIGN_ADDRESS, now(), peer_id, b'\x10' + b'\x00' * 15,
             peer_id
         )
         package = Package.from_blob(
@@ -2160,9 +2158,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
         # receive an ASSIGN_ADDRESS from that peer
         SpanningTree.invoke('start')
         tm = TreeMessage(
-            TreeOp.ASSIGN_ADDRESS,
-            peer_id,
-            b'\x10' + b'\x00' * 15,
+            TreeOp.ASSIGN_ADDRESS, now(), peer_id, b'\x10' + b'\x00' * 15,
             peer_id
         )
         package = Package.from_blob(
@@ -2218,7 +2214,9 @@ class TestSpanningTreeApplication(unittest.TestCase):
         another_node_id = urandom(32)
         addr = Address(tree_state(another_node_id), urandom(16))
         Packager.add_peer(peer_id, [(b'mac0', mock_interface1)])
-        tm = TreeMessage(TreeOp.SEND, another_node_id, addr.address, another_node_id)
+        tm = TreeMessage(
+            TreeOp.SEND, now(), another_node_id, addr.address, another_node_id
+        )
         blob = SpanningTree.invoke('serialize', tm)
         gm = GossipMessage(GossipOp.PUBLISH, SpanningTree.id, blob)
         package = Package.from_blob(
