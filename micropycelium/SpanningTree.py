@@ -95,9 +95,9 @@ def remove_peer(_, pid: bytes):
         del current_children[pid]
     # remove the peer from the known claims
     claims = [known_claims.popleft() for _ in range(len(known_claims))]
-    for claim, dTree, peer_id in claims:
+    for claim, ts, dTree, peer_id in claims:
         if peer_id != pid:
-            known_claims.append((claim, dTree, peer_id))
+            known_claims.append((claim, ts, dTree, peer_id))
 
 def receive_tm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
     global current_best_root_id, current_parent, tree_last_ts
