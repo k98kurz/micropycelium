@@ -739,18 +739,23 @@ data, and update their tree state to the first byte of the CRC32 of the root
 public key, the sha256 of the protocol name, and the Unix epoch timestamp. This
 then generalizes for peers of peers of the root, etc.
 
-Before requesting an address assignment, a node will wait >=20 seconds to collect
+Before requesting an address assignment, a node will wait ~20 seconds to collect
 broadcasts from its peers. If its own election claim is not the best, it will
 filter its peers for those with the best root election claim, then request an
 address assignment from the peer with the shortest distance to the root.
 
-Every 60 seconds, a routine will run that will do the following:
+Every 20 seconds, a routine will run that will do the following:
 
-1. If the peer who is the local node's parent in the tree is no longer in the
-   peer list, the node will unset its address.
-2. If the node does not have the best root election claim and does not have an
-   address, it will request an address assignment from the best peer. Otherwise,
-   it will broadcast its periodic information package.
+1. If the tree that the local node is a part of has expired, it will reset to
+   the state of itself being the root.
+2. Expired election claims will be discarded.
+3. If the node has no parent, and there are known claims, it will evaluate the
+   best known claim: if the claim is better than the local node's claim, it will
+   request an address assignment from that peer; otherwise, it will update the
+   tree timestamp and broadcast its periodic information package.
+
+<details>
+<summary>Future design; currently unimplemented</summary>
 
 Address assignments take the form of a chain of simple certificates stemming
 from the root: the root signs an address assignment for a peer consisting of
@@ -776,6 +781,27 @@ and thus avoid unnecessary traffic and the creation of phantom tree states.
 If a node drops its parent in the tree from the peer list, it will broadcast its
 own root election claim, restarting the process of acquiring an address from the
 peer that is closest to the root from the peers that respond to the broadcast.
+
+</details>
+
+Address assignments are simply the tree state, address, and node ID. These
+values are accepted on face value because elliptic curve cryptography is not
+currently supported in micropython.
+
+Every tree message includes an `age` for the tree it pertains to. Tree age is
+calculated by `time() - tree_ts`. During the tree maintenance event, the root
+will update its internal tree timestamp before broadcasting its tree message,
+setting the age of the tree to 0. Its children then set their internal tree
+timestamp to `time() - tmsg.age`, also setting the age to 0 before broadcasting
+to their children. This chains, updating the timestamps in all members of the
+tree to keep the tree alive. If an intermediate node in the tree disconnects,
+the tree will expire for its descendants, and they will recalculate their
+subtree and addresses. If the root disconnects, the whole spanning tree will be
+recalculated.
+
+The VOUTE paper suggests having multiple embeddings for more reliability, and
+this may be implemented in the future, perhaps using the first bit of the tree
+state to select one of two simultaneous trees.
 
 ## Coordinates and Addresses
 
