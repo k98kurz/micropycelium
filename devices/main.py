@@ -1,7 +1,11 @@
 from micropycelium import Packager, Address
-import mpnode
+from mpnode import (
+    start, debug_name, Gossip, SpanningTree, Ping,
+    DebugApp, DebugOp, ping_report_cb
+)
+import machine
 
-Packager.add_hook('add_peer', mpnode.debug_name('Packager.add_peer'))
-Packager.add_hook('add_route', mpnode.debug_name('Packager.add_route'))
-Packager.add_hook('set_addr', mpnode.debug_name('Packager.set_addr'))
-mpnode.start()
+Packager.add_hook('add_peer', debug_name('Packager.add_peer'))
+Packager.add_hook('add_route', debug_name('Packager.add_route'))
+Packager.add_hook('set_addr', debug_name('Packager.set_addr'))
+start()

@@ -2,9 +2,11 @@ from asyncio import sleep_ms, run, gather
 from collections import deque
 from machine import Pin
 from micropycelium import (
-    Packager, debug, ESPNowInterface, Beacon, Gossip, SpanningTree, Ping
+    Packager, debug, ESPNowInterface, Beacon, Gossip, SpanningTree, Ping,
+    DebugApp, DebugOp,
 )
 from neopixel import NeoPixel
+import json
 
 def write_file(fname: str, data: str):
     with open(f'/{fname}', 'w') as f:
@@ -133,6 +135,8 @@ Ping.add_hook('gossip_request', debug_name('Ping.gossip_request'))
 Ping.add_hook('gossip_respond', debug_name('Ping.gossip_respond'))
 Ping.add_hook('gossip_response_received', debug_name('Ping.gossip_response_received'))
 
+DebugApp.add_hook('output', lambda _, info: print(info))
+
 # debug hooks
 hooks_added = False
 def add_hooks():
@@ -169,3 +173,4 @@ Beacon.invoke('start')
 Gossip.invoke('start')
 SpanningTree.invoke('start')
 Ping.invoke('start')
+DebugApp.invoke('start')

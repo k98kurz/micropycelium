@@ -41,6 +41,17 @@ def get_ping_src() -> list[str]:
             last_import = i
     return ping_src[last_import+1:]
 
+def get_debug_src() -> list[str]:
+    debug_src = get_src('micropycelium/DebugApp.py')
+    last_import = 0
+    for i in range(len(debug_src)):
+        line = debug_src[i]
+        if 'save_imports' in line:
+            break
+        if 'import' in line:
+            last_import = i
+    return debug_src[last_import+1:]
+
 def get_espnowintrfc_src() -> list[str]:
     espnowintrfc_src = get_src('micropycelium/ESPNowInterface.py')
     last_import = 0
@@ -71,6 +82,8 @@ def main(options: dict[str, list[str]]):
         parts.append(''.join(get_spanning_tree_src()))
     if 'ping' not in exclude:
         parts.append(''.join(get_ping_src()))
+    if 'debug' not in exclude:
+        parts.append(''.join(get_debug_src()))
     if 'espnow' not in exclude and 'espnowinterface' not in exclude:
         parts.append(''.join(get_espnowintrfc_src()))
 
