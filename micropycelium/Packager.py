@@ -1272,10 +1272,13 @@ class Application:
     id: bytes
     receive_func: Callable
     callbacks: dict[str, Callable]
+    params: dict
     _hooks: dict[str, Callable]
 
-    def __init__(self, name: str, description: str, version: int,
-                 receive_func: Callable, callbacks: dict = {}) -> None:
+    def __init__(
+            self, name: str, description: str, version: int,
+            receive_func: Callable, callbacks: dict = {}, params: dict = {}
+        ) -> None:
         self.name = name
         self.description = description
         self.version = version
@@ -1289,6 +1292,7 @@ class Application:
         )).digest()[:16]
         self.receive_func = receive_func
         self.callbacks = callbacks
+        self.params = params
         self._hooks = {}
 
     def add_hook(self, name: str, callback: Callable):
@@ -1801,7 +1805,7 @@ class Packager:
             intrfc_id,
             retries=retries-1
         )
-        cls.new_events.append(event)
+        cls.queue_event(event)
         flags = Flags(0)
         flags.rns = True
         intrfc = [i for i in cls.interfaces if i.id == intrfc_id][0]
@@ -1900,6 +1904,8 @@ class Packager:
     def sync_sequence(cls, seq_id: int):
         """Requests retransmission of any missing packets."""
         cls.call_hook('sync_sequence', seq_id)
+        if seq_id not in cls.in_seqs:
+            return
         seq = cls.in_seqs[seq_id]
         if seq.retry <= 0:
             # drop sequence because the originator is not responding to rtx
@@ -2008,6 +2014,7 @@ class Packager:
             if seq.seq.add_packet(p):
                 cls.deliver(Package.unpack(seq.seq.data), intrfc, mac)
                 cls.in_seqs.pop(seq_id)
+                cls.cancel_events.append(eid)
             else:
                 # schedule sequence sync event
                 cls.queue_event(Event(
