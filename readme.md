@@ -39,14 +39,12 @@ For a functional v0.1 release:
 - [x] Packager system
 - [x] ESP-NOW Interface
 - [x] Modem sleep mode for power saving: Request Node Status/Node Is Active before tx
-- [ ] Greedy routing: tree state construction and updating
-- [ ] Greedy routing: tree distance routing (flags.mode=0)
-- [ ] Greedy routing: common prefix length routing (flags.mode=1)
-- [ ] Eliptic curve cryptography
+- [x] Greedy routing: tree state construction and updating
+- [x] Greedy routing: tree distance routing (flags.mode=0)
+- [x] Greedy routing: common prefix length routing (flags.mode=1)
+- [x] A few utility apps for debugging
 
 Everything can be tracked in the [issues](https://github.com/k98kurz/micropycelium/issues).
-There are 6 milestones from v0.1 to v0.6, and issues planned for resolution have
-been categorized into those milestones.
 
 Once the v0.1 release is complete, these status items will be moved into a new
 changelog file.
@@ -89,9 +87,11 @@ or something similar to a generic ESP32 node the way I have to the M5stamp and
 M5StickC). Then turn on the devices, connect to the serial, and monitor debug
 messages (or watch blinking lights).
 
-In my e2e testing, the Beacon app running through the ESPNOW network interface
-adapter was able to properly transmit and receive between devices at up to ~200
-feet with direct line of sight.
+In manual e2e testing, the Beacon app running through the ESPNOW network
+interface adapter was able to properly transmit and receive between devices at
+up to ~200 feet with direct line of sight on a windless night. Message routing
+has been experimentally tested in a very small network size (3 nodes) with
+success; scaling up for more thorough testing is a near-future task.
 
 ## License
 

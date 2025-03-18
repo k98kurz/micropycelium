@@ -17,10 +17,11 @@ First, if you are using ESP32, ensure that the esp-idf tool is installed
 somewhere and configured:
 
 ```bash
-cd ~/Documents/repos
+pushd ~/Documents/repos
 git clone --recursive https://github.com/espressif/esp-idf.git
 cd esp-idf
 ./install.sh
+popd
 ```
 
 Then set the paths for the local forks/clones of the micropython and
@@ -33,7 +34,11 @@ source ~/Documents/repos/esp-idf/export.sh
 MICROPYTHON_PATH=$HOME/Documents/repos/micropython
 MICROPYCELIUM_PATH=$HOME/Documents/repos/micropycelium
 DEVICE=/dev/ttyACM0
+MPNODE=generic_esp32
+# or
 MPNODE=M5stamp-Pico
+# or
+MPNODE=M5StickC-PLUS2
 ```
 
 ## Build and Deploy Firmware
@@ -44,8 +49,8 @@ path within the micropython fork and deploy to connected device:
 ```bash
 python make.py > build/micropycelium.py
 pushd $MICROPYTHON_PATH/ports/esp32
-cp $MICROPYCELIUM_PATH/build/micropycelium.py modules/
-cp $MICROPYCELIUM_PATH/devices/$MPNODE/mpnode.py modules/
+cp "$MICROPYCELIUM_PATH/build/micropycelium.py" modules/
+cp "$MICROPYCELIUM_PATH/devices/$MPNODE/mpnode.py" modules/
 make submodules && make
 make PORT=$DEVICE deploy
 popd
