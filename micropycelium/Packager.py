@@ -978,6 +978,9 @@ class Interface:
         self.wake_func = wake_func
         self._hooks = {}
 
+    def __hash__(self) -> int:
+        return hash(self.id)
+
     def configure(self, data: dict) -> None:
         """Call the configure callback, passing self and data."""
         self.call_hook('configure', self, data)
@@ -1501,7 +1504,7 @@ class Packager:
             cls.peers[peer_id] = Peer(peer_id, interfaces)
         peer = cls.peers[peer_id]
         for mac, intrfc in interfaces:
-            if mac not in (i[0] for i in peer.interfaces):
+            if (mac, intrfc) not in peer.interfaces:
                 peer.interfaces.append((mac, intrfc))
             if (mac, intrfc.id) not in cls.inverse_peers:
                 cls.inverse_peers[(mac, intrfc.id)] = peer_id
