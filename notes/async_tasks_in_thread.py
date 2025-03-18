@@ -4,10 +4,11 @@ from collections import deque
 from time import sleep
 
 stop = deque([], 1)
+output = deque([], 10)
 
 async def loop(msg, delay):
     while not len(stop):
-        print(msg)
+        output.append(msg)
         await asyncio.sleep(delay)
 
 async def doit(n: int):
@@ -28,9 +29,12 @@ def dooo(n: int):
     # CPython cannot just run(gather(*tasks)), for some reason
     asyncio.run(doit(n))
 
-def cancel(delay):
-    sleep(delay)
+def cancel():
+    sleep(1)
+    if len(output):
+        print(f'output received')
+        print([output.popleft() for _ in range(len(output))])
     stop.append(1)
 
 _thread.start_new_thread(dooo, (5,))
-cancel(10)
+cancel()
