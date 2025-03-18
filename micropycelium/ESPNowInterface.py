@@ -21,9 +21,12 @@ def config_espnwintrfc(intrfc: Interface, data: dict):
         _config[k] = v
 
 def recv_espnwintrfc(intrfc: Interface) -> bytes|None:
-    res = e.recv(0)
-    if res and res[0]:
-        return Datagram(res[1], intrfc.id, res[0])
+    try:
+        res = e.recv(0)
+        if res and len(res) == 2 and res[0] and res[1]:
+            return Datagram(res[1], intrfc.id, res[0])
+    except:
+        return None
 
 def send_espnwintrfc(datagram: Datagram):
     if datagram.addr not in [p[0] for p in e.get_peers()]:
