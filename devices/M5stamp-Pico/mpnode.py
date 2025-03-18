@@ -1,4 +1,4 @@
-from asyncio import sleep_ms, run, gather
+from asyncio import sleep_ms, run, gather, create_task
 from collections import deque
 from machine import Pin, reset
 from micropycelium import (
@@ -6,7 +6,7 @@ from micropycelium import (
     DebugApp, DebugOp,
 )
 from neopixel import NeoPixel
-import json
+import gc
 
 def write_file(fname: str, data: str):
     with open(f'/{fname}', 'w') as f:
@@ -162,13 +162,34 @@ def add_hooks():
     Packager.add_hook('modemsleep', debug_name('modemsleep'))
     Packager.add_hook('sleepskip', debug_name('sleepskip'))
 
+async def memrloop():
+    while True:
+        await sleep_ms(10_000)
+        gc.collect()
+        fr = gc.mem_free()
+        al = gc.mem_alloc()
+        print('**Memory Report**')
+        print(f'\t{fr} ({fr/(fr+al)*100:.2f}%) free')
+        print(f'\t{al} ({al/(fr+al)*100:.2f}%) allocated')
+
+tasks = None
+
 def start():
+    global tasks
     try:
-        run(gather(
-            Packager.work(use_modem_sleep=False),
-            rloop(),
-            monitor_btn(btn, btnq, 800),
-        ))
+        if tasks:
+            for task in tasks:
+                try:
+                    task.cancel()
+                except:
+                    pass
+        tasks = [
+            create_task(Packager.work(use_modem_sleep=False)),
+            create_task(rloop()),
+            create_task(monitor_btn(btn, btnq, 800)),
+            create_task(memrloop()),
+        ]
+        run(gather(*tasks))
     except OSError:
         print('OSError encountered; resetting device')
         reset()

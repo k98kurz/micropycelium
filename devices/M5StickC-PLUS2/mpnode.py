@@ -5,6 +5,7 @@ from micropycelium import (
     Packager, debug, ESPNowInterface, Beacon, Gossip, SpanningTree, Ping,
     DebugApp, DebugOp,
 )
+import gc
 
 def write_file(fname: str, data: str):
     with open(f'/{fname}', 'w') as f:
@@ -22,6 +23,7 @@ btnAq = deque([], 5)
 # Button B: G39
 btnB = Pin(39, Pin.IN)
 btnBq = deque([], 5)
+# Button C (pwr): G35
 btnC = Pin(35, Pin.IN)
 btnCq = deque([], 5)
 # LED: G19 (internal)
@@ -32,10 +34,9 @@ led26 = Pin(26, Pin.OUT)
 led26q = deque([], 10)
 
 async def blink(p: Pin, ms: int):
-    v = p.value()
-    p.value(not v)
+    p.value(1)
     await sleep_ms(ms)
-    p.value(v)
+    p.value(0)
 async def bloop(q: deque, p: Pin):
     while True:
         while len(q):
@@ -152,6 +153,16 @@ def add_hooks():
     Packager.add_hook('modemsleep', debug_name('modemsleep'))
     Packager.add_hook('sleepskip', debug_name('sleepskip'))
 
+async def memrloop():
+    while True:
+        await sleep_ms(10_000)
+        gc.collect()
+        fr = gc.mem_free()
+        al = gc.mem_alloc()
+        print('**Memory Report**')
+        print(f'\t{fr} ({fr/(fr+al)*100:.2f}%) free')
+        print(f'\t{al} ({al/(fr+al)*100:.2f}%) allocated')
+
 def start():
     try:
         run(gather(
@@ -164,6 +175,7 @@ def start():
             btnAloop(),
             btnBloop(),
             btnCloop(),
+            memrloop(),
         ))
     except OSError:
         print('OSError encountered; resetting device')
