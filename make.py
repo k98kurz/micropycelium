@@ -87,6 +87,9 @@ def main(options: dict[str, list[str]]):
     if 'espnow' not in exclude and 'espnowinterface' not in exclude:
         parts.append(''.join(get_espnowintrfc_src()))
 
+    ainput_src = get_src('micropycelium/ainput.py')
+    parts.append(''.join(ainput_src))
+
     print(''.join(parts))
 
 

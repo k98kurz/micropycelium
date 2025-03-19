@@ -1,12 +1,15 @@
-from asyncio import sleep_ms, run, gather, create_task
+from asyncio import sleep_ms, run, gather, create_task, StreamReader
 from collections import deque
 from machine import Pin, reset
 from micropycelium import (
-    Packager, debug, ESPNowInterface, Beacon, Gossip, SpanningTree, Ping,
-    DebugApp,
+    Packager, ESPNowInterface, Beacon, Gossip, SpanningTree, Ping,
+    DebugApp, DebugOp, Address, dCPL, dTree, ainput
 )
 from neopixel import NeoPixel
+from struct import pack
 import gc
+import select
+import sys
 
 
 # RGB LED of the M5stamp-Pico
@@ -53,6 +56,7 @@ treebrdcst = (255, 126, 126)
 treesend = (126, 126, 255)
 
 # add some hooks
+debug_q = deque([], 25)
 def hexify(thing):
     if type(thing) is list:
         return [hexify(i) for i in thing]
@@ -64,6 +68,8 @@ def hexify(thing):
         return {hexify(k): hexify(v) for k, v in thing.items()}
     else:
         return thing if type(thing) is str else repr(thing)
+def debug(*args):
+    debug_q.append(args)
 def debug_name(name: str):
     def inner(*args):
         args = [hexify(a) for a in args]
@@ -161,13 +167,173 @@ async def memrloop():
         gc.collect()
         fr = gc.mem_free()
         al = gc.mem_alloc()
-        print('**Memory Report**')
-        print(f'\t{fr} ({fr/(fr+al)*100:.2f}%) free')
-        print(f'\t{al} ({al/(fr+al)*100:.2f}%) allocated')
+        debug(
+            '**Memory Report**\n' +
+            f'\t{fr} ({fr/(fr+al)*100:.2f}%) free\n' +
+            f'\t{al} ({al/(fr+al)*100:.2f}%) allocated'
+        )
 
+def _help():
+    print('Commands:')
+    print('\tmonitor - monitors debug messages')
+    print('\tget [node_id|addrs|peers|routes|next_hop addr metric] - get info from the local node')
+    print('\tping [node_id] [count] [timeout] [addr] - ping the address')
+    print('\tgossip ping [node_id] [count] [timeout] - ping the node via gossip')
+    print('\t\tcount default value is 4')
+    print('\t\ttimeout default value is 5 (seconds)')
+    print('\tdebug [node_id] [info|peers|routes|next_hop addr metric] - get debug info from a node')
+    print('\tadmin [node_id] [password] [reset] - restart a remote node')
+    print('\tquit - quit the program')
+    print('\treset - reset the device')
+    # print('\t - ')
+
+outq = deque([], 2)
+output = lambda res: outq.append(res)
+async def wait(c = 1):
+    while len(outq) < c:
+        await sleep_ms(10)
+    for i in range(c):
+        print(outq.popleft())
+DebugApp.add_hook('output', output)
+
+async def console(add_debug_hooks = False, pub_routes = True, sub_routes = False):
+    if add_debug_hooks:
+        add_hooks()
+    SpanningTree.params['pub'] = pub_routes
+    SpanningTree.params['sub'] = sub_routes
+    while True:
+        cmd = (await ainput("μpycelium> ")).split()
+        if len(cmd) == 0:
+            continue
+        if cmd[0].lower() in ('?', 'help'):
+            _help()
+        elif cmd[0].lower() == 'monitor':
+            print("Hit Enter to stop")
+            while True:
+                if len(debug_q):
+                    print(*debug_q.pop())
+                else:
+                    await sleep_ms(10)
+                    if await ainput('', True) is not None:
+                        break
+        elif cmd[0].lower() == 'get':
+            if len(cmd) < 2:
+                print('get - missing a required arg')
+                continue
+            if cmd[1].lower() == 'node_id':
+                print(f'Node ID: {Packager.node_id.hex()}')
+            elif cmd[1].lower() == 'addrs':
+                addrs = [a for a in Packager.node_addrs]
+                print(f'Addresses: {addrs}')
+            elif cmd[1].lower() == 'peers':
+                peers = [pid.hex() for pid in Packager.peers]
+                print(f'Peers:')
+                for peer in peers:
+                    print(f'  {peer}')
+            elif cmd[1].lower() == 'routes':
+                print(f'Routes:')
+                for addr, pid in Packager.routes.items():
+                    print(f'  {addr} -> {pid.hex()}')
+            elif cmd[1].lower() == 'next_hop':
+                if len(cmd) < 4:
+                    print('get next_hop - missing a required arg')
+                    continue
+                nh_addr = Address.from_str(cmd[2])
+                metric = dCPL if 'cpl' in cmd[3].lower() else dTree
+                nh = Packager.next_hop(nh_addr, metric)
+                print(f'Next Hop: {nh[0].id.hex()} {nh[1]}')
+        elif cmd[0].lower() == 'quit':
+            raise Exception('quit')
+        elif cmd[0].lower() == 'reset':
+            reset()
+        elif cmd[0].lower() == 'ping':
+            if len(cmd) < 2:
+                print('ping - missing required node_id')
+                continue
+            nid = bytes.fromhex(cmd[2])
+            kwargs = {
+                'node_id': nid,
+                'callback': output,
+            }
+            if len(cmd) > 2:
+                kwargs['count'] = int(cmd[2])
+            if len(cmd) > 3:
+                kwargs['timeout'] = int(cmd[3])
+            if len(cmd) > 4:
+                kwargs['addr'] = Address.from_str(cmd[4])
+            Ping.invoke('ping', **kwargs)
+            await wait(1)
+        elif cmd[0].lower() == 'gossip':
+            if len(cmd) < 2:
+                print('gossip - missing required subcommand')
+                continue
+            if cmd[1].lower() == 'ping':
+                if len(cmd) < 3:
+                    print('gossip ping - missing required addr')
+                    continue
+                nid = bytes.fromhex(cmd[2])
+                kwargs = {
+                    'node_id': nid,
+                    'callback': output,
+                }
+                if len(cmd) > 3:
+                    kwargs['count'] = int(cmd[3])
+                if len(cmd) > 4:
+                    kwargs['timeout'] = int(cmd[4])
+                Ping.invoke('gossip_ping', **kwargs)
+            else:
+                print('unknown subcommand')
+                continue
+            await wait(1)
+        elif cmd[0].lower() == 'debug':
+            if len(cmd) < 3:
+                print('debug - missing a required arg')
+                continue
+            nid = bytes.fromhex(cmd[1])
+            cmd[2] = cmd[2].lower()
+            if cmd[2] not in ('info', 'peers', 'routes', 'next_hop'):
+                print(f'debug - unknown mode {cmd[2]}')
+                continue
+            if cmd[2] == 'info':
+                op = DebugOp.REQUEST_NODE_INFO
+            elif cmd[2] == 'peers':
+                op = DebugOp.REQUEST_PEERS
+            elif cmd[2] == 'routes':
+                op = DebugOp.REQUEST_ROUTES
+            elif cmd[2] == 'next_hop':
+                if len(cmd) < 5:
+                    print('debug next_hop - missing a required arg')
+                    continue
+                nh_addr = Address.from_str(cmd[3])
+                metric = dCPL if 'cpl' in cmd[4].lower() else dTree
+                nh_addr = pack('!?B16s', metric, nh_addr.tree_state, nh_addr.address)
+                op = DebugOp.REQUEST_NEXT_HOP
+            DebugApp.invoke('request', op, nid, nh_addr)
+            await wait(1)
+        elif cmd[0].lower() == 'admin':
+            if len(cmd) < 4:
+                print('admin - missing a required arg')
+                continue
+            nid = bytes.fromhex(cmd[1])
+            cmd[3] = cmd[3].lower()
+            if cmd[3] == 'reset':
+                op = DebugOp.REQUIRE_RESET
+            else:
+                print(f'admin - unknown subcommand {cmd[3]}')
+                continue
+            DebugApp.invoke('require', op, nid, cmd[2].encode())
+            await wait(1)
+        else:
+            print(f'Unknown command: {cmd[0]}')
+            _help()
 tasks = None
 
-def start():
+async def _start(add_debug_hooks = False, pub_routes = True, sub_routes = False):
+    Beacon.invoke('start')
+    Gossip.invoke('start')
+    SpanningTree.invoke('start')
+    Ping.invoke('start')
+    DebugApp.invoke('start')
     global tasks
     try:
         if tasks:
@@ -181,14 +347,17 @@ def start():
             create_task(rloop()),
             create_task(monitor_btn(btn, btnq, 800)),
             create_task(memrloop()),
+            create_task(console(add_debug_hooks, pub_routes, sub_routes)),
         ]
-        run(gather(*tasks))
+        while True:
+            try:
+                await gather(*tasks)
+            except Exception as e:
+                if str(e) == 'quit':
+                    break
     except OSError:
         print('OSError encountered; resetting device')
         reset()
 
-Beacon.invoke('start')
-Gossip.invoke('start')
-SpanningTree.invoke('start')
-Ping.invoke('start')
-DebugApp.invoke('start')
+def start(add_debug_hooks = False, pub_routes = True, sub_routes = False):
+    run(_start(add_debug_hooks, pub_routes, sub_routes))
