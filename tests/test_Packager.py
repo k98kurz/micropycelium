@@ -1940,7 +1940,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
         Packager.add_application(Gossip)
         assert len(Packager._hooks.get('remove_peer', [])) == 0
         assert len(Gossip.invoke('get_subscriptions')) == 0
-        SpanningTree.invoke('start')
+        SpanningTree.invoke('start', sub=True)
         assert len(Packager._hooks.get('remove_peer', [])) == 1
         assert len(Gossip.invoke('get_subscriptions')) == 1
         assert len(Packager.new_events) == 1
@@ -2212,7 +2212,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
         Packager.add_interface(mock_interface1)
         Packager.add_application(SpanningTree)
         Packager.add_application(Gossip)
-        SpanningTree.invoke('start')
+        SpanningTree.invoke('start', sub=True)
         peer_id = urandom(32)
         another_node_id = urandom(32)
         addr = Address(tree_state(another_node_id), urandom(16))

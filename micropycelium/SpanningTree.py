@@ -301,10 +301,14 @@ def schedule_tree_maintenance():
 def set_addr_gossip_callback(_, addr: Address):
     send_gossip_tree_message(addr)
 
-def schedule_start():
+def schedule_start(pub = None, sub = None):
     """Schedules the app to start broadcasting with a random delay up to
         params['max_start_delay'] ms.
     """
+    if type(pub) is bool:
+        SpanningTree.params['pub'] = pub
+    if type(sub) is bool:
+        SpanningTree.params['sub'] = sub
     global current_best_root_id
     Packager.add_hook('remove_peer', remove_peer)
     current_best_root_id = Packager.node_id
@@ -315,9 +319,11 @@ def schedule_start():
         maintain_tree,
     ))
     Gossip = Packager.apps.get(gossip_app_id, None)
-    Packager.add_hook('set_addr', set_addr_gossip_callback)
     if Gossip is not None:
-        Gossip.invoke('subscribe', tree_app_id, tree_app_id)
+        if SpanningTree.params.get('pub'):
+            Packager.add_hook('set_addr', set_addr_gossip_callback)
+        if SpanningTree.params.get('sub'):
+            Gossip.invoke('subscribe', tree_app_id, tree_app_id)
 
 def stop():
     """Cancels all events and removes all hooks."""
@@ -345,7 +351,7 @@ SpanningTree = Application(
         'schedule_tree_maintenance': lambda _: schedule_tree_maintenance(),
         'serialize': lambda _, tm: serialize_tm(tm),
         'deserialize': lambda _, blob: deserialize_tm(blob),
-        'start': lambda _: schedule_start(),
+        'start': lambda _, **kwargs: schedule_start(**kwargs),
         'stop': lambda _: stop(),
         'claim_score': lambda _, claim: claim_score(claim),
         'get_known_claims': lambda _: known_claims,
@@ -362,6 +368,8 @@ SpanningTree = Application(
         # 'broadcast_count': MODEM_INTERSECT_RTX_TIMES,
         'broadcast_count': 1,
         'broadcast_interval': MODEM_INTERSECT_INTERVAL,
+        'pub': True,
+        'sub': False
     }
 )
 tree_app_id = SpanningTree.id
