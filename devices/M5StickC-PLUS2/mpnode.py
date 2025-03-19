@@ -3,17 +3,9 @@ from collections import deque
 from machine import Pin, reset
 from micropycelium import (
     Packager, debug, ESPNowInterface, Beacon, Gossip, SpanningTree, Ping,
-    DebugApp, DebugOp,
+    DebugApp,
 )
 import gc
-
-def write_file(fname: str, data: str):
-    with open(f'/{fname}', 'w') as f:
-        f.write(data)
-
-def read_file(fname: str) -> str:
-    with open(f'/{fname}', 'r') as f:
-        return f.read()
 
 # set G4 to 1 to stay on
 Pin(4, Pin.OUT).value(1)
@@ -163,9 +155,18 @@ async def memrloop():
         print(f'\t{fr} ({fr/(fr+al)*100:.2f}%) free')
         print(f'\t{al} ({al/(fr+al)*100:.2f}%) allocated')
 
+tasks = None
+
 def start():
+    global tasks
     try:
-        run(gather(
+        if tasks:
+            for task in tasks:
+                try:
+                    task.cancel()
+                except:
+                    pass
+        tasks = [
             Packager.work(use_modem_sleep=True),
             bloop(led19q, led19),
             bloop(led26q, led26),
@@ -176,7 +177,8 @@ def start():
             btnBloop(),
             btnCloop(),
             memrloop(),
-        ))
+        ]
+        run(gather(*tasks))
     except OSError:
         print('OSError encountered; resetting device')
         reset()

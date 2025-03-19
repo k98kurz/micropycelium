@@ -3,18 +3,11 @@ from collections import deque
 from machine import Pin, reset
 from micropycelium import (
     Packager, debug, ESPNowInterface, Beacon, Gossip, SpanningTree, Ping,
-    DebugApp, DebugOp,
+    DebugApp,
 )
 from neopixel import NeoPixel
 import gc
 
-def write_file(fname: str, data: str):
-    with open(f'/{fname}', 'w') as f:
-        f.write(data)
-
-def read_file(fname: str) -> str:
-    with open(f'/{fname}', 'r') as f:
-        return f.read()
 
 # RGB LED of the M5stamp-Pico
 rgb = NeoPixel(Pin(27, Pin.OUT), 1)

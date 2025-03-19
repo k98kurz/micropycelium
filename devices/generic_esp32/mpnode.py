@@ -2,16 +2,11 @@ from asyncio import sleep_ms, run, gather
 from collections import deque
 from machine import Pin, reset
 from micropycelium import (
-    Packager, debug, ESPNowInterface, Beacon, Gossip, SpanningTree, Ping
+    Packager, debug, ESPNowInterface, Beacon, Gossip, SpanningTree, Ping,
+    DebugApp,
 )
+import gc
 
-def write_file(fname: str, data: str):
-    with open(f'/{fname}', 'w') as f:
-        f.write(data)
-
-def read_file(fname: str) -> str:
-    with open(f'/{fname}', 'r') as f:
-        return f.read()
 
 # useful for blinking LEDs
 async def blink(p: Pin, ms: int):
@@ -108,12 +103,35 @@ def add_hooks():
     Packager.add_hook('modemsleep', debug_name('modemsleep'))
     Packager.add_hook('sleepskip', debug_name('sleepskip'))
 
+async def memrloop():
+    while True:
+        await sleep_ms(10_000)
+        gc.collect()
+        fr = gc.mem_free()
+        al = gc.mem_alloc()
+        print('**Memory Report**')
+        print(f'\t{fr} ({fr/(fr+al)*100:.2f}%) free')
+        print(f'\t{al} ({al/(fr+al)*100:.2f}%) allocated')
+
 # to use an LED, create a Pin and a deque, then use run(gather(Packager.work(), bloop(pin, queue)))
 # to use a button, create a Pin and a deque, then use run(gather(Packager.work(), monitor_btn(pin, queue, 300)))
 
+tasks = None
+
 def start():
+    global tasks
     try:
-        run(Packager.work(use_modem_sleep=True))
+        if tasks:
+            for task in tasks:
+                try:
+                    task.cancel()
+                except:
+                    pass
+        tasks = [
+            Packager.work(use_modem_sleep=True),
+            memrloop(),
+        ]
+        run(gather(*tasks))
     except OSError:
         print('OSError encountered; resetting device')
         reset()
@@ -122,3 +140,5 @@ add_hooks()
 Beacon.invoke('start')
 Gossip.invoke('start')
 SpanningTree.invoke('start')
+Ping.invoke('start')
+DebugApp.invoke('start')
