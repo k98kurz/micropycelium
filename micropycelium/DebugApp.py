@@ -154,7 +154,7 @@ def handle_request_next_hop(dm: DebugMessage):
     if Gossip is None:
         return
     metric, tree_state, addr = unpack('!BB16s', dm.data)
-    next_hop = Packager.next_hop(tree_state, Address(tree_state, addr), metric)
+    next_hop = Packager.next_hop(Address(tree_state, addr), metric)
     info = {
         'next_hop': (next_hop[0].id.hex(), str(next_hop[1]))
             if next_hop is not None else None,

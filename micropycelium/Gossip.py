@@ -106,8 +106,17 @@ def deliver_gossip(gm: GossipMessage):
     else:
         broadcast_gossip(gm)
 
-def broadcast_gossip(gm: GossipMessage):
+def broadcast_gossip(gm: GossipMessage, count: int = 1):
     Packager.broadcast(gossip_app_id, serialize_gm(gm))
+    if count <= 0:
+        return
+    Packager.new_events.append(Event(
+        int(time_ns() / 1_000_000) + Gossip.params['broadcast_echo_delay_ms'],
+        sha256(serialize_gm(gm)).digest()[:16],
+        broadcast_gossip,
+        gm,
+        count - 1,
+    ))
 
 def notify_gossip(topic_id: bytes, gm_id: bytes):
     gm = GossipMessage(GossipOp.NOTIFY, topic_id, gm_id)
@@ -226,6 +235,7 @@ Gossip = Application(
     params={
         'start_delay': 10,
         'schedule_delay': 20,
+        'broadcast_echo_delay_ms': 20,
     }
 )
 gossip_app_id = Gossip.id
