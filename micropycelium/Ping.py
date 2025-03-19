@@ -79,7 +79,8 @@ def receive_pm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
         Ping.invoke('gossip_response_received', pm)
 
 def ping_request(
-        node_id: bytes|str, metric: int = dTree, nonce: int|None = None
+        node_id: bytes|str, metric: int = dTree, nonce: int|None = None,
+        callback: Callable|None = None
     ) -> bool:
     """Send a ping request to the given node id. Returns False if it
         cannot be sent (no route to the node or no local address).
@@ -98,6 +99,8 @@ def ping_request(
         Packager.node_addrs[-1].address,
         Packager.node_id
     )
+    if callback is not None:
+        callback('ping request sent')
     return Packager.send(Ping.id, serialize_pm(pm), node_id, metric=metric)
 
 def ping_respond(pm: PingMessage):
@@ -128,7 +131,10 @@ def ping_response_received(pm: PingMessage):
         pm.node_id
     ))
 
-def ping_gossip_request(node_id: bytes|str, nonce: int|None = None) -> bool:
+def ping_gossip_request(
+        node_id: bytes|str, nonce: int|None = None,
+        callback: Callable|None = None
+    ) -> bool:
     """Send a gossip request to the given node id. Returns False if the
         gossip application is not found or if the local node has no
         address.
@@ -150,6 +156,8 @@ def ping_gossip_request(node_id: bytes|str, nonce: int|None = None) -> bool:
     )
     topic_id = sha256(Ping.id + node_id).digest()[:16]
     Gossip.invoke('publish', topic_id, serialize_pm(pm))
+    if callback is not None:
+        callback('gossip ping request sent')
     return True
 
 def ping_gossip_respond(pm: PingMessage) -> bool:
@@ -274,7 +282,7 @@ def report_ping_test(
     return report
 
 def run_ping_test(
-        node_id: bytes|str, count: int = 4, timeout: int = 30,
+        node_id: bytes|str, count: int = 4, timeout: int = 5,
         addr: Address|None = None, metric: int = dTree,
         callback: Callable|None = None
     ):
@@ -282,6 +290,8 @@ def run_ping_test(
         delays calculated by multiplying the index by the timeout. Also
         schedules generation of a report after timeout * count seconds.
     """
+    if callback is not None:
+        callback('ping test started')
     node_id = bytes.fromhex(node_id) if type(node_id) == str else node_id
     topic_id = sha256(Ping.id + node_id).digest()[:16]
     topic_id += PingOp.REQUEST.to_bytes(1, 'big')
@@ -290,15 +300,16 @@ def run_ping_test(
     addr = addr if addr is not None else Packager.inverse_routes.get(node_id, [None])[-1]
     for i in range(count):
         Packager.new_events.append(Event(
-            now + timeout * i * 1000,
+            now + i * 1000,
             topic_id + i.to_bytes(1, 'big'),
             ping_request,
             node_id,
             metric,
             nonce,
+            callback,
         ))
     Packager.new_events.append(Event(
-        now + timeout * count * 1000,
+        now + (timeout + count) * 1000,
         topic_id + count.to_bytes(1, 'big'),
         report_ping_test,
         nonce,
@@ -310,7 +321,7 @@ def run_ping_test(
     ))
 
 def run_gossip_ping_test(
-        node_id: bytes|str, count: int = 4, timeout: int = 60,
+        node_id: bytes|str, count: int = 4, timeout: int = 5,
         addr: Address|None = None,
         callback: Callable|None = None
     ):
@@ -319,6 +330,8 @@ def run_gossip_ping_test(
         timeout. Also schedules generation of a report after timeout *
         count seconds.
     """
+    if callback is not None:
+        callback('gossip ping test started')
     node_id = bytes.fromhex(node_id) if type(node_id) == str else node_id
     topic_id = sha256(Ping.id + node_id).digest()[:16]
     topic_id += PingOp.GOSSIP_REQUEST.to_bytes(1, 'big')
@@ -326,14 +339,15 @@ def run_gossip_ping_test(
     now = int(time_ns() / 1_000_000)
     for i in range(count):
         Packager.new_events.append(Event(
-            now + timeout * i * 1000,
+            now + i * 1000,
             topic_id + i.to_bytes(1, 'big'),
             ping_gossip_request,
             node_id,
             nonce,
+            callback,
         ))
     Packager.new_events.append(Event(
-        now + timeout * count * 1000,
+        now + (timeout + count) * 1000,
         topic_id + count.to_bytes(1, 'big'),
         report_ping_test,
         nonce,

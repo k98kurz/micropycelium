@@ -5,3 +5,4 @@ from .SpanningTree import SpanningTree, TreeMessage, TreeOp, tree_state
 from .Gossip import Gossip, GossipMessage, GossipOp
 from .Ping import Ping, PingMessage, PingOp
 from .DebugApp import DebugApp, DebugMessage, DebugOp
+from .ainput import ainput

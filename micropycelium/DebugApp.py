@@ -153,7 +153,7 @@ def handle_request_next_hop(dm: DebugMessage):
     Gossip = Packager.apps.get(gossip_app_id, None)
     if Gossip is None:
         return
-    metric, tree_state, addr = unpack('!?B16s', dm.data)
+    metric, tree_state, addr = unpack('!BB16s', dm.data)
     next_hop = Packager.next_hop(tree_state, Address(tree_state, addr), metric)
     info = {
         'next_hop': (next_hop[0].id.hex(), str(next_hop[1]))
@@ -209,14 +209,14 @@ def handle_response(dm: DebugMessage):
     DebugApp.invoke('output', result)
     seen_results.append(result)
 
-def request_debug_info(op: int, peer_id: bytes):
+def request_debug_info(op: int, peer_id: bytes, data: bytes = b''):
     Gossip = Packager.apps.get(gossip_app_id, None)
     if Gossip is None:
         return
     peer_id = peer_id if type(peer_id) is bytes else bytes.fromhex(peer_id)
     topic_id = sha256(DebugApp.id + peer_id).digest()[:16]
     nonce = randint(0, 2**16 - 1)
-    dm = DebugMessage(op, nonce, Packager.node_id, b'')
+    dm = DebugMessage(op, nonce, Packager.node_id, data)
     Gossip.invoke('publish', topic_id, serialize_dm(dm))
 
 def require_action(op: int, peer_id: bytes, data: bytes):
@@ -253,7 +253,7 @@ DebugApp = Application(
         'handle_request_next_hop': lambda _, dm: handle_request_next_hop(dm),
         'handle_response': lambda _, dm: handle_response(dm),
         'handle_require': lambda _, dm: handle_require(dm),
-        'request': lambda _, op, peer_id: request_debug_info(op, peer_id),
+        'request': lambda _, op, peer_id, *args: request_debug_info(op, peer_id, *args),
         'require': lambda _, op, peer_id, data: require_action(op, peer_id, data),
         'deserialize': lambda _, blob: deserialize_dm(blob),
         'serialize': lambda _, dm: serialize_dm(dm),

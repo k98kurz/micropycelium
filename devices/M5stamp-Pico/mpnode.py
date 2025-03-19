@@ -134,7 +134,7 @@ Ping.add_hook('gossip_request', debug_name('Ping.gossip_request'))
 Ping.add_hook('gossip_respond', debug_name('Ping.gossip_respond'))
 Ping.add_hook('gossip_response_received', debug_name('Ping.gossip_response_received'))
 
-DebugApp.add_hook('output', lambda _, info: print(info))
+DebugApp.add_hook('output', debug_name('DebugApp.output'))
 
 # debug hooks
 hooks_added = False
@@ -177,7 +177,10 @@ def _help():
     print('Commands:')
     print('\tmonitor - monitors debug messages')
     print('\tget [node_id|addrs|peers|routes|next_hop addr metric] - get info from the local node')
-    print('\tping [node_id] [count] [timeout] [addr] - ping the address')
+    print('\tping [node_id|addr] [count] [timeout] - ping the node_id/address')
+    print('\t\tcount default value is 4')
+    print('\t\ttimeout default value is 5 (seconds)')
+    print('\t\tIf node_id is provided, the address will be found from the known routes')
     print('\tgossip ping [node_id] [count] [timeout] - ping the node via gossip')
     print('\t\tcount default value is 4')
     print('\t\ttimeout default value is 5 (seconds)')
@@ -185,16 +188,21 @@ def _help():
     print('\tadmin [node_id] [password] [reset] - restart a remote node')
     print('\tquit - quit the program')
     print('\treset - reset the device')
+    print('\twait [count] - wait for [count=1] output messages')
     # print('\t - ')
 
 outq = deque([], 2)
 output = lambda res: outq.append(res)
 async def wait(c = 1):
-    while len(outq) < c:
+    print("Hit Enter to cancel...")
+    i = 0
+    while i < c:
+        if len(outq):
+            print(outq.popleft())
+            i += 1
+        if await ainput('', True) is not None:
+            break
         await sleep_ms(10)
-    for i in range(c):
-        print(outq.popleft())
-DebugApp.add_hook('output', output)
 
 async def console(add_debug_hooks = False, pub_routes = True, sub_routes = False):
     if add_debug_hooks:
@@ -205,9 +213,10 @@ async def console(add_debug_hooks = False, pub_routes = True, sub_routes = False
         cmd = (await ainput("μpycelium> ")).split()
         if len(cmd) == 0:
             continue
-        if cmd[0].lower() in ('?', 'help'):
+        cmd[0] = cmd[0].lower()
+        if cmd[0] in ('?', 'help'):
             _help()
-        elif cmd[0].lower() == 'monitor':
+        elif cmd[0] == 'monitor':
             print("Hit Enter to stop")
             while True:
                 if len(debug_q):
@@ -216,7 +225,7 @@ async def console(add_debug_hooks = False, pub_routes = True, sub_routes = False
                     await sleep_ms(10)
                     if await ainput('', True) is not None:
                         break
-        elif cmd[0].lower() == 'get':
+        elif cmd[0] == 'get':
             if len(cmd) < 2:
                 print('get - missing a required arg')
                 continue
@@ -242,17 +251,23 @@ async def console(add_debug_hooks = False, pub_routes = True, sub_routes = False
                 metric = dCPL if 'cpl' in cmd[3].lower() else dTree
                 nh = Packager.next_hop(nh_addr, metric)
                 print(f'Next Hop: {nh[0].id.hex()} {nh[1]}')
-        elif cmd[0].lower() == 'quit':
+        elif cmd[0] == 'quit':
             raise Exception('quit')
-        elif cmd[0].lower() == 'reset':
+        elif cmd[0] == 'reset':
             reset()
-        elif cmd[0].lower() == 'ping':
+        elif cmd[0] == 'ping':
             if len(cmd) < 2:
-                print('ping - missing required node_id')
+                print('ping - missing required node_id|addr')
                 continue
-            nid = bytes.fromhex(cmd[2])
+            try:
+                nid = bytes.fromhex(cmd[1])
+                addr = None
+            except:
+                nid = None
+                addr =Address.from_str(cmd[1])
             kwargs = {
                 'node_id': nid,
+                'addr': addr,
                 'callback': output,
             }
             if len(cmd) > 2:
@@ -262,8 +277,9 @@ async def console(add_debug_hooks = False, pub_routes = True, sub_routes = False
             if len(cmd) > 4:
                 kwargs['addr'] = Address.from_str(cmd[4])
             Ping.invoke('ping', **kwargs)
-            await wait(1)
-        elif cmd[0].lower() == 'gossip':
+            c = kwargs.get('count', 4)
+            await wait(c + 2)
+        elif cmd[0] == 'gossip':
             if len(cmd) < 2:
                 print('gossip - missing required subcommand')
                 continue
@@ -284,20 +300,22 @@ async def console(add_debug_hooks = False, pub_routes = True, sub_routes = False
             else:
                 print('unknown subcommand')
                 continue
-            await wait(1)
-        elif cmd[0].lower() == 'debug':
+            c = kwargs.get('count', 4)
+            await wait(c + 2)
+        elif cmd[0] == 'debug':
             if len(cmd) < 3:
                 print('debug - missing a required arg')
                 continue
             nid = bytes.fromhex(cmd[1])
             cmd[2] = cmd[2].lower()
+            nh_addr = b''
             if cmd[2] not in ('info', 'peers', 'routes', 'next_hop'):
                 print(f'debug - unknown mode {cmd[2]}')
                 continue
             if cmd[2] == 'info':
                 op = DebugOp.REQUEST_NODE_INFO
             elif cmd[2] == 'peers':
-                op = DebugOp.REQUEST_PEERS
+                op = DebugOp.REQUEST_PEER_LIST
             elif cmd[2] == 'routes':
                 op = DebugOp.REQUEST_ROUTES
             elif cmd[2] == 'next_hop':
@@ -306,11 +324,13 @@ async def console(add_debug_hooks = False, pub_routes = True, sub_routes = False
                     continue
                 nh_addr = Address.from_str(cmd[3])
                 metric = dCPL if 'cpl' in cmd[4].lower() else dTree
-                nh_addr = pack('!?B16s', metric, nh_addr.tree_state, nh_addr.address)
+                nh_addr = pack('!BB16s', metric, nh_addr.tree_state, nh_addr.address)
                 op = DebugOp.REQUEST_NEXT_HOP
+            DebugApp.add_hook('output', lambda *args: output(args[1]))
             DebugApp.invoke('request', op, nid, nh_addr)
+            print('request sent; waiting for response')
             await wait(1)
-        elif cmd[0].lower() == 'admin':
+        elif cmd[0] == 'admin':
             if len(cmd) < 4:
                 print('admin - missing a required arg')
                 continue
@@ -318,14 +338,20 @@ async def console(add_debug_hooks = False, pub_routes = True, sub_routes = False
             cmd[3] = cmd[3].lower()
             if cmd[3] == 'reset':
                 op = DebugOp.REQUIRE_RESET
+                DebugApp.invoke('require', op, nid, cmd[2].encode())
+                await wait(1)
             else:
                 print(f'admin - unknown subcommand {cmd[3]}')
                 continue
-            DebugApp.invoke('require', op, nid, cmd[2].encode())
-            await wait(1)
+        elif cmd[0] == 'wait':
+            if len(cmd) < 2:
+                await wait(1)
+            else:
+                await wait(int(cmd[1]))
         else:
             print(f'Unknown command: {cmd[0]}')
             _help()
+
 tasks = None
 
 async def _start(add_debug_hooks = False, pub_routes = True, sub_routes = False):

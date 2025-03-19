@@ -15,7 +15,12 @@ NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
 CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 """
 
-from asyncio import sleep_ms
+try:
+    from asyncio import sleep_ms
+except ImportError:
+    from asyncio import sleep
+    sleep_ms = lambda ms: sleep(ms / 1000)
+
 from collections import deque
 import sys
 import select
