@@ -379,6 +379,7 @@ class TestAddress(unittest.TestCase):
         assert adstr == '176-2410::85', adstr
         assert repr(addr) == 'Address(176-2410::85)', repr(addr)
         assert addr == Address.from_str(adstr)
+        assert addr == Address.from_str(repr(addr))
         addr = Address(176, coords=[2,1,0,0,4] + [0] * 27)
         adstr = str(addr)
         assert adstr == '176-210040::', adstr
@@ -2477,11 +2478,11 @@ class TestPingApplication(unittest.TestCase):
         local_addr = Address.from_str('1-12::')
         Packager.set_addr(local_addr)
         assert len(Packager.new_events) == 0
-        Ping.invoke('ping', remote_id, 5, addr=remote_addr)
+        Ping.invoke('ping', count=5, addr=remote_addr)
         assert len(Packager.new_events) == 6
         # report event
         ev = Packager.new_events[-1]
-        assert ev.args[-2] == remote_addr
+        assert ev.args[3] == remote_addr, ev.args
 
     def test_gossip_ping_test_adds_new_events(self):
         remote_id = urandom(32)
@@ -2489,11 +2490,11 @@ class TestPingApplication(unittest.TestCase):
         local_addr = Address.from_str('1-12::')
         Packager.set_addr(local_addr)
         assert len(Packager.new_events) == 0
-        Ping.invoke('gossip_ping', remote_id, 2, addr=remote_addr)
+        Ping.invoke('gossip_ping', remote_id, 2)
         assert len(Packager.new_events) == 3
         # report event
         ev = Packager.new_events[-1]
-        assert ev.args[-2] == remote_addr
+        assert ev.args[-2] == remote_id
 
     def test_report_ping_test(self):
         responses = Ping.invoke('get_ping_responses')
@@ -2538,12 +2539,11 @@ class TestPingApplication(unittest.TestCase):
             ))
         assert len(responses) == count
         report = Ping.invoke(
-            'report_ping_test', nonce, mode, 4, remote_id, remote_addr
+            'report_ping_test', nonce, mode, 4, remote_addr
         )
         assert len(responses) == 0
         assert report['mode'] == mode
-        assert report['remote_id'] == remote_id.hex()
-        assert report['remote_addr'] == remote_addr
+        assert report['remote'] == remote_addr
         assert report['count'] == count
         assert report['there']['avg'] == 15
         assert report['there']['min'] <= report['there']['avg']
@@ -2571,10 +2571,11 @@ class TestPingApplication(unittest.TestCase):
             ))
         assert len(responses) == count
         report = Ping.invoke(
-            'report_ping_test', nonce, 'gossip', 4, remote_id, remote_addr
+            'report_ping_test', nonce, 'gossip', 4, remote_id
         )
         assert len(responses) == 0
         assert report['mode'] == 'gossip'
+        assert report['remote'] == remote_id.hex()
         assert report['success_rate'] == '100%'
 
 

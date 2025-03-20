@@ -36,7 +36,8 @@ else:
         return isinstance(c, GeneratorType)
 
 
-VERSION = micropython.const(0)
+VERSION = micropython.const('0.1.0-dev')
+PROTOCOL_VERSION = micropython.const(0)
 DEBUG = False
 MODEM_SLEEP_MS = micropython.const(90)
 MODEM_WAKE_MS = micropython.const(40)
@@ -725,7 +726,7 @@ class Packet:
     @classmethod
     def unpack(cls, data: bytes|bytearray) -> 'Packet':
         version, reserved, schema_id, flags, _ = unpack(f'!BBBB{len(data)-4}s', data)
-        assert version <= VERSION, 'unsupported version encountered'
+        assert version <= PROTOCOL_VERSION, 'unsupported version encountered'
         schema = get_schema(schema_id)
         fields = schema.unpack(data)
         return cls(schema, Flags(flags), fields)
@@ -1121,6 +1122,10 @@ class Address:
     @classmethod
     def from_str(cls, formatted: str) -> 'Address':
         """Reconstruct an Address from a user-friendly string representation."""
+        formatted = formatted.replace('Address', '')
+        formatted = formatted.replace('(', '')
+        formatted = formatted.replace(')', '')
+        formatted = formatted.replace(' ', '')
         tree_state, addr = formatted.split('-')
         parts = addr.split('::')
         if len(parts) == 1:
@@ -1412,7 +1417,7 @@ class Cache:
 
 # @micropython.native
 class Packager:
-    version: int = 0
+    version: str = VERSION
     interfaces: list[Interface] = []
     seq_id: int = 0
     packet_id: int = 0
@@ -1666,17 +1671,21 @@ class Packager:
 
     @classmethod
     def send(
-        cls, app_id: bytes, blob: bytes, node_id: bytes, schema: int = None,
-        metric: int = dTree
+        cls, app_id: bytes, blob: bytes, node_id: bytes|None = None,
+        to_addr: Address|None = None, schema: int = None, metric: int = dTree
     ) -> bool:
         """Attempts to send a Package containing the app_id and blob to
             the specified node. Returns True if it can be sent and False
             if it cannot (i.e. if it is not a known peer and there is
             not a known route to the node).
         """
-        cls.call_hook('send', app_id, blob, node_id, schema)
+        cls.call_hook('send', app_id, blob, node_id, to_addr, schema)
+        if node_id is None and to_addr is None:
+            raise TypeError('at least one of node_id or to_addr is required')
         islocal = node_id in cls.peers
-        if not islocal and node_id not in [r for a, r in cls.routes.items()]:
+        if not islocal and \
+            node_id not in [r for a, r in cls.routes.items()] and \
+            to_addr is None and node_id != cls.node_id:
             return False
 
         p = Package.from_blob(app_id, blob).pack()
@@ -1684,14 +1693,15 @@ class Packager:
         if islocal:
             peer = cls.peers[node_id]
         else:
-            # find the address for the given node_id
-            if node_id not in cls.inverse_routes:
-                return False
-            for addr in cls.inverse_routes[node_id]:
-                to_addr = addr
-                break
             if not to_addr:
-                return False
+                # find the address for the given node_id
+                if node_id not in cls.inverse_routes:
+                    return False
+                for addr in cls.inverse_routes[node_id]:
+                    to_addr = addr
+                    break
+                if not to_addr:
+                    return False
             next_hop = cls.next_hop(to_addr, metric)
             if not next_hop:
                 return False
@@ -1967,7 +1977,7 @@ class Packager:
         cls.call_hook('receive', p, intrfc, mac)
         cls.sleepskip.append(True)
         # cls.sleepskip.extend([True for _ in range(MODEM_INTERSECT_RTX_TIMES)])
-        if p.schema.version > cls.version:
+        if p.schema.version > PROTOCOL_VERSION:
             # drop the packet
             return
         src = b'' # source of Packet
@@ -2234,3 +2244,5 @@ InterAppInterface = Interface(
     send_func=lambda d: iai_box.append(d),
     broadcast_func=lambda d: iai_box.append(d),
 )
+
+Packager.add_interface(InterAppInterface)

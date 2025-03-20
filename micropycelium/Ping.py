@@ -68,8 +68,8 @@ def deserialize_pm(blob: bytes) -> PingMessage:
 def receive_pm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
     pm = deserialize_pm(blob)
     if pm.op == PingOp.REQUEST:
-        if pm.node_id is not None and pm.node_id != Packager.node_id:
-            Packager.add_route(pm.node_id, Address(pm.tree_state, address=pm.address))
+        # if pm.node_id is not None and pm.node_id != Packager.node_id:
+            # Packager.add_route(pm.node_id, Address(pm.tree_state, address=pm.address))
         Ping.invoke('respond', pm)
     elif pm.op == PingOp.RESPOND:
         Ping.invoke('response_received', pm)
@@ -79,15 +79,20 @@ def receive_pm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
         Ping.invoke('gossip_response_received', pm)
 
 def ping_request(
-        node_id: bytes|str, metric: int = dTree, nonce: int|None = None,
-        callback: Callable|None = None
+        nid_or_addr: bytes|Address, metric: int = dTree,
+        nonce: int|None = None, callback: Callable|None = None
     ) -> bool:
-    """Send a ping request to the given node id. Returns False if it
-        cannot be sent (no route to the node or no local address).
+    """Send a ping request to the given node id or addr. Returns False
+        if it cannot be sent (no route to the node or no local address).
     """
     if len(Packager.node_addrs) == 0:
         return False
-    node_id = bytes.fromhex(node_id) if type(node_id) == str else node_id
+    if type(nid_or_addr) is Address:
+        addr = nid_or_addr
+        node_id = None
+    else:
+        addr = None
+        node_id = nid_or_addr
     pm = PingMessage(
         PingOp.REQUEST,
         nonce if nonce is not None else randint(0, 255),
@@ -101,7 +106,9 @@ def ping_request(
     )
     if callback is not None:
         callback('ping request sent')
-    return Packager.send(Ping.id, serialize_pm(pm), node_id, metric=metric)
+    return Packager.send(
+        Ping.id, serialize_pm(pm), node_id=node_id, to_addr=addr, metric=metric
+    )
 
 def ping_respond(pm: PingMessage):
     """Send a ping response using the information in the ping message."""
@@ -116,7 +123,10 @@ def ping_respond(pm: PingMessage):
         pm.address,
         pm.node_id
     )
-    return Packager.send(Ping.id, serialize_pm(pm), pm.node_id, metric=pm.metric)
+    return Packager.send(
+        Ping.id, serialize_pm(pm), node_id=pm.node_id,
+        to_addr=Address(pm.tree_state, pm.address), metric=pm.metric
+    )
 
 def ping_response_received(pm: PingMessage):
     ping_responses.append(PingMessage(
@@ -200,8 +210,9 @@ def ping_list_routes():
         print(f'\t{node_id.hex()}: {addr.coords} {addr.address.hex()}')
 
 def report_ping_test(
-        nonce: int, mode: str, expected_count: int, remote_id: bytes|str,
-        remote_addr: Address|None = None, callback: Callable|None = None
+        nonce: int, mode: str, expected_count: int,
+        remote_id_or_addr: bytes|Address,
+        callback: Callable|None = None
     ) -> dict:
     """Generate a report of the ping test results."""
     # take all relevant pms, then put the rest back
@@ -216,12 +227,15 @@ def report_ping_test(
         else:
             ping_responses.append(pm)
     # generate report
+    if type(remote_id_or_addr) is bytes:
+        remote = remote_id_or_addr.hex()
+    else:
+        remote = remote_id_or_addr
     count = len(relevant_pms)
     if count == 0:
         report = {
             'error': 'no responses',
-            'remote_id': remote_id if type(remote_id) == str else remote_id.hex(),
-            'remote_addr': remote_addr,
+            'remote': remote,
             'mode': mode,
             'expected_count': expected_count,
             'success_rate': '0%',
@@ -231,8 +245,7 @@ def report_ping_test(
         return report
     report = {
         'mode': mode,
-        'remote_id': remote_id if type(remote_id) == str else remote_id.hex(),
-        'remote_addr': remote_addr,
+        'remote': remote,
         'count': count,
         'expected_count': expected_count,
         'success_rate': f"{int(count / expected_count * 100)}%",
@@ -282,7 +295,7 @@ def report_ping_test(
     return report
 
 def run_ping_test(
-        node_id: bytes|str, count: int = 4, timeout: int = 5,
+        node_id: bytes|None = None, count: int = 4, timeout: int = 5,
         addr: Address|None = None, metric: int = dTree,
         callback: Callable|None = None
     ):
@@ -292,8 +305,7 @@ def run_ping_test(
     """
     if callback is not None:
         callback('ping test started')
-    node_id = bytes.fromhex(node_id) if type(node_id) == str else node_id
-    topic_id = sha256(Ping.id + node_id).digest()[:16]
+    topic_id = sha256(Ping.id + (node_id or addr.address)).digest()[:16]
     topic_id += PingOp.REQUEST.to_bytes(1, 'big')
     nonce = randint(0, 255)
     now = int(time_ns() / 1_000_000)
@@ -303,7 +315,7 @@ def run_ping_test(
             now + i * 1000,
             topic_id + i.to_bytes(1, 'big'),
             ping_request,
-            node_id,
+            node_id or addr,
             metric,
             nonce,
             callback,
@@ -315,14 +327,12 @@ def run_ping_test(
         nonce,
         'routed dTree' if metric == dTree else 'routed dCPL' if metric == dCPL else 'unknown metric',
         count,
-        node_id,
-        addr,
+        node_id or addr,
         callback,
     ))
 
 def run_gossip_ping_test(
         node_id: bytes|str, count: int = 4, timeout: int = 5,
-        addr: Address|None = None,
         callback: Callable|None = None
     ):
     """Ping a node count times through Gossip, scheduling a series of
@@ -354,7 +364,6 @@ def run_gossip_ping_test(
         'gossip',
         count,
         node_id,
-        addr,
         callback,
     ))
 
