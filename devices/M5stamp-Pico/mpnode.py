@@ -48,15 +48,14 @@ async def monitor_btn(p: Pin, q: deque, debounce_ms: int, inverse: bool = True):
         await sleep_ms(1)
 
 # colors
-bcnrecv = (0, 0, 255)
-bcnbrdcst = (255, 0, 0)
-bcnrespond = (126, 126, 0)
-gossiprecv = (0, 255, 0)
-gossippblsh = (255, 255, 0)
-gossiprspnd = (255, 165, 0)
-treerecv = (255, 255, 255)
-treebrdcst = (255, 126, 126)
-treesend = (126, 126, 255)
+blue = (0, 0, 255)
+red = (255, 0, 0)
+green = (0, 255, 0)
+yellow = (255, 255, 0)
+orange = (255, 165, 0)
+white = (255, 255, 255)
+purple = (128, 0, 128)
+pink = (255, 192, 203)
 
 debug_q = deque([], 25)
 def hexify(thing):
@@ -79,48 +78,25 @@ def debug_name(name: str):
         args = [hexify(a) for a in args]
         debug(name, *args)
     return inner
-def bcn_recv_hook(*args, **kwargs):
-    debug('Beacon.receive')
-    rq.append(bcnrecv)
-def bcn_brdcst_hook(*args, **kwargs):
-    debug('Beacon.broadcast')
-    rq.append(bcnbrdcst)
-def bcn_respond_hook(*args, **kwargs):
-    debug('Beacon.respond')
-    rq.append(bcnrespond)
+def action_hook(name: str, c: tuple, q: deque):
+    def inner(*args):
+        args = [hexify(a) for a in args]
+        debug(name, *args)
+        q.append(c)
+    return inner
 
-Beacon.add_hook('receive', bcn_recv_hook)
-Beacon.add_hook('broadcast', bcn_brdcst_hook)
-Beacon.add_hook('respond', bcn_respond_hook)
+Beacon.add_hook('receive', action_hook('Beacon.receive', blue, rq))
+Beacon.add_hook('broadcast', action_hook('Beacon.broadcast', red, rq))
+Beacon.add_hook('respond', action_hook('Beacon.respond', green, rq))
 Beacon.add_hook('send', debug_name('Beacon.send'))
 
-def gossip_recv_hook(*args, **kwargs):
-    debug('Gossip.receive')
-    rq.append(gossiprecv)
-def gossip_pblsh_hook(*args, **kwargs):
-    debug('Gossip.publish')
-    rq.append(gossippblsh)
-def gossip_rspnd_hook(*args, **kwargs):
-    debug('Gossip.respond')
-    rq.append(gossiprspnd)
+Gossip.add_hook('receive', action_hook('Gossip.receive', purple, rq))
+Gossip.add_hook('publish', debug_name('Gossip.publish'))
+Gossip.add_hook('respond', action_hook('Gossip.respond', purple, rq))
 
-Gossip.add_hook('receive', gossip_recv_hook)
-Gossip.add_hook('publish', gossip_pblsh_hook)
-Gossip.add_hook('respond', gossip_rspnd_hook)
-
-def tree_recv_hook(*args, **kwargs):
-    debug('SpanningTree.receive')
-    rq.append(treerecv)
-def tree_brdcst_hook(*args, **kwargs):
-    debug('SpanningTree.broadcast')
-    rq.append(treebrdcst)
-def tree_send_hook(*args, **kwargs):
-    debug('SpanningTree.send')
-    rq.append(treesend)
-
-SpanningTree.add_hook('receive', tree_recv_hook)
-SpanningTree.add_hook('broadcast', tree_brdcst_hook)
-SpanningTree.add_hook('send', tree_send_hook)
+SpanningTree.add_hook('receive', action_hook('SpanningTree.receive', white, rq))
+SpanningTree.add_hook('broadcast', action_hook('SpanningTree.broadcast', pink, rq))
+SpanningTree.add_hook('send', action_hook('SpanningTree.send', orange, rq))
 SpanningTree.add_hook('respond', debug_name('SpanningTree.respond'))
 SpanningTree.add_hook('assign_address', debug_name('SpanningTree.assign_address'))
 SpanningTree.add_hook(
@@ -134,8 +110,17 @@ def ping_report_cb(report):
     for k, v in report.items():
         print(f'  {k}: {v}')
 
+def ping_respond_hook(*args, **kwargs):
+    debug('Ping.respond', *args)
+    rq.append(red)
+    rq.append(white)
+    rq.append(blue)
+    rq.append(red)
+    rq.append(white)
+    rq.append(blue)
+
 Ping.add_hook('request', debug_name('Ping.request'))
-Ping.add_hook('respond', debug_name('Ping.respond'))
+Ping.add_hook('respond', ping_respond_hook)
 Ping.add_hook('response_received', debug_name('Ping.response_received'))
 Ping.add_hook('gossip_request', debug_name('Ping.gossip_request'))
 Ping.add_hook('gossip_respond', debug_name('Ping.gossip_respond'))
@@ -213,7 +198,7 @@ async def wait(c = 1):
             break
 
 async def monitor():
-    print("Hit Enter to stop")
+    print("Hit Enter to stop monitoring")
     while True:
         if len(debug_q):
             print(*debug_q.popleft())

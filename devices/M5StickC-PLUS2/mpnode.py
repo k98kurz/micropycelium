@@ -91,7 +91,8 @@ def debug_name(name: str):
 
 def action_hook(name: str, q: deque):
     def inner(*args):
-        debug(name)
+        args = [hexify(a) for a in args]
+        debug(name, *args)
         q.append(1)
     return inner
 
@@ -101,7 +102,7 @@ Beacon.add_hook('broadcast', debug_name('Beacon.broadcast'))
 Beacon.add_hook('respond', debug_name('Beacon.respond'))
 Beacon.add_hook('send', debug_name('Beacon.send'))
 
-Gossip.add_hook('receive', action_hook('Gossip.receive', led26q))
+Gossip.add_hook('receive', action_hook('Gossip.receive', led19q))
 Gossip.add_hook('publish', debug_name('Gossip.publish'))
 Gossip.add_hook('respond', debug_name('Gossip.respond'))
 
@@ -110,11 +111,11 @@ SpanningTree.add_hook('broadcast', debug_name('SpanningTree.broadcast'))
 SpanningTree.add_hook('send', debug_name('SpanningTree.send'))
 SpanningTree.add_hook('respond', debug_name('SpanningTree.respond'))
 SpanningTree.add_hook(
-    'assign_address', action_hook('SpanningTree.assign_address', led26q)
+    'assign_address', action_hook('SpanningTree.assign_address', led19q)
 )
 SpanningTree.add_hook(
     'request_address_assignment',
-    action_hook('SpanningTree.request_address_assignment', led26q)
+    action_hook('SpanningTree.request_address_assignment', led19q)
 )
 
 def ping_report_cb(report):
@@ -123,8 +124,14 @@ def ping_report_cb(report):
     for k, v in report.items():
         print(f'  {k}: {v}')
 
+def ping_respond_hook(*args, **kwargs):
+    debug('Ping.respond', *args)
+    led26q.append(1)
+    led26q.append(1)
+    led26q.append(1)
+
 Ping.add_hook('request', debug_name('Ping.request'))
-Ping.add_hook('respond', debug_name('Ping.respond'))
+Ping.add_hook('respond', ping_respond_hook)
 Ping.add_hook('response_received', debug_name('Ping.response_received'))
 Ping.add_hook('gossip_request', debug_name('Ping.gossip_request'))
 Ping.add_hook('gossip_respond', debug_name('Ping.gossip_respond'))
@@ -201,7 +208,7 @@ async def wait(c = 1):
             break
 
 async def monitor():
-    print("Hit Enter to stop")
+    print("Hit Enter to stop monitoring")
     while True:
         if len(debug_q):
             print(*debug_q.popleft())
