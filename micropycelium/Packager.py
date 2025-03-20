@@ -35,6 +35,11 @@ else:
     def iscoroutine(c):
         return isinstance(c, GeneratorType)
 
+if hasattr(asyncio, 'sleep_ms'):
+    sleep_ms = asyncio.sleep_ms
+else:
+    sleep_ms = lambda ms: asyncio.sleep(ms/1000)
+
 
 VERSION = micropython.const('0.1.0-dev')
 PROTOCOL_VERSION = micropython.const(0)
@@ -2096,11 +2101,14 @@ class Packager:
         """
         cls.call_hook('deliver', p, i, mac)
         if p.half_sha256 != sha256(p.blob).digest()[:16] or p.app_id not in cls.apps:
+            cls.call_hook('deliver:checksum_failed', p, i, mac)
             return False
         try:
+            cls.call_hook('deliver:receive', p, i, mac)
             cls.apps[p.app_id].receive(p.blob, i, mac)
             return True
         except:
+            cls.call_hook('deliver:receive_failed', p, i, mac)
             return False
 
     @classmethod
@@ -2206,7 +2214,7 @@ class Packager:
         ts = time_ms()
         while cls.running:
             await cls.process()
-            await asyncio.sleep(interval_ms / 1000)
+            await sleep_ms(interval_ms)
             if use_modem_sleep:
                 modem_cycle = time_ms() - ts
                 if modem_cycle > modem_active_ms:
