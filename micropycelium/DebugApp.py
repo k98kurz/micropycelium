@@ -61,7 +61,7 @@ _inverse_op = {
     DebugOp.REQUIRE_REFLECT: 'REQUIRE_REFLECT',
     DebugOp.REQUIRE_RESET: 'REQUIRE_RESET',
 }
-DebugMessage = namedtuple('DebugMessage', ['op', 'nonce', 'from_id', 'data'])
+DebugMessage = namedtuple('DebugMessage', ['op', 'ts', 'nonce', 'from_id', 'data'])
 
 gossip_app_id = bytes.fromhex('849969c1f22797d66f5a94db2afe634a')
 seen_results: deque[dict] = deque([], 10)
@@ -72,10 +72,10 @@ def debug_auth_check(data: bytes):
     return auth_hash1 == expected or auth_hash2 == expected
 
 def serialize_dm(dm: DebugMessage):
-    return pack(f'!BH32s{len(dm.data)}s', dm.op, dm.nonce, dm.from_id, dm.data)
+    return pack(f'!BIH32s{len(dm.data)}s', dm.op, dm.ts, dm.nonce, dm.from_id, dm.data)
 
 def deserialize_dm(blob: bytes) -> DebugMessage:
-    return DebugMessage(*unpack(f'!BH32s{len(blob) - 35}s', blob))
+    return DebugMessage(*unpack(f'!BIH32s{len(blob) - 39}s', blob))
 
 def receive_debug(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
     dm = deserialize_dm(blob)
@@ -111,7 +111,7 @@ def handle_request_node_info(dm: DebugMessage):
     }
     topic_id = sha256(DebugApp.id + dm.from_id).digest()[:16]
     new_dm = DebugMessage(
-        DebugOp.RESPOND_NODE_INFO, dm.nonce, Packager.node_id, json.dumps(info).encode()
+        DebugOp.RESPOND_NODE_INFO, int(time()), dm.nonce, Packager.node_id, json.dumps(info).encode()
     )
     Gossip.invoke('publish', topic_id, serialize_dm(new_dm))
 
@@ -128,7 +128,7 @@ def handle_request_peer_list(dm: DebugMessage):
     }
     topic_id = sha256(DebugApp.id + dm.from_id).digest()[:16]
     new_dm = DebugMessage(
-        DebugOp.RESPOND_PEER_LIST, dm.nonce, Packager.node_id, json.dumps(info).encode()
+        DebugOp.RESPOND_PEER_LIST, int(time()), dm.nonce, Packager.node_id, json.dumps(info).encode()
     )
     Gossip.invoke('publish', topic_id, serialize_dm(new_dm))
 
@@ -145,7 +145,7 @@ def handle_request_routes(dm: DebugMessage):
     }
     topic_id = sha256(DebugApp.id + dm.from_id).digest()[:16]
     new_dm = DebugMessage(
-        DebugOp.RESPOND_ROUTES, dm.nonce, Packager.node_id, json.dumps(info).encode()
+        DebugOp.RESPOND_ROUTES, int(time()), dm.nonce, Packager.node_id, json.dumps(info).encode()
     )
     Gossip.invoke('publish', topic_id, serialize_dm(new_dm))
 
@@ -161,7 +161,7 @@ def handle_request_next_hop(dm: DebugMessage):
     }
     topic_id = sha256(DebugApp.id + dm.from_id).digest()[:16]
     Gossip.invoke('publish', topic_id, serialize_dm(DebugMessage(
-        DebugOp.RESPOND_NEXT_HOP, dm.nonce, Packager.node_id,
+        DebugOp.RESPOND_NEXT_HOP, int(time()), dm.nonce, Packager.node_id,
         json.dumps(info).encode()
     )))
 
@@ -181,14 +181,14 @@ def handle_require(dm: DebugMessage):
             reset
         ))
         Gossip.invoke('publish', topic_id, serialize_dm(DebugMessage(
-            DebugOp.OK, dm.nonce, Packager.node_id,
+            DebugOp.OK, int(time()), dm.nonce, Packager.node_id,
             json.dumps({'op': 'REQUIRE_RESET'}).encode()
         )))
     elif dm.op == DebugOp.REQUIRE_REFLECT:
         print('DebugApp: REQUIRE_REFLECT received')
         op = dm.data[0]
         Gossip.invoke('publish', topic_id, serialize_dm(DebugMessage(
-            op, dm.nonce, Packager.node_id, dm.data[1:]
+            op, int(time()), dm.nonce, Packager.node_id, dm.data[1:]
         )))
     else:
         print('DebugApp: REQUIRE_* received with unknown op; ignoring')
@@ -216,7 +216,7 @@ def request_debug_info(op: int, peer_id: bytes, data: bytes = b''):
     peer_id = peer_id if type(peer_id) is bytes else bytes.fromhex(peer_id)
     topic_id = sha256(DebugApp.id + peer_id).digest()[:16]
     nonce = randint(0, 2**16 - 1)
-    dm = DebugMessage(op, nonce, Packager.node_id, data)
+    dm = DebugMessage(op, int(time()), nonce, Packager.node_id, data)
     Gossip.invoke('publish', topic_id, serialize_dm(dm))
 
 def require_action(op: int, peer_id: bytes, data: bytes):
