@@ -1,17 +1,15 @@
-from asyncio import sleep_ms, run, gather, create_task, StreamReader
+from asyncio import sleep_ms, run, gather, create_task
 from collections import deque
 from machine import Pin, reset
 from micropycelium import (
     Packager, ESPNowInterface, Beacon, Gossip, SpanningTree, Ping,
-    DebugApp, DebugOp, Address, dCPL, dTree, ainput,
+    DebugApp, DebugOp, Address, dCPL, dTree, ainput, Application,
     PROTOCOL_VERSION,
 )
 from micropython import const
 from neopixel import NeoPixel
 from struct import pack
 import gc
-import select
-import sys
 
 
 MPNODE_VERSION = const('0.1.0-dev')
@@ -60,7 +58,6 @@ treerecv = (255, 255, 255)
 treebrdcst = (255, 126, 126)
 treesend = (126, 126, 255)
 
-# add some hooks
 debug_q = deque([], 25)
 def hexify(thing):
     if type(thing) is list:
@@ -126,7 +123,10 @@ SpanningTree.add_hook('broadcast', tree_brdcst_hook)
 SpanningTree.add_hook('send', tree_send_hook)
 SpanningTree.add_hook('respond', debug_name('SpanningTree.respond'))
 SpanningTree.add_hook('assign_address', debug_name('SpanningTree.assign_address'))
-SpanningTree.add_hook('request_address_assignment', debug_name('SpanningTree.request_address_assignment'))
+SpanningTree.add_hook(
+    'request_address_assignment',
+    debug_name('SpanningTree.request_address_assignment')
+)
 
 def ping_report_cb(report):
     print('Ping report:')
