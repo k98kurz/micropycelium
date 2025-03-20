@@ -18,6 +18,7 @@ CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 try:
     from asyncio import sleep_ms
 except ImportError:
+    # platform differences with CPython; enable testing
     from asyncio import sleep
     sleep_ms = lambda ms: sleep(ms / 1000)
 
@@ -119,8 +120,9 @@ async def ainput(prompt="", timeout=False):
                 line += char
                 sys.stdout.write(char)
                 flush()
-        # If a timeout flag is set, return None immediately.
-        if timeout:
-            return None
         # Yield control so other asyncio tasks can run.
         await sleep_ms(10)
+
+        # If the timeout flag is set, return None.
+        if timeout:
+            return None

@@ -3,7 +3,7 @@ from collections import deque
 from machine import Pin, reset
 from micropycelium import (
     Packager, debug, ESPNowInterface, Beacon, Gossip, SpanningTree, Ping,
-    DebugApp,
+    DebugApp, DebugOp,
 )
 import gc
 

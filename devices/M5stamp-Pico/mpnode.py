@@ -202,7 +202,6 @@ async def wait(c = 1):
             i += 1
         if await ainput('', True) is not None:
             break
-        await sleep_ms(10)
 
 async def console(add_debug_hooks = False, pub_routes = True, sub_routes = False):
     if add_debug_hooks:
