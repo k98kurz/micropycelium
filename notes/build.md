@@ -34,11 +34,13 @@ source ~/Documents/repos/esp-idf/export.sh
 MICROPYTHON_PATH=$HOME/Documents/repos/micropython
 MICROPYCELIUM_PATH=$HOME/Documents/repos/micropycelium
 DEVICE=/dev/ttyACM0
-MPNODE=generic_esp32
-# or
 MPNODE=M5stamp-Pico
 # or
+DEVICE=/dev/ttyACM1
 MPNODE=M5StickC-PLUS2
+# or
+DEVICE=/dev/ttyUSB0
+MPNODE=generic_esp32
 ```
 
 ## Build and Deploy Firmware
