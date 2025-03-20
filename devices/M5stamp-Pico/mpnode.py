@@ -3,13 +3,18 @@ from collections import deque
 from machine import Pin, reset
 from micropycelium import (
     Packager, ESPNowInterface, Beacon, Gossip, SpanningTree, Ping,
-    DebugApp, DebugOp, Address, dCPL, dTree, ainput
+    DebugApp, DebugOp, Address, dCPL, dTree, ainput,
+    PROTOCOL_VERSION,
 )
+from micropython import const
 from neopixel import NeoPixel
 from struct import pack
 import gc
 import select
 import sys
+
+
+MPNODE_VERSION = const('0.1.0-dev')
 
 
 # RGB LED of the M5stamp-Pico
@@ -66,6 +71,8 @@ def hexify(thing):
         return thing.hex()
     elif type(thing) is dict:
         return {hexify(k): hexify(v) for k, v in thing.items()}
+    elif type(thing) in (int, float):
+        return thing
     else:
         return thing if type(thing) is str else repr(thing)
 def debug(*args):
@@ -135,6 +142,7 @@ Ping.add_hook('gossip_respond', debug_name('Ping.gossip_respond'))
 Ping.add_hook('gossip_response_received', debug_name('Ping.gossip_response_received'))
 
 DebugApp.add_hook('output', debug_name('DebugApp.output'))
+DebugApp.add_hook('receive', debug_name('DebugApp.receive'))
 
 # debug hooks
 hooks_added = False
@@ -175,7 +183,7 @@ async def memrloop():
 
 def _help():
     print('Commands:')
-    print('\tmonitor - monitors debug messages')
+    print('\tm|monitor - monitors debug messages')
     print('\tget [node_id|addrs|peers|routes|next_hop addr metric] - get info from the local node')
     print('\tping [node_id|addr] [count] [timeout] - ping the node_id/address')
     print('\t\tcount default value is 4')
@@ -186,7 +194,8 @@ def _help():
     print('\t\ttimeout default value is 5 (seconds)')
     print('\tdebug [node_id] [info|peers|routes|next_hop addr metric] - get debug info from a node')
     print('\tadmin [node_id] [password] [reset] - restart a remote node')
-    print('\tquit - quit the program')
+    print('\tversion - show version information')
+    print('\tq|quit - quit the program')
     print('\treset - reset the device')
     print('\twait [count] - wait for [count=1] output messages')
     # print('\t - ')
@@ -194,7 +203,7 @@ def _help():
 outq = deque([], 2)
 output = lambda res: outq.append(res)
 async def wait(c = 1):
-    print("Hit Enter to cancel...")
+    print("Waiting for output. Hit Enter to stop waiting (command will run in background)...")
     i = 0
     while i < c:
         if len(outq):
@@ -203,153 +212,167 @@ async def wait(c = 1):
         if await ainput('', True) is not None:
             break
 
+async def monitor():
+    print("Hit Enter to stop")
+    while True:
+        if len(debug_q):
+            print(*debug_q.popleft())
+        if len(outq):
+            print(outq.popleft())
+        else:
+            if await ainput('', True) is not None:
+                break
+
 async def console(add_debug_hooks = False, pub_routes = True, sub_routes = False):
     if add_debug_hooks:
         add_hooks()
     SpanningTree.params['pub'] = pub_routes
     SpanningTree.params['sub'] = sub_routes
+    await monitor()
     while True:
         cmd = (await ainput("μpycelium> ")).split()
         if len(cmd) == 0:
             continue
         cmd[0] = cmd[0].lower()
-        if cmd[0] in ('?', 'help'):
-            _help()
-        elif cmd[0] == 'monitor':
-            print("Hit Enter to stop")
-            while True:
-                if len(debug_q):
-                    print(*debug_q.pop())
-                else:
-                    await sleep_ms(10)
-                    if await ainput('', True) is not None:
-                        break
-        elif cmd[0] == 'get':
-            if len(cmd) < 2:
-                print('get - missing a required arg')
-                continue
-            if cmd[1].lower() == 'node_id':
-                print(f'Node ID: {Packager.node_id.hex()}')
-            elif cmd[1].lower() == 'addrs':
-                addrs = [a for a in Packager.node_addrs]
-                print(f'Addresses: {addrs}')
-            elif cmd[1].lower() == 'peers':
-                peers = [pid.hex() for pid in Packager.peers]
-                print(f'Peers:')
-                for peer in peers:
-                    print(f'  {peer}')
-            elif cmd[1].lower() == 'routes':
-                print(f'Routes:')
-                for addr, pid in Packager.routes.items():
-                    print(f'  {addr} -> {pid.hex()}')
-            elif cmd[1].lower() == 'next_hop':
-                if len(cmd) < 4:
-                    print('get next_hop - missing a required arg')
+        try:
+            if cmd[0] in ('?', 'h', 'help'):
+                _help()
+            elif cmd[0] in ('monitor', 'm'):
+                await monitor()
+            elif cmd[0] == 'get':
+                if len(cmd) < 2:
+                    print('get - missing a required arg')
                     continue
-                nh_addr = Address.from_str(cmd[2])
-                metric = dCPL if 'cpl' in cmd[3].lower() else dTree
-                nh = Packager.next_hop(nh_addr, metric)
-                print(f'Next Hop: {nh[0].id.hex()} {nh[1]}')
-        elif cmd[0] == 'quit':
-            raise Exception('quit')
-        elif cmd[0] == 'reset':
-            reset()
-        elif cmd[0] == 'ping':
-            if len(cmd) < 2:
-                print('ping - missing required node_id|addr')
-                continue
-            try:
-                nid = bytes.fromhex(cmd[1])
-                addr = None
-            except:
-                nid = None
-                addr =Address.from_str(cmd[1])
-            kwargs = {
-                'node_id': nid,
-                'addr': addr,
-                'callback': output,
-            }
-            if len(cmd) > 2:
-                kwargs['count'] = int(cmd[2])
-            if len(cmd) > 3:
-                kwargs['timeout'] = int(cmd[3])
-            if len(cmd) > 4:
-                kwargs['addr'] = Address.from_str(cmd[4])
-            Ping.invoke('ping', **kwargs)
-            c = kwargs.get('count', 4)
-            await wait(c + 2)
-        elif cmd[0] == 'gossip':
-            if len(cmd) < 2:
-                print('gossip - missing required subcommand')
-                continue
-            if cmd[1].lower() == 'ping':
-                if len(cmd) < 3:
-                    print('gossip ping - missing required addr')
+                if cmd[1].lower() == 'node_id':
+                    print(f'Node ID: {Packager.node_id.hex()}')
+                elif cmd[1].lower() == 'addrs':
+                    addrs = [a for a in Packager.node_addrs]
+                    print(f'Addresses: {addrs}')
+                elif cmd[1].lower() == 'peers':
+                    peers = [pid.hex() for pid in Packager.peers]
+                    print(f'Peers:')
+                    for peer in peers:
+                        print(f'  {peer}')
+                elif cmd[1].lower() == 'routes':
+                    print(f'Routes:')
+                    for addr, pid in Packager.routes.items():
+                        print(f'  {addr} -> {pid.hex()}')
+                elif cmd[1].lower() == 'next_hop':
+                    if len(cmd) < 4:
+                        print('get next_hop - missing a required arg')
+                        continue
+                    nh_addr = Address.from_str(cmd[2])
+                    metric = dCPL if 'cpl' in cmd[3].lower() else dTree
+                    nh = Packager.next_hop(nh_addr, metric)
+                    print(f'Next Hop: {nh[0].id.hex()} {nh[1]}')
+            elif cmd[0] == 'version':
+                print(f'MPNode version: {MPNODE_VERSION}')
+                print(f'Packager version: {Packager.version}')
+                print(f'Protocol version: {PROTOCOL_VERSION}')
+            elif cmd[0] in ('quit', 'q'):
+                raise Exception('quit')
+            elif cmd[0] == 'reset':
+                reset()
+            elif cmd[0] == 'ping':
+                if len(cmd) < 2:
+                    print('ping - missing required node_id|addr')
                     continue
-                nid = bytes.fromhex(cmd[2])
+                try:
+                    nid = bytes.fromhex(cmd[1])
+                    addr = None
+                except:
+                    nid = None
+                    addr = Address.from_str(cmd[1])
                 kwargs = {
                     'node_id': nid,
+                    'addr': addr,
                     'callback': output,
                 }
+                if len(cmd) > 2:
+                    kwargs['count'] = int(cmd[2])
                 if len(cmd) > 3:
-                    kwargs['count'] = int(cmd[3])
-                if len(cmd) > 4:
-                    kwargs['timeout'] = int(cmd[4])
-                Ping.invoke('gossip_ping', **kwargs)
-            else:
-                print('unknown subcommand')
-                continue
-            c = kwargs.get('count', 4)
-            await wait(c + 2)
-        elif cmd[0] == 'debug':
-            if len(cmd) < 3:
-                print('debug - missing a required arg')
-                continue
-            nid = bytes.fromhex(cmd[1])
-            cmd[2] = cmd[2].lower()
-            nh_addr = b''
-            if cmd[2] not in ('info', 'peers', 'routes', 'next_hop'):
-                print(f'debug - unknown mode {cmd[2]}')
-                continue
-            if cmd[2] == 'info':
-                op = DebugOp.REQUEST_NODE_INFO
-            elif cmd[2] == 'peers':
-                op = DebugOp.REQUEST_PEER_LIST
-            elif cmd[2] == 'routes':
-                op = DebugOp.REQUEST_ROUTES
-            elif cmd[2] == 'next_hop':
-                if len(cmd) < 5:
-                    print('debug next_hop - missing a required arg')
+                    kwargs['timeout'] = int(cmd[3])
+                Ping.invoke('ping', **kwargs)
+                c = kwargs.get('count', 4)
+                await wait(c + 2)
+            elif cmd[0] == 'gossip':
+                if len(cmd) < 2:
+                    print('gossip - missing required subcommand')
                     continue
-                nh_addr = Address.from_str(cmd[3])
-                metric = dCPL if 'cpl' in cmd[4].lower() else dTree
-                nh_addr = pack('!BB16s', metric, nh_addr.tree_state, nh_addr.address)
-                op = DebugOp.REQUEST_NEXT_HOP
-            DebugApp.add_hook('output', lambda *args: output(args[1]))
-            DebugApp.invoke('request', op, nid, nh_addr)
-            print('request sent; waiting for response')
-            await wait(1)
-        elif cmd[0] == 'admin':
-            if len(cmd) < 4:
-                print('admin - missing a required arg')
-                continue
-            nid = bytes.fromhex(cmd[1])
-            cmd[3] = cmd[3].lower()
-            if cmd[3] == 'reset':
-                op = DebugOp.REQUIRE_RESET
-                DebugApp.invoke('require', op, nid, cmd[2].encode())
-                await wait(1)
+                if cmd[1].lower() == 'ping':
+                    if len(cmd) < 3:
+                        print('gossip ping - missing required addr')
+                        continue
+                    nid = bytes.fromhex(cmd[2])
+                    kwargs = {
+                        'node_id': nid,
+                        'callback': output,
+                    }
+                    if len(cmd) > 3:
+                        kwargs['count'] = int(cmd[3])
+                    if len(cmd) > 4:
+                        kwargs['timeout'] = int(cmd[4])
+                    Ping.invoke('gossip_ping', **kwargs)
+                    await wait(kwargs.get('count', 4) + 2)
+                else:
+                    print('unknown subcommand')
+                    continue
+            elif cmd[0] == 'debug':
+                if len(cmd) < 3:
+                    print('debug - missing a required arg')
+                    continue
+                nid = bytes.fromhex(cmd[1])
+                cmd[2] = cmd[2].lower()
+                nh_addr = b''
+                if cmd[2] not in ('info', 'peers', 'routes', 'next_hop'):
+                    print(f'debug - unknown mode {cmd[2]}')
+                    continue
+                if cmd[2] == 'info':
+                    op = DebugOp.REQUEST_NODE_INFO
+                elif cmd[2] == 'peers':
+                    op = DebugOp.REQUEST_PEER_LIST
+                elif cmd[2] == 'routes':
+                    op = DebugOp.REQUEST_ROUTES
+                elif cmd[2] == 'next_hop':
+                    if len(cmd) < 5:
+                        print('debug next_hop - missing a required arg')
+                        continue
+                    nh_addr = Address.from_str(cmd[3])
+                    metric = dCPL if 'cpl' in cmd[4].lower() else dTree
+                    nh_addr = pack('!BB16s', metric, nh_addr.tree_state, nh_addr.address)
+                    op = DebugOp.REQUEST_NEXT_HOP
+                DebugApp.add_hook('output', lambda *args: output(args[1]))
+                DebugApp.add_hook(
+                    'request',
+                    lambda *args: output(f'DebugApp.request sent: {hexify(args[1:])}')
+                )
+                DebugApp.invoke('request', op, nid, nh_addr)
+                await wait(2)
+            elif cmd[0] == 'admin':
+                if len(cmd) < 4:
+                    print('admin - missing a required arg')
+                    continue
+                nid = bytes.fromhex(cmd[1])
+                cmd[3] = cmd[3].lower()
+                if cmd[3] == 'reset':
+                    op = DebugOp.REQUIRE_RESET
+                    DebugApp.invoke('require', op, nid, cmd[2].encode())
+                    await wait(1)
+                else:
+                    print(f'admin - unknown subcommand {cmd[3]}')
+                    continue
+            elif cmd[0] == 'wait':
+                if len(cmd) < 2:
+                    await wait(1)
+                else:
+                    await wait(int(cmd[1]))
             else:
-                print(f'admin - unknown subcommand {cmd[3]}')
-                continue
-        elif cmd[0] == 'wait':
-            if len(cmd) < 2:
-                await wait(1)
-            else:
-                await wait(int(cmd[1]))
-        else:
-            print(f'Unknown command: {cmd[0]}')
-            _help()
+                print(f'Unknown command: {cmd[0]}')
+                _help()
+        except Exception as e:
+            if str(e) == 'quit':
+                raise e
+            print(f'Error: {e}')
 
 tasks = None
 
