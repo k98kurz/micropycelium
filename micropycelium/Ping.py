@@ -104,11 +104,12 @@ def ping_request(
         Packager.node_addrs[-1].address,
         Packager.node_id
     )
-    if callback is not None:
-        callback('ping request sent')
-    return Packager.send(
+    res = Packager.send(
         Ping.id, serialize_pm(pm), node_id=node_id, to_addr=addr, metric=metric
     )
+    if callback is not None:
+        callback('ping request ' + ('sent' if res else 'failed to send'))
+    return res
 
 def ping_respond(pm: PingMessage):
     """Send a ping response using the information in the ping message."""
