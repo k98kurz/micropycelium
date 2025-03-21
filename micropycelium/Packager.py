@@ -1018,14 +1018,16 @@ class Interface:
         self.call_hook('process')
         if self.receive_func:
             datagram = self.receive_func(self)
-            if datagram:
+            while datagram:
                 self.call_hook('process:receive', datagram)
                 self.inbox.append(datagram)
+                datagram = self.receive_func(self)
         elif self.receive_func_async:
             datagram = await self.receive_func_async(self)
-            if datagram:
+            while datagram:
                 self.call_hook('process:receive_async', datagram)
                 self.inbox.append(datagram)
+                datagram = await self.receive_func_async(self)
 
         if len(self.outbox):
             datagram = self.outbox.popleft()
