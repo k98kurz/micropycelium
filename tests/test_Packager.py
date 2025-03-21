@@ -92,7 +92,7 @@ class TestPackager(unittest.TestCase):
         # example network structure from the VOUTE paper for routing s -> e:
         # s [1] <-> r [] <-> e [2] <-> [2, 1] <-> [2, 1, 1] <-> u [2, 1, 1, 1]
         # s <-> u
-        tree_state = b'\x00'
+        tree_state = 0
         Packager.node_id = b'0' * 32
         local_addr = Address(tree_state, coords=[2,2,3])
         peer1_id = b'1' * 32
@@ -124,7 +124,7 @@ class TestPackager(unittest.TestCase):
         # example network structure from the VOUTE paper for routing s -> e:
         # s [1] <-> r [] <-> e [2] <-> [2, 1] <-> [2, 1, 1] <-> u [2, 1, 1, 1]
         # s <-> u
-        tree_state = b'\x00'
+        tree_state = 0
         local_addr = Address(tree_state, coords=[1])
         peer1_id = b'1' * 32
         peer2_id = b'2' * 32
@@ -143,7 +143,7 @@ class TestPackager(unittest.TestCase):
         assert peer.id == peer1_id, peer
 
     def test_dCPL_routing(self):
-        tree_state = b'\x00'
+        tree_state = 0
         Packager.node_id = b'0' * 32
         local_addr = Address(tree_state, coords=[2,2,3])
         peer1_id = b'1' * 32
@@ -175,7 +175,7 @@ class TestPackager(unittest.TestCase):
         # example network structure from the VOUTE paper for routing s -> e:
         # s [1] <-> r [] <-> e [2] <-> [2, 1] <-> [2, 1, 1] <-> u [2, 1, 1, 1]
         # s <-> u
-        tree_state = b'\x00'
+        tree_state = 0
         local_addr = Address(tree_state, coords=[1])
         peer1_id = b'1' * 32
         peer2_id = b'2' * 32
@@ -624,6 +624,67 @@ class TestPackager(unittest.TestCase):
         dgram = mock_interface1.outbox.popleft()
         # routes through v now
         assert dgram.addr == peer4.interfaces[0][0]
+
+    def test_send_routes_properly_e2e(self):
+        # add application and network interface
+        Packager.add_interface(mock_interface1)
+
+        # copy network configuration from test devices
+        # a (118-10::) <-> r (118-::) <-> u (118-20::)
+        tree_state = 118
+        local_addr = Address(tree_state, coords=[1])
+        Packager.node_id = b'0' * 32
+        Packager.set_addr(local_addr)
+
+        # r
+        peer1 = Peer(
+            b'1' * 32,
+            [(b'mac_peer_r', mock_interface1)]
+        )
+        peer1_addr = Address(tree_state, coords=[])
+        Packager.add_peer(peer1.id, peer1.interfaces)
+        Packager.add_route(peer1.id, peer1_addr)
+
+        # u
+        peer2 = Peer(
+            b'2' * 32,
+            [(b'mac_peer_u', mock_interface1)]
+        )
+        peer2_addr = Address(tree_state, coords=[2])
+
+        # add more nodes that should be ignored
+        peer3 = Peer(
+            b'3' * 32,
+            [(b'mac_child_1', mock_interface1)]
+        )
+        peer3_addr = Address(tree_state, coords=[1, 1])
+        Packager.add_peer(peer3.id, peer3.interfaces)
+        Packager.add_route(peer3.id, peer3_addr)
+
+        peer4 = Peer(
+            b'4' * 32,
+            [(b'mac_peer_u', mock_interface1)]
+        )
+        peer4_addr = Address(tree_state, coords=[3])
+        Packager.add_peer(peer4.id, peer4.interfaces)
+        Packager.add_route(peer4.id, peer4_addr)
+
+        # a sends to u; test dTree first
+        to_addr = Address(tree_state, coords=[2])
+        assert Packager.send(test_app.id, b'hello world', to_addr=to_addr)
+        assert len(mock_interface1.outbox) == 1
+        # should route through r
+        dgram = mock_interface1.outbox.popleft()
+        assert dgram.addr == peer1.interfaces[0][0], \
+            (dgram.addr, peer1.interfaces[0][0])
+
+        # now test dCPL, the second mode
+        assert Packager.send(test_app.id, b'hello world', to_addr=to_addr, metric=dCPL)
+        assert len(mock_interface1.outbox) == 1
+        dgram = mock_interface1.outbox.popleft()
+        # routes through r
+        assert dgram.addr == peer1.interfaces[0][0], \
+            (dgram.addr, peer1.interfaces[0][0])
 
     def test_receive_RNS_sends_NIA(self):
         # add application, network interface, and peer

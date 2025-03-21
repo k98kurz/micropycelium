@@ -1729,7 +1729,6 @@ class Packager:
             if not next_hop:
                 return False
             peer = next_hop[0]
-            addr = next_hop[1]
 
         intrfcs = peer.interfaces
         sids = set(intrfcs[0][1].supported_schemas)
@@ -1746,9 +1745,9 @@ class Packager:
             fields = {
                 k:v for k,v in fields.items()
             }
-            fields['to_addr'] = addr.address
+            fields['to_addr'] = to_addr.address
             fields['from_addr'] = cls.node_addrs[-1].address
-            fields['tree_state'] = addr.tree_state
+            fields['tree_state'] = to_addr.tree_state
         if schema.max_blob > schema.max_body:
             seq = Sequence(schema, cls.seq_id, len(p))
             seq.set_data(p)
