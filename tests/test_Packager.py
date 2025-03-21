@@ -677,6 +677,10 @@ class TestPackager(unittest.TestCase):
         dgram = mock_interface1.outbox.popleft()
         assert dgram.addr == peer1.interfaces[0][0], \
             (dgram.addr, peer1.interfaces[0][0])
+        p = Packet.unpack(dgram.data)
+        assert p.schema.id in SCHEMA_IDS_SUPPORT_ROUTING, p.schema.id
+        assert p.fields['from_addr'] == local_addr.address
+        assert p.fields['to_addr'] == to_addr.address
 
         # now test dCPL, the second mode
         assert Packager.send(test_app.id, b'hello world', to_addr=to_addr, metric=dCPL)
