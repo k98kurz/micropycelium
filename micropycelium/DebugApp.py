@@ -178,7 +178,7 @@ def handle_require(dm: DebugMessage):
     if dm.op == DebugOp.REQUIRE_RESET:
         print('DebugApp: REQUIRE_RESET received; scheduling reset')
         Packager.queue_event(Event(
-            time_ms() + 50,
+            time_ms() + 200,
             b'reset',
             reset
         ))
@@ -228,7 +228,7 @@ def require_action(op: int, peer_id: bytes, data: bytes):
     peer_id = peer_id if type(peer_id) is bytes else bytes.fromhex(peer_id)
     topic_id = sha256(DebugApp.id + peer_id).digest()[:16]
     nonce = randint(0, 2**16 - 1)
-    dm = DebugMessage(op, nonce, Packager.node_id, data)
+    dm = DebugMessage(op, int(time()), nonce, Packager.node_id, data)
     Gossip.invoke('publish', topic_id, serialize_dm(dm))
 
 def start_debug_app():
