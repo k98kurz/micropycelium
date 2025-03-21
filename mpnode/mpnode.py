@@ -2,9 +2,9 @@ from asyncio import sleep_ms
 from collections import deque
 from machine import reset, Pin
 from micropycelium import (
-    Packager, debug, ESPNowInterface, Beacon, Gossip, SpanningTree, Ping,
-    DebugApp, DebugOp, Address, dCPL, dTree, ainput,
-    PROTOCOL_VERSION,
+    Packager, Address, dCPL, dTree, PROTOCOL_VERSION,
+    ESPNowInterface, Beacon, Gossip, SpanningTree, Ping, DebugApp, DebugOp,
+    ainput, debug,
 )
 from micropython import const
 from struct import pack
@@ -102,7 +102,9 @@ async def memrloop():
 def _help():
     print('Commands:')
     print('\tm|monitor - monitors debug messages')
-    print('\tget [node_id|addrs|peers|routes|next_hop addr metric] - get info from the local node')
+    print('\tget [node_id|addrs|peers|routes|banned|next_hop addr metric] - get info from the local node')
+    print('\tban [node_id] - ban a node from being a peer or known route')
+    print('\tunban [node_id] - unban a node from being a peer or known route')
     print('\tping [node_id|addr] [count] [timeout] - ping the node_id/address')
     print('\t\tcount default value is 4')
     print('\t\ttimeout default value is 5 (seconds)')
@@ -115,7 +117,7 @@ def _help():
     print('\tversion - show version information')
     print('\tq|quit - quit the program')
     print('\treset - reset the device')
-    print('\twait [count] - wait for [count=1] output messages')
+    print('\tw|wait [count] - wait for [count=-1] output messages (count<0 waits indefinitely)')
     # print('\t - ')
 
 outq = deque([], 2)
@@ -123,7 +125,7 @@ output = lambda res: outq.append(res)
 async def wait(c = 1):
     print("Waiting for output. Hit Enter to stop waiting (command will run in background)...")
     i = 0
-    while i < c:
+    while i < c or c < 0:
         if len(outq):
             print(outq.popleft())
             i += 1
@@ -175,6 +177,10 @@ async def console(add_debug_hooks = False, pub_routes = True, sub_routes = False
                     print(f'Routes:')
                     for addr, pid in Packager.routes.items():
                         print(f'  {addr} -> {pid.hex()}')
+                elif cmd[1].lower() == 'banned':
+                    print(f'Banned:')
+                    for nid in Packager.banned:
+                        print(f'  {nid.hex()}')
                 elif cmd[1].lower() == 'next_hop':
                     if len(cmd) < 4:
                         print('get next_hop - missing a required arg')
@@ -186,6 +192,26 @@ async def console(add_debug_hooks = False, pub_routes = True, sub_routes = False
                         print(f'No next hop found for {nh_addr}')
                     else:
                         print(f'Next Hop: {nh[0].id.hex()} {nh[1]}')
+            elif cmd[0] == 'ban':
+                if len(cmd) < 2:
+                    print('ban - missing a required arg')
+                    continue
+                try:
+                    nid = bytes.fromhex(cmd[1])
+                except:
+                    print(f'ban - invalid node_id: {cmd[1]}')
+                    continue
+                Packager.ban(nid)
+            elif cmd[0] == 'unban':
+                if len(cmd) < 2:
+                    print('unban - missing a required arg')
+                    continue
+                try:
+                    nid = bytes.fromhex(cmd[1])
+                except:
+                    print(f'unban - invalid node_id: {cmd[1]}')
+                    continue
+                Packager.unban(nid)
             elif cmd[0] == 'version':
                 print(f'MPNode version: {MPNODE_VERSION}')
                 print(f'Packager version: {Packager.version}')
@@ -213,8 +239,9 @@ async def console(add_debug_hooks = False, pub_routes = True, sub_routes = False
                     kwargs['count'] = int(cmd[2])
                 if len(cmd) > 3:
                     kwargs['timeout'] = int(cmd[3])
+                c = len(outq)
                 Ping.invoke('ping', **kwargs)
-                c = kwargs.get('count', 4)
+                c += kwargs.get('count', 4)
                 await wait(c + 2)
             elif cmd[0] == 'gossip':
                 if len(cmd) < 2:
@@ -233,8 +260,9 @@ async def console(add_debug_hooks = False, pub_routes = True, sub_routes = False
                         kwargs['count'] = int(cmd[3])
                     if len(cmd) > 4:
                         kwargs['timeout'] = int(cmd[4])
+                    c = len(outq)
                     Ping.invoke('gossip_ping', **kwargs)
-                    await wait(kwargs.get('count', 4) + 2)
+                    await wait(kwargs.get('count', 4) + 2 + c)
                 else:
                     print('unknown subcommand')
                     continue
@@ -267,8 +295,9 @@ async def console(add_debug_hooks = False, pub_routes = True, sub_routes = False
                     'request',
                     lambda *args: output(f'DebugApp.request sent: {hexify(args[1:])}')
                 )
+                c = len(outq)
                 DebugApp.invoke('request', op, nid, nh_addr)
-                await wait(2)
+                await wait(c + 2)
             elif cmd[0] == 'admin':
                 if len(cmd) < 4:
                     print('admin - missing a required arg')
@@ -277,14 +306,15 @@ async def console(add_debug_hooks = False, pub_routes = True, sub_routes = False
                 cmd[3] = cmd[3].lower()
                 if cmd[3] == 'reset':
                     op = DebugOp.REQUIRE_RESET
+                    c = len(outq)
                     DebugApp.invoke('require', op, nid, cmd[2].encode())
-                    await wait(1)
+                    await wait(c + 1)
                 else:
                     print(f'admin - unknown subcommand {cmd[3]}')
                     continue
-            elif cmd[0] == 'wait':
+            elif cmd[0] in ('wait', 'w'):
                 if len(cmd) < 2:
-                    await wait(1)
+                    await wait(-1)
                 else:
                     await wait(int(cmd[1]))
             else:

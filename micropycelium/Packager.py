@@ -1432,6 +1432,7 @@ class Packager:
     inverse_peers: dict[tuple[bytes, bytes], bytes] = {} # map (mac, intrfc.id): peer_id
     routes: dict[Address, bytes] = {}
     inverse_routes: dict[bytes, deque[Address]] = {}
+    banned: list[bytes] = []
     node_id: bytes = b''
     node_addrs: deque[Address] = deque([], 2)
     apps: dict[bytes, Application] = {}
@@ -1510,6 +1511,8 @@ class Packager:
             send Packages to all such peers.
         """
         cls.call_hook('add_peer', peer_id, interfaces)
+        if peer_id in cls.banned:
+            return
         if peer_id not in cls.peers:
             cls.peers[peer_id] = Peer(peer_id, interfaces)
         peer = cls.peers[peer_id]
@@ -1546,6 +1549,8 @@ class Packager:
             (maintains only one route per tree state).
         """
         cls.call_hook('add_route', node_id, address)
+        if node_id in cls.banned:
+            return
         if node_id in cls.peers:
             addrs = cls.peers[node_id].addrs
             if address not in addrs:
@@ -1570,6 +1575,19 @@ class Packager:
             for a in addrs:
                 if a != address:
                     cls.inverse_routes[peer_id].append(a)
+
+    @classmethod
+    def ban(cls, node_id: bytes):
+        """Bans a node from being a peer or known route."""
+        cls.call_hook('ban', node_id)
+        cls.banned.append(node_id)
+        cls.remove_peer(node_id)
+
+    @classmethod
+    def unban(cls, node_id: bytes):
+        """Unbans a node from being a peer or known route."""
+        cls.call_hook('unban', node_id)
+        cls.banned.remove(node_id)
 
     @classmethod
     def set_addr(cls, addr: Address):

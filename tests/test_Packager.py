@@ -59,6 +59,24 @@ class TestPackager(unittest.TestCase):
         Packager.remove_route(addr)
         assert len(Packager.routes.keys()) == 0
 
+    def test_ban_unban(self):
+        Packager.add_peer(b'peer0', [(b'macpeer0', mock_interface1)])
+        Packager.add_route(b'peer0', Address(b'\x00', b'\x00' * 16))
+        assert len(Packager.peers.keys()) == 1
+        assert len(Packager.routes.keys()) == 1
+        Packager.ban(b'peer0')
+        assert len(Packager.peers.keys()) == 0
+        assert len(Packager.routes.keys()) == 0
+        Packager.add_peer(b'peer0', [(b'macpeer0', mock_interface1)])
+        Packager.add_route(b'peer0', Address(b'\x00', b'\x00' * 16))
+        assert len(Packager.peers.keys()) == 0
+        assert len(Packager.routes.keys()) == 0
+        Packager.unban(b'peer0')
+        Packager.add_peer(b'peer0', [(b'macpeer0', mock_interface1)])
+        Packager.add_route(b'peer0', Address(b'\x00', b'\x00' * 16))
+        assert len(Packager.peers.keys()) == 1
+        assert len(Packager.routes.keys()) == 1
+
     def test_set_addr(self):
         assert len(Packager.node_addrs) == 0
         Packager.set_addr(Address(b'\x00', b'\x00' * 16))
