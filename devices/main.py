@@ -1,7 +1,7 @@
 from micropycelium import Packager, Address
 from mpnode import (
     start, debug_name, Gossip, SpanningTree, Ping,
-    DebugApp, DebugOp, ping_report_cb
+    DebugApp, DebugOp, ping_cb
 )
 import machine
 

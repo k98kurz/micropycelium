@@ -5,72 +5,66 @@ def get_src(filename: str) -> list[str]:
     with open(filename, 'r') as f:
         return f.readlines()
 
-def get_beacon_src() -> list[str]:
-    beacon_src = get_src('micropycelium/Beacon.py')
+def remove_imports(src: list[str]) -> list[str]:
     last_import = 0
-    for i in range(len(beacon_src)):
-        line = beacon_src[i]
+    for i in range(len(src)):
+        line = src[i]
         if 'import' in line:
             last_import = i
-    return beacon_src[last_import+1:]
+        if 'save_imports' in line:
+            last_import -= 1
+            break
+    return src[last_import+1:]
+
+def get_beacon_src() -> list[str]:
+    beacon_src = get_src('micropycelium/Beacon.py')
+    return remove_imports(beacon_src)
 
 def get_gossip_src() -> list[str]:
     gossip_src = get_src('micropycelium/Gossip.py')
-    last_import = 0
-    for i in range(len(gossip_src)):
-        line = gossip_src[i]
-        if 'import' in line:
-            last_import = i
-    return gossip_src[last_import+1:]
+    return remove_imports(gossip_src)
 
 def get_spanning_tree_src() -> list[str]:
     spanning_tree_src = get_src('micropycelium/SpanningTree.py')
-    last_import = 0
-    for i in range(len(spanning_tree_src)):
-        line = spanning_tree_src[i]
-        if 'import' in line:
-            last_import = i
-    return spanning_tree_src[last_import+1:]
+    return remove_imports(spanning_tree_src)
 
 def get_ping_src() -> list[str]:
     ping_src = get_src('micropycelium/Ping.py')
-    last_import = 0
-    for i in range(len(ping_src)):
-        line = ping_src[i]
-        if 'import' in line:
-            last_import = i
-    return ping_src[last_import+1:]
+    return remove_imports(ping_src)
 
 def get_debug_src() -> list[str]:
     debug_src = get_src('micropycelium/DebugApp.py')
-    last_import = 0
-    for i in range(len(debug_src)):
-        line = debug_src[i]
-        if 'save_imports' in line:
-            break
-        if 'import' in line:
-            last_import = i
-    return debug_src[last_import+1:]
+    return remove_imports(debug_src)
 
 def get_espnowintrfc_src() -> list[str]:
     espnowintrfc_src = get_src('micropycelium/ESPNowInterface.py')
-    last_import = 0
-    for i in range(len(espnowintrfc_src)):
-        line = espnowintrfc_src[i]
-        if 'import' in line:
-            last_import = i
-    return espnowintrfc_src[last_import+1:]
+    return remove_imports(espnowintrfc_src)
 
+def main_mpnode(options: dict[str, list[str]]):
+    parts = []
+    mpnode_src = get_src('mpnode/mpnode.py')
+    parts.append(''.join(mpnode_src))
+
+    device = options.get('mpnode')[0]
+    device_src = get_src(f'devices/{device}/mpnode.py')
+    device_src = remove_imports(device_src)
+    parts.append(''.join(device_src))
+
+    print(''.join(parts))
 
 def main(options: dict[str, list[str]]):
+    if options.get('mpnode'):
+        return main_mpnode(options)
+
     parts = []
 
     packager_src = get_src('micropycelium/Packager.py')
     # turn on debug
-    for i in range(len(packager_src)):
-        if packager_src[i][:5] == 'DEBUG':
-            packager_src[i] = packager_src[i].replace('False', 'True')
-            break
+    if options.get('debug', True):
+        for i in range(len(packager_src)):
+            if packager_src[i][:5] == 'DEBUG':
+                packager_src[i] = packager_src[i].replace('False', 'True')
+                break
     parts.append(''.join(packager_src))
 
     exclude = [e.lower() for e in options.get('exclude', [])]
