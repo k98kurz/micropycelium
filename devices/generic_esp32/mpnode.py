@@ -72,7 +72,7 @@ def start():
         reset()
 async def _start(
         additional_tasks = [],
-        add_debug_hooks = False, pub_routes = True, sub_routes = False
+        add_debug_hooks = True, pub_routes = True, sub_routes = False
     ):
     Beacon.invoke('start')
     Gossip.invoke('start')
@@ -107,6 +107,6 @@ async def _start(
 
 def start(
         additional_tasks = [],
-        add_debug_hooks = False, pub_routes = True, sub_routes = False
+        add_debug_hooks = True, pub_routes = True, sub_routes = False
     ):
     run(_start(additional_tasks, add_debug_hooks, pub_routes, sub_routes))
