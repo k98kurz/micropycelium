@@ -2,20 +2,18 @@
 
 This repo is designed to implement a wireless mesh network and a few services
 that run over it using micropython-compatible code. A goal is to minimize memory
-use and provide an asynchronous control flow. It will include the following:
+use and provide an asynchronous control flow. It includes the following:
 
 - Packet formats to fit into ESP-NOW and RYLR-998 LoRa datagrams
 - A packet sequencer to break blobs into smaller packets with reliable tx
 mechanism
 - A Packager system to automatically send and receive Packages
-- Interface plugins for the Packager to enable ESP-NOW and RYLR-998; possibly
-UDP/IP, BTLE, and a custom WLAN similar to ESP-NOW for non-ESP devices (e.g.
-Raspberry Pi, Linux laptop, etc)
+- Interface plugins for the Packager to enable ESP-NOW and RYLR-998; in the
+future, UDP/IP, BTLE, and a custom WLAN similar to ESP-NOW for non-ESP devices
+(e.g. Raspberry Pi, Linux laptop, etc)
 - An Application plugin system to generate and ingest Packages
 - A connectionless gossip system for promulgating network information
 - A PIE/VOUTE-based spanning tree system for greedy routing
-- A service announcement system for nodes running the same Application(s) to
-discover each other
 
 This project is the result of a fairly lengthy process of discovery: first, I
 tried using gradient descent to determine 2d/3d/4d spcial coordinates using
@@ -58,7 +56,8 @@ be completed:
 2. Clone the micropython repo
 3. Follow the instructions from [notes/build.md](https://github.com/k98kurz/micropycelium/blob/master/notes/build.md)
 4. Connect via tty serial to your device to get to a REPL or file management
-5. See the example main.py files in the devices directory for reference in setting up a node
+5. Copy the main.py file from the devices directory to your device
+6. Reset device, then hit "Enter" to get to the console prompt
 
 This has not been tested on non-ESP32 devices, though expansion of support to
 more hardware platforms is an eventual goal of this project.
@@ -71,27 +70,35 @@ module in the same way as micropycelium (much better experience imo).
 
 ## Testing
 
-There are currently 43 unit tests that rely on a bunch of mocks. E2e testing is
-done with hardware and is a bit more involved.
+There are currently 93 unit tests that rely on a bunch of mocks: 57 tests for
+the core components and 36 for bundled apps (Beacon, Gossip, Ping, SpanningTree,
+DebugApp). E2e testing is done with hardware and is a bit more involved.
 
 To run the unit tests, clone the repo and then run the following:
 
 ```bash
-python tests/test_Packager.py
+find tests/ -name "test_*.py" -print -exec python {} \;
 ```
 
 To do e2e testing with hardware, build and deploy the firmware as described in
-the Usage section above, then copy a main.py file from the examples in the
-"devices" directory to your device, altering it as you like (e.g. add LED blinks
-or something similar to a generic ESP32 node the way I have to the M5stamp and
-M5StickC). Then turn on the devices, connect to the serial, and monitor debug
-messages (or watch blinking lights).
+the Usage section above, altering the main.py file as you like (e.g. add LED
+blinks or something similar to a generic ESP32 node the way I have to the
+M5stamp and M5StickC). Then turn on the devices, connect to the serial, and
+monitor debug messages, use the command console, or just watch blinking lights.
 
 In manual e2e testing, the Beacon app running through the ESPNOW network
 interface adapter was able to properly transmit and receive between devices at
 up to ~200 feet with direct line of sight on a windless night. Message routing
 has been experimentally tested in a very small network size (3 nodes) with
 success; scaling up for more thorough testing is a near-future task.
+
+## Contributing / More Resources
+
+Check out the [Pycelium discord server](https://discord.gg/b2QFEJDX69). If you
+experience a problem, please discuss it on the Discord server. All suggestions
+for improvement are also welcome, and the best place for that is also Discord.
+If you experience a bug and do not use Discord, open an issue or discussion on
+Github.
 
 ## License
 
