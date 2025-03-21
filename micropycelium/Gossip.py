@@ -110,22 +110,42 @@ def broadcast_gossip(gm: GossipMessage, count: int = 1):
     if count <= 0:
         return
     Packager.new_events.append(Event(
-        time_ms() + Gossip.params['broadcast_echo_delay_ms'],
-        sha256(serialize_gm(gm)).digest()[:16],
+        time_ms() + Gossip.params['echo_delay_ms'],
+        b'b' + sha256(serialize_gm(gm)).digest()[:16],
         broadcast_gossip,
         gm,
         count - 1,
     ))
 
-def notify_gossip(topic_id: bytes, gm_id: bytes):
+def notify_gossip(topic_id: bytes, gm_id: bytes, count: int = 1):
     gm = GossipMessage(GossipOp.NOTIFY, topic_id, gm_id)
     Packager.broadcast(gossip_app_id, serialize_gm(gm))
+    if count <= 0:
+        return
+    Packager.new_events.append(Event(
+        time_ms() + Gossip.params['echo_delay_ms'],
+        b'n' + sha256(serialize_gm(gm)).digest()[:16],
+        notify_gossip,
+        topic_id,
+        gm_id,
+        count - 1,
+    ))
 
-def request_gossip_message(message_id: bytes, peer_id: bytes):
+def request_gossip_message(message_id: bytes, peer_id: bytes, count: int = 1):
     gm = GossipMessage(GossipOp.REQUEST, message_id, Packager.node_id)
     Packager.send(gossip_app_id, serialize_gm(gm), peer_id)
+    if count <= 0:
+        return
+    Packager.new_events.append(Event(
+        time_ms() + Gossip.params['echo_delay_ms'],
+        b'q' + sha256(serialize_gm(gm)).digest()[:16],
+        request_gossip_message,
+        message_id,
+        peer_id,
+        count - 1,
+    ))
 
-def respond_gossip_request(peer_id: bytes, gm_id: bytes):
+def respond_gossip_request(peer_id: bytes, gm_id: bytes, count: int = 1):
     gm: GossipMessage|None = message_cache.get(gm_id)
     if gm is None:
         return
@@ -136,6 +156,14 @@ def respond_gossip_request(peer_id: bytes, gm_id: bytes):
         # was a request following message ids; modify the op so it is not forwarded
         new_gm = GossipMessage(GossipOp.RESPOND, gm.topic_id, gm.data)
         Packager.send(gossip_app_id, serialize_gm(new_gm), peer_id)
+    if count <= 0:
+        return
+    Packager.new_events.append(Event(
+        time_ms() + Gossip.params['echo_delay_ms'],
+        b'r' + sha256(serialize_gm(gm)).digest()[:16],
+        respond_gossip_request,
+        peer_id, gm_id, count - 1,
+    ))
 
 def request_gossip_ids(topic_id: bytes, peer_id: bytes):
     gm = GossipMessage(GossipOp.REQUEST_IDS, topic_id, Packager.node_id)
@@ -234,7 +262,7 @@ Gossip = Application(
     params={
         'start_delay': 10,
         'schedule_delay': 20,
-        'broadcast_echo_delay_ms': 20,
+        'echo_delay_ms': 20,
     }
 )
 gossip_app_id = Gossip.id
