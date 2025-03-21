@@ -54,7 +54,7 @@ current_children: dict[bytes, int] = {} # map of child peer ids to coordinates
 current_parent: bytes = b''
 tree_last_ts = int(time())
 # tuple of (claim, dTree from root, peer_id)
-known_claims: deque[tuple[bytes, int, bytes]] = deque([], 10)
+known_claims: deque[tuple[bytes, int, int, bytes]] = deque([], 10)
 
 # elect self as initial root
 current_best_root_id = Packager.node_id
@@ -133,6 +133,12 @@ def receive_tm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
     elif tmsg.op == TreeOp.REQUEST_ADDRESS_ASSIGNMENT:
         # received an address assignment request
         if tree_state(tmsg.claim) == Packager.node_addrs[-1].tree_state:
+            # only respond if the request is for the current tree_state
+            if peer_id in current_children:
+                # if the node is already child, send its existing address
+                coords = list(Packager.node_addrs[-1].coords) + [current_children[peer_id]]
+                SpanningTree.invoke('assign_address', peer_id, coords)
+                return
             # respond with the address assignment
             coords = list(Packager.node_addrs[-1].coords)
             coord = lwst_avlbl_coord()
@@ -263,24 +269,27 @@ def maintain_tree():
         if int(time()) - ts < SpanningTree.params['max_tree_age']:
             known_claims.append((claim, ts, dTree, peer_id))
 
-    # check if there is no parent and there are known claims
-    if current_parent == b'' and len(known_claims) > 0:
+    # evaluate known claims
+    if len(known_claims) > 0:
+        current_dTree = Address.dTree(
+            Packager.node_addrs[-1],
+            Address(tree_state(current_best_root_id), coords=[])
+        )
         # get the best known claim (and shortest distance from root)
         claims = list(known_claims)
         claims.sort(key=lambda t: claim_score(t[0]) + t[1])
-        best_claim, ts, _, peer_id = claims[0]
-        if claim_score(best_claim) < claim_score(current_best_root_id):
-            # request an address assignment from the best claim
+        best_claim, _, dTree, peer_id = claims[0]
+        if claim_score(best_claim) < claim_score(current_best_root_id) or (
+            claim_score(best_claim) == claim_score(current_best_root_id) and
+            dTree < current_dTree - 1
+        ):
+            # request an address assignment from the best claim with shortest distance from root
             SpanningTree.invoke('request_address_assignment', peer_id, best_claim)
-        else:
-            # we have the best claim, so begin broadcasting it
-            tree_last_ts = int(time())
-            periodic_tree_message(SpanningTree.params['broadcast_count'])
-    else:
-        # begin broadcasting
-        if current_best_root_id == Packager.node_id:
-            tree_last_ts = int(time())
-        periodic_tree_message(SpanningTree.params['broadcast_count'])
+
+    # begin broadcasting
+    if current_best_root_id == Packager.node_id:
+        tree_last_ts = int(time())
+    periodic_tree_message(SpanningTree.params['broadcast_count'])
 
     # tree_maintenance_rounds += 1
     # if tree_maintenance_rounds >= 5:

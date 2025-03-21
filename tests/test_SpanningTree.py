@@ -327,6 +327,77 @@ class TestSpanningTreeApplication(unittest.TestCase):
         assert addr in Packager.routes
         assert Packager.routes[addr] == another_node_id
 
+    def test_if_current_parent_has_changed_address_then_REQUEST_ADDRESS_ASSIGNMENT_is_sent(self):
+        Packager.add_interface(mock_interface1)
+        Packager.add_application(SpanningTree)
+        claim_score = lambda pid: SpanningTree.invoke('claim_score', pid)
+        SpanningTree.invoke('start')
+        local_claim_score = claim_score(Packager.node_id)
+        Packager.set_addr(Address(tree_state(Packager.node_id), coords=[]))
+
+        # add a peer with the better claim score peer_id
+        peer1_id = (local_claim_score - 11).to_bytes(32, 'big')
+        peer1_id = xor(peer1_id, b'1234' * 8)
+        their_score = claim_score(peer1_id)
+        while their_score >= local_claim_score:
+            print('recalculating peer1_id; claim_score formula must have changed')
+            peer1_id = urandom(32)
+            their_score = claim_score(peer1_id)
+        Packager.add_peer(peer1_id, [(b'mac1', mock_interface1)])
+        # add known claim
+        known_claims = SpanningTree.invoke('get_known_claims')
+        known_claims.append((peer1_id, now(), 0, peer1_id))
+        # maintain_tree should send a REQUEST_ADDRESS_ASSIGNMENT
+        SpanningTree.invoke('maintain_tree')
+        assert len(mock_interface1.outbox) == 1
+        packet = Packet.unpack(mock_interface1.outbox.popleft().data)
+        p = Package.unpack(packet.body)
+        tm = SpanningTree.invoke('deserialize', p.blob)
+        assert tm.op == TreeOp.REQUEST_ADDRESS_ASSIGNMENT, tm.op
+        # respond with an ASSIGN_ADDRESS
+        tm = TreeMessage(
+            TreeOp.ASSIGN_ADDRESS, now(), 0, peer1_id, b'\x10' + b'\x00' * 15,
+            peer1_id
+        )
+        blob = SpanningTree.invoke('serialize', tm)
+        addr1 = Packager.node_addrs[-1]
+        SpanningTree.receive(blob, mock_interface1, b'mac1')
+        addr2 = Packager.node_addrs[-1]
+        assert addr1 != addr2, (addr1, addr2)
+
+        # add a new peer with a better claim score
+        peer2_id = (local_claim_score - 12).to_bytes(32, 'big')
+        peer2_id = xor(peer2_id, b'1234' * 8)
+        their_old_score = their_score
+        their_score = claim_score(peer2_id)
+        while their_score >= their_old_score:
+            print('recalculating peer2_id; claim_score formula must have changed')
+            peer2_id = urandom(32)
+            their_score = claim_score(peer2_id)
+
+        # simulate parent peer1 becoming child of peer2, changing address, and broadcasting SEND
+        tm = TreeMessage(
+            TreeOp.SEND, now(), 0, peer2_id, b'\x10' + b'\x00' * 15,
+            peer1_id
+        )
+        blob = SpanningTree.invoke('serialize', tm)
+        known_claims = SpanningTree.invoke('get_known_claims')
+        known_claims.clear()
+        assert len(known_claims) == 0
+        SpanningTree.receive(blob, mock_interface1, b'mac1')
+        assert len(known_claims) == 1
+        assert known_claims[0][0] == peer2_id
+        assert known_claims[0][3] == peer1_id
+
+        # maintain_tree should send a new REQUEST_ADDRESS_ASSIGNMENT for the new tree_state
+        assert len(mock_interface1.outbox) == 0
+        SpanningTree.invoke('maintain_tree')
+        assert len(mock_interface1.outbox) == 1
+        packet = Packet.unpack(mock_interface1.outbox.popleft().data)
+        p = Package.unpack(packet.body)
+        tm = SpanningTree.invoke('deserialize', p.blob)
+        assert tm.op == TreeOp.REQUEST_ADDRESS_ASSIGNMENT, tm.op
+
 
 if __name__ == '__main__':
     unittest.main()
