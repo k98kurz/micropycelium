@@ -371,58 +371,60 @@ class TestAddress(unittest.TestCase):
         assert Address.decode(address) != coords
 
     def test_initialization(self):
+        with self.assertRaises(TypeError) as e:
+            Address(b'0', coords=[])
         with self.assertRaises(ValueError) as e:
-            Address(b'\x00')
+            Address(0)
         assert 'must provide at least one' in str(e.exception)
         with self.assertRaises(TypeError) as e:
-            Address(b'\x00', '00sdsd')
+            Address(0, '00sdsd')
         assert 'bytes|bytearray' in str(e.exception)
         with self.assertRaises(TypeError) as e:
-            Address(b'\x00', coords=['a', 'b', 'c'])
+            Address(0, coords=['a', 'b', 'c'])
         assert 'int' in str(e.exception)
 
-        addr1 = Address(b'0', address=b'\x00' * 16)
-        addr2 = Address(b'0', coords=[])
+        addr1 = Address(48, address=b'\x00' * 16)
+        addr2 = Address(48, coords=[])
         assert addr1.address == addr2.address
         assert addr1.coords == addr2.coords
 
     def test_dTree(self):
         # with CPL of 2 and lengths of 3, the distance will be 2
-        x1 = Address(b'0', coords=[1,2,1])
-        x2 = Address(b'0', coords=[1,2,2])
+        x1 = Address(48, coords=[1,2,1])
+        x2 = Address(48, coords=[1,2,2])
         assert Address.dTree(x1, x2) == 2
         assert Address.dTree(x2, x1) == 2
 
         # with CPL of 1 and lengths of 3, the distance will be 4
-        x1 = Address(b'0', coords=[1,2,1])
-        x2 = Address(b'0', coords=[1,3,2])
+        x1 = Address(48, coords=[1,2,1])
+        x2 = Address(48, coords=[1,3,2])
         assert Address.dTree(x1, x2) == 4
         assert Address.dTree(x2, x1) == 4
 
         # with CPL of 1 and lengths of 2 and 3, the distance will be 3
-        x1 = Address(b'0', coords=[1,2,1])
-        x2 = Address(b'0', coords=[1,3])
+        x1 = Address(48, coords=[1,2,1])
+        x2 = Address(48, coords=[1,3])
         assert Address.dTree(x1, x2) == 3
         assert Address.dTree(x2, x1) == 3
 
         # with CPL of 31 and lengths of 32, the distance will be 1
-        x1 = Address(b'0', coords=[1] * 31 + [1])
-        x2 = Address(b'0', coords=[1] * 31 + [2])
+        x1 = Address(48, coords=[1] * 31 + [1])
+        x2 = Address(48, coords=[1] * 31 + [2])
         assert Address.dTree(x1, x2) == 2, Address.dTree(x1, x2)
         assert Address.dTree(x2, x1) == 2, Address.dTree(x2, x1)
 
     def test_dCPL(self):
         # with a CPL of 31, the distance will be between 1 and 2
-        x1 = Address(b'0', coords=[1] * 31 + [1])
-        x2 = Address(b'0', coords=[1] * 31 + [2])
+        x1 = Address(48, coords=[1] * 31 + [1])
+        x2 = Address(48, coords=[1] * 31 + [2])
         assert Address.dCPL(x1, x1) == 0
         assert Address.dCPL(x1, x2) > 1
         assert Address.dCPL(x1, x2) < 2
         assert Address.dCPL(x1, x2) == Address.dCPL(x2, x1)
 
         # with CPL of 2, the distance will be between 30 and 31
-        x1 = Address(b'0', coords=[1,2,3])
-        x2 = Address(b'0', coords=[1,2,4])
+        x1 = Address(48, coords=[1,2,3])
+        x2 = Address(48, coords=[1,2,4])
         assert Address.dCPL(x1, x2) < 31
         assert Address.dCPL(x1, x2) > 30
         assert Address.dCPL(x1, x2) == Address.dCPL(x2, x1)
@@ -432,14 +434,14 @@ class TestPeer(unittest.TestCase):
     def test_e2e(self):
         peer = Peer(b'123', {b'mac': mock_interface1})
         assert len(peer.addrs) == 0
-        peer.set_addr(Address(b'\x00', b'\x00' * 16))
+        peer.set_addr(Address(0, b'\x00' * 16))
         assert len(peer.addrs) == 1
-        peer.set_addr(Address(b'\x01', b'\x01' * 16))
+        peer.set_addr(Address(1, b'\x01' * 16))
         assert len(peer.addrs) == 2
-        peer.set_addr(Address(b'\x02', b'\x02' * 16))
+        peer.set_addr(Address(2, b'\x02' * 16))
         assert len(peer.addrs) == 2
-        assert peer.addrs[0].tree_state == b'\x01'
-        assert peer.addrs[1].tree_state == b'\x02'
+        assert peer.addrs[0].tree_state == 1
+        assert peer.addrs[1].tree_state == 2
 
 
 class TestCache(unittest.TestCase):
