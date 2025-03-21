@@ -254,7 +254,7 @@ async def console(add_debug_hooks = False, pub_routes = True, sub_routes = False
                     nid = bytes.fromhex(cmd[2])
                     kwargs = {
                         'node_id': nid,
-                        'callback': output,
+                        'callback': ping_cb,
                     }
                     if len(cmd) > 3:
                         kwargs['count'] = int(cmd[3])
