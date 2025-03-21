@@ -2,7 +2,7 @@ from mpnode import console, hexify, debug, debug_name, memrloop
 from asyncio import sleep_ms
 from collections import deque
 from machine import Pin, reset
-from micropycelium import Packager, Beacon, Gossip, SpanningTree, Ping, DebugApp
+from micropycelium import Packager, Beacon, Gossip, SpanningTree, Ping, DebugApp, ESPNowInterface
 
 # save_imports
 from asyncio import run, gather, create_task
@@ -91,8 +91,22 @@ tasks = None
 
 async def _start(
         additional_tasks = [],
-        add_debug_hooks = True, pub_routes = True, sub_routes = False
+        add_debug_hooks = True, pub_routes = True, sub_routes = False,
+        add_intrfc_debug_hooks = False,
     ):
+    if add_intrfc_debug_hooks:
+        ESPNowInterface.add_hook(
+            'process:receive',
+            debug_name(f'Interface({ESPNowInterface.name}).process:receive')
+        )
+        ESPNowInterface.add_hook(
+            'process:send',
+            debug_name(f'Interface({ESPNowInterface.name}).process:send')
+        )
+        ESPNowInterface.add_hook(
+            'process:broadcast',
+            debug_name(f'Interface({ESPNowInterface.name}).process:broadcast')
+        )
     Beacon.invoke('start')
     Gossip.invoke('start')
     SpanningTree.invoke('start')
@@ -127,6 +141,10 @@ async def _start(
 
 def start(
         additional_tasks = [],
-        add_debug_hooks = True, pub_routes = True, sub_routes = False
+        add_debug_hooks = True, pub_routes = True, sub_routes = False,
+        add_intrfc_debug_hooks = False,
     ):
-    run(_start(additional_tasks, add_debug_hooks, pub_routes, sub_routes))
+    run(_start(
+        additional_tasks, add_debug_hooks, pub_routes, sub_routes,
+        add_intrfc_debug_hooks,
+    ))

@@ -74,9 +74,6 @@ def add_hooks():
     if hooks_added:
         return
     hooks_added = True
-    ESPNowInterface.add_hook('process:receive', debug_name(f'Interface({ESPNowInterface.name}).process:receive'))
-    ESPNowInterface.add_hook('process:send', debug_name(f'Interface({ESPNowInterface.name}).process:send'))
-    ESPNowInterface.add_hook('process:broadcast', debug_name(f'Interface({ESPNowInterface.name}).process:broadcast'))
     Packager.add_hook('send', debug_name('Packager.send'))
     Packager.add_hook('broadcast', debug_name('Packager.broadcast'))
     Packager.add_hook('receive', debug_name('Packager.receive'))
@@ -84,7 +81,6 @@ def add_hooks():
     Packager.add_hook('receive:nia', debug_name('Packager.receive:nia'))
     Packager.add_hook('rns', debug_name('Packager.rns'))
     Packager.add_hook('send_packet', debug_name('Packager.send_packet'))
-    Packager.add_hook('_send_datagram', debug_name('Packager._send_datagram'))
     Packager.add_hook('deliver', debug_name('Packager.deliver'))
     Packager.add_hook('add_peer', debug_name('Packager.add_peer'))
     Packager.add_hook('add_route', debug_name('Packager.add_route'))
