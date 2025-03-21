@@ -22,17 +22,7 @@ async def rloop():
 
 btn = Pin(39, Pin.IN)
 btnq = deque([], 5)
-async def blink(p: Pin, ms: int):
-    v = p.value()
-    p.value(not v)
-    await sleep_ms(ms)
-    p.value(v)
-async def bloop(q: deque, p: Pin):
-    while True:
-        while len(q):
-            q.popleft()
-            await blink(p, 100)
-        await sleep_ms(1)
+
 async def monitor_btn(p: Pin, q: deque, debounce_ms: int, inverse: bool = True):
     while True:
         if (inverse and not p.value()) or (not inverse and p.value()):
@@ -99,7 +89,10 @@ DebugApp.add_hook('receive', debug_name('DebugApp.receive'))
 
 tasks = None
 
-async def _start(add_debug_hooks = False, pub_routes = True, sub_routes = False):
+async def _start(
+        additional_tasks = [],
+        add_debug_hooks = False, pub_routes = True, sub_routes = False
+    ):
     Beacon.invoke('start')
     Gossip.invoke('start')
     SpanningTree.invoke('start')
@@ -120,6 +113,8 @@ async def _start(add_debug_hooks = False, pub_routes = True, sub_routes = False)
             create_task(memrloop()),
             create_task(console(add_debug_hooks, pub_routes, sub_routes)),
         ]
+        for task in additional_tasks:
+            tasks.append(task)
         while True:
             try:
                 await gather(*tasks)
@@ -130,5 +125,8 @@ async def _start(add_debug_hooks = False, pub_routes = True, sub_routes = False)
         print('OSError encountered; resetting device')
         reset()
 
-def start(add_debug_hooks = False, pub_routes = True, sub_routes = False):
-    run(_start(add_debug_hooks, pub_routes, sub_routes))
+def start(
+        additional_tasks = [],
+        add_debug_hooks = False, pub_routes = True, sub_routes = False
+    ):
+    run(_start(additional_tasks, add_debug_hooks, pub_routes, sub_routes))

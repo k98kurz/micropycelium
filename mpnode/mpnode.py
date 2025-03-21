@@ -1,6 +1,6 @@
 from asyncio import sleep_ms
 from collections import deque
-from machine import reset
+from machine import reset, Pin
 from micropycelium import (
     Packager, debug, ESPNowInterface, Beacon, Gossip, SpanningTree, Ping,
     DebugApp, DebugOp, Address, dCPL, dTree, ainput,
@@ -13,6 +13,21 @@ import gc
 
 MPNODE_VERSION = const('0.1.0-dev')
 
+
+async def blink(p: Pin, ms: int):
+    """Toggle the pin for the given number of milliseconds."""
+    v = p.value()
+    p.value(not v)
+    await sleep_ms(ms)
+    p.value(v)
+
+async def bloop(q: deque, p: Pin):
+    """Blink the pin whenever the queue has a value."""
+    while True:
+        while len(q):
+            q.popleft()
+            await blink(p, 100)
+        await sleep_ms(1)
 
 def hexify(thing):
     if type(thing) is list:

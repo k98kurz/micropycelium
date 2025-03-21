@@ -1,4 +1,4 @@
-from mpnode import console, hexify, debug, debug_name, memrloop
+from mpnode import console, hexify, debug, debug_name, memrloop, bloop
 from asyncio import sleep_ms
 from collections import deque
 from machine import reset
@@ -27,16 +27,7 @@ led19q = deque([], 10)
 led26 = Pin(26, Pin.OUT)
 led26q = deque([], 10)
 
-async def blink(p: Pin, ms: int):
-    p.value(1)
-    await sleep_ms(ms)
-    p.value(0)
-async def bloop(q: deque, p: Pin):
-    while True:
-        while len(q):
-            q.popleft()
-            await blink(p, 100)
-        await sleep_ms(1)
+
 async def monitor_btn(p: Pin, q: deque, debounce_ms: int):
     while True:
         if not p.value():
@@ -109,7 +100,10 @@ DebugApp.add_hook('receive', debug_name('DebugApp.receive'))
 
 tasks = None
 
-async def _start(add_debug_hooks = False, pub_routes = True, sub_routes = False):
+async def _start(
+        additional_tasks = [],
+        add_debug_hooks = False, pub_routes = True, sub_routes = False
+    ):
     Beacon.invoke('start')
     Gossip.invoke('start')
     SpanningTree.invoke('start')
@@ -136,6 +130,8 @@ async def _start(add_debug_hooks = False, pub_routes = True, sub_routes = False)
             create_task(memrloop()),
             create_task(console(add_debug_hooks, pub_routes, sub_routes)),
         ]
+        for task in additional_tasks:
+            tasks.append(task)
         while True:
             try:
                 await gather(*tasks)
@@ -146,5 +142,8 @@ async def _start(add_debug_hooks = False, pub_routes = True, sub_routes = False)
         print('OSError encountered; resetting device')
         reset()
 
-def start(add_debug_hooks = False, pub_routes = True, sub_routes = False):
-    run(_start(add_debug_hooks, pub_routes, sub_routes))
+def start(
+        additional_tasks = [],
+        add_debug_hooks = False, pub_routes = True, sub_routes = False
+    ):
+    run(_start(additional_tasks, add_debug_hooks, pub_routes, sub_routes))
