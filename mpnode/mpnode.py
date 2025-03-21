@@ -101,24 +101,29 @@ async def memrloop():
 
 def _help():
     print('Commands:')
-    print('\tm|monitor - monitors debug messages')
-    print('\tget [node_id|addrs|peers|routes|banned|next_hop addr metric] - get info from the local node')
+    print('\tm|monitor [pattern1] [pattern2] ... - monitors debug messages')
+    print('\t\tpatterns are optional; if supplied, only messages matching a ' +\
+        'pattern will be displayed')
+    print('\tget [node_id|addrs|peers|routes|banned|next_hop addr metric] - ' +\
+        'get info from the local node')
     print('\tban [node_id] - ban a node from being a peer or known route')
     print('\tunban [node_id] - unban a node from being a peer or known route')
     print('\tping [node_id|addr] [count] [timeout] - ping the node_id/address')
     print('\t\tcount default value is 4')
     print('\t\ttimeout default value is 5 (seconds)')
-    print('\t\tIf node_id is provided, the address will be found from the known routes')
+    print('\t\tIf node_id is provided, the address will be found from the ' +\
+        'known routes')
     print('\tgossip ping [node_id] [count] [timeout] - ping the node via gossip')
     print('\t\tcount default value is 4')
     print('\t\ttimeout default value is 5 (seconds)')
-    print('\tdebug [node_id] [info|peers|routes|next_hop addr metric] - get debug info from a node')
+    print('\tdebug [node_id] [info|peers|routes|next_hop addr metric] - get ' +\
+        'debug info from a node')
     print('\tadmin [node_id] [password] [reset] - restart a remote node')
     print('\tversion - show version information')
     print('\tq|quit - quit the program')
     print('\treset - reset the device')
-    print('\tw|wait [count] - wait for [count=-1] output messages (count<0 waits indefinitely)')
-    # print('\t - ')
+    print('\tw|wait [count] - wait for [count=-1] output messages (count<0 ' +\
+        'waits indefinitely)')
 
 outq = deque([], 2)
 output = lambda res: outq.append(res)
@@ -132,13 +137,37 @@ async def wait(c = 1):
         if await ainput('', True) is not None:
             break
 
-async def monitor():
+def filter(msg, patterns):
+    matched = len(patterns) == 0
+    for p in patterns:
+        if type(msg) is str and p in msg:
+            matched = True
+        elif type(msg) in (list, tuple):
+            for m in msg:
+                if type(m) is str and p in m:
+                    matched = True
+        elif type(msg) is dict:
+            for k, v in msg.values():
+                if (type(k) is str and p in k) or (
+                    type(v) is str and p in v
+                ):
+                    matched = True
+    return matched
+
+async def monitor(patterns: tuple[str]|list[str] = []):
     print("Hit Enter to stop monitoring")
     while True:
         if len(debug_q):
-            print(*debug_q.popleft())
+            msg = debug_q.popleft()
+            if filter(msg, patterns):
+                if type(msg) in (tuple, list):
+                    print(*msg)
+                else:
+                    print(msg)
         if len(outq):
-            print(outq.popleft())
+            msg = outq.popleft()
+            if filter(msg, patterns):
+                print(msg)
         else:
             if await ainput('', True) is not None:
                 break
@@ -158,7 +187,7 @@ async def console(add_debug_hooks = False, pub_routes = True, sub_routes = False
             if cmd[0] in ('?', 'h', 'help'):
                 _help()
             elif cmd[0] in ('monitor', 'm'):
-                await monitor()
+                await monitor(cmd[1:])
             elif cmd[0] == 'get':
                 if len(cmd) < 2:
                     print('get - missing a required arg')
