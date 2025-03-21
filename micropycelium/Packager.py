@@ -7,9 +7,7 @@ from random import randint
 from struct import pack, unpack
 from time import time, time_ns
 import asyncio
-import espnow
 import micropython
-import network
 
 try:
     from typing import Callable
