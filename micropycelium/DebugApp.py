@@ -6,10 +6,11 @@ try:
         Application,
         Interface,
         Event,
-        dTree,
-        dCPL,
-        MODEM_INTERSECT_INTERVAL,
-        MODEM_INTERSECT_RTX_TIMES,
+        # dTree,
+        # dCPL,
+        # MODEM_INTERSECT_INTERVAL,
+        # MODEM_INTERSECT_RTX_TIMES,
+        time_ms,
     )
 except ImportError:
     from .Packager import (
@@ -19,18 +20,19 @@ except ImportError:
         Application,
         Interface,
         Event,
-        dTree,
-        dCPL,
-        MODEM_INTERSECT_INTERVAL,
-        MODEM_INTERSECT_RTX_TIMES,
+        # dTree,
+        # dCPL,
+        # MODEM_INTERSECT_INTERVAL,
+        # MODEM_INTERSECT_RTX_TIMES,
+        time_ms,
     )
 from collections import deque, namedtuple
 from hashlib import sha256
 from machine import reset
 from random import randint
 from struct import pack, unpack
-from time import time, time_ns
-from typing import Callable
+from time import time
+
 # save_imports
 import json
 
@@ -176,7 +178,7 @@ def handle_require(dm: DebugMessage):
     if dm.op == DebugOp.REQUIRE_RESET:
         print('DebugApp: REQUIRE_RESET received; scheduling reset')
         Packager.queue_event(Event(
-            time_ns()/1_000_000 + 50,
+            time_ms() + 50,
             b'reset',
             reset
         ))

@@ -8,8 +8,9 @@ try:
         Event,
         dTree,
         dCPL,
-        MODEM_INTERSECT_INTERVAL,
-        MODEM_INTERSECT_RTX_TIMES,
+        # MODEM_INTERSECT_INTERVAL,
+        # MODEM_INTERSECT_RTX_TIMES,
+        time_ms,
     )
 except ImportError:
     from .Packager import (
@@ -21,15 +22,14 @@ except ImportError:
         Event,
         dTree,
         dCPL,
-        MODEM_INTERSECT_INTERVAL,
-        MODEM_INTERSECT_RTX_TIMES,
+        # MODEM_INTERSECT_INTERVAL,
+        # MODEM_INTERSECT_RTX_TIMES,
+        time_ms,
     )
-from binascii import crc32
 from collections import deque, namedtuple
 from hashlib import sha256
 from random import randint
 from struct import pack, unpack
-from time import time, time_ns
 from typing import Callable
 
 
@@ -97,7 +97,7 @@ def ping_request(
         PingOp.REQUEST,
         nonce if nonce is not None else randint(0, 255),
         metric,
-        int(time_ns() / 1_000_000),
+        time_ms(),
         0,
         0,
         Packager.node_addrs[-1].tree_state,
@@ -118,7 +118,7 @@ def ping_respond(pm: PingMessage):
         pm.nonce,
         pm.metric,
         pm.ts1,
-        int(time_ns() / 1_000_000),
+        time_ms(),
         0,
         pm.tree_state,
         pm.address,
@@ -136,7 +136,7 @@ def ping_response_received(pm: PingMessage):
         pm.metric,
         pm.ts1,
         pm.ts2,
-        int(time_ns() / 1_000_000),
+        time_ms(),
         pm.tree_state,
         pm.address,
         pm.node_id
@@ -158,7 +158,7 @@ def ping_gossip_request(
         PingOp.GOSSIP_REQUEST,
         nonce if nonce is not None else randint(0, 255),
         0,
-        int(time_ns() / 1_000_000),
+        time_ms(),
         0,
         0,
         Packager.node_addrs[-1].tree_state,
@@ -181,7 +181,7 @@ def ping_gossip_respond(pm: PingMessage) -> bool:
         pm.nonce,
         pm.metric,
         pm.ts1,
-        int(time_ns() / 1_000_000),
+        time_ms(),
         0,
         pm.tree_state,
         pm.address,
@@ -198,7 +198,7 @@ def ping_gossip_response_received(pm: PingMessage):
         pm.metric,
         pm.ts1,
         pm.ts2,
-        int(time_ns() / 1_000_000),
+        time_ms(),
         pm.tree_state,
         pm.address,
         pm.node_id
@@ -309,7 +309,7 @@ def run_ping_test(
     topic_id = sha256(Ping.id + (node_id or addr.address)).digest()[:16]
     topic_id += PingOp.REQUEST.to_bytes(1, 'big')
     nonce = randint(0, 255)
-    now = int(time_ns() / 1_000_000)
+    now = time_ms()
     addr = addr if addr is not None else Packager.inverse_routes.get(node_id, [None])[-1]
     for i in range(count):
         Packager.new_events.append(Event(
@@ -347,7 +347,7 @@ def run_gossip_ping_test(
     topic_id = sha256(Ping.id + node_id).digest()[:16]
     topic_id += PingOp.GOSSIP_REQUEST.to_bytes(1, 'big')
     nonce = randint(0, 255)
-    now = int(time_ns() / 1_000_000)
+    now = time_ms()
     for i in range(count):
         Packager.new_events.append(Event(
             now + i * 1000,

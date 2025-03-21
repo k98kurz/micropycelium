@@ -2,33 +2,32 @@ try:
     from Packager import (
         enum,
         Packager,
-        Address,
+        # Address,
         Application,
         Interface,
         Event,
         Cache,
         InterAppInterface,
-        MODEM_INTERSECT_INTERVAL,
-        MODEM_INTERSECT_RTX_TIMES,
+        # MODEM_INTERSECT_INTERVAL,
+        # MODEM_INTERSECT_RTX_TIMES,
+        time_ms,
     )
 except ImportError:
     from .Packager import (
         enum,
         Packager,
-        Address,
+        # Address,
         Application,
         Interface,
         Event,
         Cache,
         InterAppInterface,
-        MODEM_INTERSECT_INTERVAL,
-        MODEM_INTERSECT_RTX_TIMES,
+        # MODEM_INTERSECT_INTERVAL,
+        # MODEM_INTERSECT_RTX_TIMES,
+        time_ms,
     )
-from binascii import crc32
 from collections import deque, namedtuple
 from hashlib import sha256
-from random import randint
-from time import time_ns
 
 
 GossipOp = enum(
@@ -111,7 +110,7 @@ def broadcast_gossip(gm: GossipMessage, count: int = 1):
     if count <= 0:
         return
     Packager.new_events.append(Event(
-        int(time_ns() / 1_000_000) + Gossip.params['broadcast_echo_delay_ms'],
+        time_ms() + Gossip.params['broadcast_echo_delay_ms'],
         sha256(serialize_gm(gm)).digest()[:16],
         broadcast_gossip,
         gm,
@@ -181,7 +180,7 @@ def sync_all_peers():
             Gossip.invoke('request_ids', topic_id, pid)
 
     Packager.new_events.append(Event(
-        int(time_ns() / 1_000_000) + Gossip.params['schedule_delay']*1000,
+        time_ms() + Gossip.params['schedule_delay']*1000,
         Gossip.id,
         sync_all_peers,
     ))
@@ -191,7 +190,7 @@ def start():
     if Gossip.id in Packager.schedule:
         return
     Packager.new_events.append(Event(
-        int(time_ns() / 1_000_000) + Gossip.params['start_delay']*1000,
+        time_ms() + Gossip.params['start_delay']*1000,
         Gossip.id,
         sync_all_peers,
     ))

@@ -5,7 +5,8 @@ try:
         Interface,
         Event,
         MODEM_INTERSECT_INTERVAL,
-        MODEM_INTERSECT_RTX_TIMES,
+        # MODEM_INTERSECT_RTX_TIMES,
+        time_ms,
     )
 except ImportError:
     from .Packager import (
@@ -14,15 +15,13 @@ except ImportError:
         Interface,
         Event,
         MODEM_INTERSECT_INTERVAL,
-        MODEM_INTERSECT_RTX_TIMES,
+        # MODEM_INTERSECT_RTX_TIMES,
+        time_ms,
     )
 from collections import deque, namedtuple
-from hashlib import sha256
-from machine import unique_id
 from time import time
 
 
-now = lambda: int(time()*1000)
 BeaconMessage = namedtuple("BeaconMessage", ['op', 'peer_id', 'apps'])
 seen_bm: deque[BeaconMessage] = deque([], 10)
 sent_bm: deque[BeaconMessage] = deque([], 10)
@@ -111,7 +110,7 @@ def periodic_beacon(count: int):
         return schedule_beacon()
     Beacon.invoke('broadcast')
     Packager.new_events.append(Event(
-        now() + Beacon.params['beacon_period'],
+        time_ms() + Beacon.params['beacon_period'],
         beacon_app_id,
         periodic_beacon,
         count - 1
@@ -124,7 +123,7 @@ def schedule_beacon():
     if beacon_app_id+b's' in Packager.schedule:
         return
     Packager.new_events.append(Event(
-        now() + Beacon.params['beacon_interval'],
+        time_ms() + Beacon.params['beacon_interval'],
         beacon_app_id+b's',
         periodic_beacon,
         Beacon.params['beacon_count']
