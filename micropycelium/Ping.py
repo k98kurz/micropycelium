@@ -92,7 +92,8 @@ def ping_request(
         node_id = None
     else:
         addr = None
-        node_id = nid_or_addr
+        node_id = nid_or_addr if type(nid_or_addr) is bytes else bytes.fromhex(nid_or_addr)
+        nid_or_addr = node_id.hex()
     pm = PingMessage(
         PingOp.REQUEST,
         nonce if nonce is not None else randint(0, 255),
@@ -108,7 +109,7 @@ def ping_request(
         Ping.id, serialize_pm(pm), node_id=node_id, to_addr=addr, metric=metric
     )
     if callback is not None:
-        callback('ping request ' + ('sent' if res else 'failed to send'))
+        callback(f'ping request to {nid_or_addr} ' + ('sent' if res else 'failed to send'))
     return res
 
 def ping_respond(pm: PingMessage):
