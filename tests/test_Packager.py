@@ -52,7 +52,7 @@ class TestPackager(unittest.TestCase):
 
     def test_add_route_remove_route(self):
         assert len(Packager.routes.keys()) == 0
-        addr = Address(b'\x00', b'\x00' * 16)
+        addr = Address(0, b'\x00' * 16)
         Packager.add_peer(b'peer0', [(b'macpeer0', mock_interface1)])
         Packager.add_route(b'peer0', addr)
         assert len(Packager.routes.keys()) == 1
@@ -61,32 +61,32 @@ class TestPackager(unittest.TestCase):
 
     def test_ban_unban(self):
         Packager.add_peer(b'peer0', [(b'macpeer0', mock_interface1)])
-        Packager.add_route(b'peer0', Address(b'\x00', b'\x00' * 16))
+        Packager.add_route(b'peer0', Address(0, b'\x00' * 16))
         assert len(Packager.peers.keys()) == 1
         assert len(Packager.routes.keys()) == 1
         Packager.ban(b'peer0')
         assert len(Packager.peers.keys()) == 0
         assert len(Packager.routes.keys()) == 0
         Packager.add_peer(b'peer0', [(b'macpeer0', mock_interface1)])
-        Packager.add_route(b'peer0', Address(b'\x00', b'\x00' * 16))
+        Packager.add_route(b'peer0', Address(0, b'\x00' * 16))
         assert len(Packager.peers.keys()) == 0
         assert len(Packager.routes.keys()) == 0
         Packager.unban(b'peer0')
         Packager.add_peer(b'peer0', [(b'macpeer0', mock_interface1)])
-        Packager.add_route(b'peer0', Address(b'\x00', b'\x00' * 16))
+        Packager.add_route(b'peer0', Address(0, b'\x00' * 16))
         assert len(Packager.peers.keys()) == 1
         assert len(Packager.routes.keys()) == 1
 
     def test_set_addr(self):
         assert len(Packager.node_addrs) == 0
-        Packager.set_addr(Address(b'\x00', b'\x00' * 16))
+        Packager.set_addr(Address(0, b'\x00' * 16))
         assert len(Packager.node_addrs) == 1
-        Packager.set_addr(Address(b'\x01', b'\x01' * 16))
+        Packager.set_addr(Address(1, b'\x01' * 16))
         assert len(Packager.node_addrs) == 2
-        Packager.set_addr(Address(b'\x02', b'\x02' * 16))
+        Packager.set_addr(Address(2, b'\x02' * 16))
         assert len(Packager.node_addrs) == 2
-        assert Packager.node_addrs[0].tree_state == b'\x01'
-        assert Packager.node_addrs[1].tree_state == b'\x02'
+        assert Packager.node_addrs[0].tree_state == 1
+        assert Packager.node_addrs[1].tree_state == 2
 
     def test_dTree_routing(self):
         # example network structure from the VOUTE paper for routing s -> e:
@@ -234,6 +234,8 @@ class TestPackager(unittest.TestCase):
         assert Packager.send(b'app 9659b56ae1d8', b'test', b'123')
         asyncio.run(Packager.process())
         assert len(outbox) == 1, outbox
+        p = Packet.unpack(outbox.popleft().data)
+        assert p.id == 0
 
     def test_send_local_large(self):
         Packager.add_interface(mock_interface1)
@@ -270,10 +272,10 @@ class TestPackager(unittest.TestCase):
         app_id = b'app 9659b56ae1d8'
         blob = b'test'
         peer_id = b'123'
-        peer_addr = Address(b'\x00', b'123' + b'\x00' * 13)
+        peer_addr = Address(0, b'123' + b'\x00' * 13)
         node_id = b'321'
-        node_addr = Address(b'\x00', b'321' + b'\x00' * 13)
-        Packager.set_addr(Address(b'\x00', b'node0' + b'\x00' * 11))
+        node_addr = Address(0, b'321' + b'\x00' * 13)
+        Packager.set_addr(Address(0, b'node0' + b'\x00' * 11))
         Packager.add_peer(peer_id, [(b'macpeer0', mock_interface1)])
         Packager.add_route(peer_id, peer_addr)
         Packager.add_route(node_id, node_addr)
@@ -288,10 +290,10 @@ class TestPackager(unittest.TestCase):
         app_id = b'app 9659b56ae1d8'
         blob = b''.join([(i%256).to_bytes(1, 'big') for i in range(300)])
         peer_id = b'123'
-        peer_addr = Address(b'\x00', b'123' + b'\x00' * 13)
+        peer_addr = Address(0, b'123' + b'\x00' * 13)
         node_id = b'321'
-        node_addr = Address(b'\x00', b'321' + b'\x00' * 13)
-        Packager.set_addr(Address(b'\x00', b'node0' + b'\x00' * 11))
+        node_addr = Address(0, b'321' + b'\x00' * 13)
+        Packager.set_addr(Address(0, b'node0' + b'\x00' * 11))
         Packager.add_peer(peer_id, [(b'macpeer0', mock_interface1)])
         Packager.add_route(peer_id, peer_addr)
         Packager.add_route(node_id, node_addr)

@@ -1081,6 +1081,8 @@ class Address:
             self, tree_state: int, address: bytes|bytearray|None = None,
             coords: list[int]|None = None
         ) -> None:
+        if type(tree_state) is not int:
+            raise TypeError("tree_state must be an int")
         if address is coords is None:
             raise ValueError("must provide at least one of address or coords")
         if address is not None and type(address) not in (bytes, bytearray):
@@ -1139,7 +1141,6 @@ class Address:
             prefix, postfix = parts
             addr = prefix + '0' * (32 - len(prefix) - len(postfix)) + postfix
         return cls(int(tree_state), address=bytes.fromhex(addr))
-
 
     @staticmethod
     def decode(address: bytes|bytearray) -> list[int,]:
@@ -1734,6 +1735,8 @@ class Packager:
         sids = set(intrfcs[0][1].supported_schemas)
         for _, ntrfc in intrfcs:
             sids.intersection_update(set(ntrfc.supported_schemas))
+        if not islocal:
+            sids.intersection_update(set(SCHEMA_IDS_SUPPORT_ROUTING))
         sids = get_schemas(list(sids))
         sids = [s for s in sids if s.max_blob >= len(p)]
         sids.sort(key=lambda s: s.max_body, reverse=True)
@@ -1748,6 +1751,7 @@ class Packager:
             fields['to_addr'] = to_addr.address
             fields['from_addr'] = cls.node_addrs[-1].address
             fields['tree_state'] = to_addr.tree_state
+            fields['ttl'] = 255
         if schema.max_blob > schema.max_body:
             seq = Sequence(schema, cls.seq_id, len(p))
             seq.set_data(p)
