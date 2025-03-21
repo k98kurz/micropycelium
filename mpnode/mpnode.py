@@ -10,6 +10,11 @@ from micropython import const
 from struct import pack
 import gc
 
+try:
+    from editor import edit # type: ignore
+except:
+    pass
+
 
 MPNODE_VERSION = const('0.1.0-dev')
 
@@ -82,8 +87,11 @@ def add_hooks():
     Packager.add_hook('_send_datagram', debug_name('Packager._send_datagram'))
     Packager.add_hook('deliver', debug_name('Packager.deliver'))
     Packager.add_hook('add_peer', debug_name('Packager.add_peer'))
+    Packager.add_hook('add_route', debug_name('Packager.add_route'))
     Packager.add_hook('set_addr', debug_name('Packager.set_addr'))
     Packager.add_hook('remove_peer', debug_name('Packager.remove_peer'))
+    Packager.add_hook('deliver:checksum_failed', debug_name('Packager.deliver:checksum_failed'))
+    Packager.add_hook('deliver:receive_failed', debug_name('Packager.deliver:receive_failed'))
     Packager.add_hook('modemsleep', debug_name('modemsleep'))
     Packager.add_hook('sleepskip', debug_name('sleepskip'))
 
@@ -101,21 +109,21 @@ async def memrloop():
 
 def _help():
     print('Commands:')
-    print('\tm|monitor [pattern1] [pattern2] ... - monitors debug messages')
-    print('\t\tpatterns are optional; if supplied, only messages matching a ' +\
-        'pattern will be displayed')
+    print('\tm|monitor [grep1] [grep2] ... - monitors debug messages')
+    print('\t\tgreps are optional; if supplied, only messages containing a ' +\
+        'grep will be displayed')
     print('\tget [node_id|addrs|peers|routes|banned|next_hop addr metric] - ' +\
         'get info from the local node')
     print('\tban [node_id] - ban a node from being a peer or known route')
     print('\tunban [node_id] - unban a node from being a peer or known route')
     print('\tping [node_id|addr] [count] [timeout] - ping the node_id/address')
-    print('\t\tcount default value is 4')
-    print('\t\ttimeout default value is 5 (seconds)')
+    print('\t\tcount should be <60 (memory constraint); default value is 4')
+    print('\t\ttimeout default value is 2 (seconds)')
     print('\t\tIf node_id is provided, the address will be found from the ' +\
         'known routes')
     print('\tgossip ping [node_id] [count] [timeout] - ping the node via gossip')
-    print('\t\tcount default value is 4')
-    print('\t\ttimeout default value is 5 (seconds)')
+    print('\t\tcount should be <60 (memory constraint); default value is 4')
+    print('\t\ttimeout default value is 2 (seconds)')
     print('\tdebug [node_id] [info|peers|routes|next_hop addr metric] - get ' +\
         'debug info from a node')
     print('\tadmin [node_id] [password] [reset] - restart a remote node')
@@ -124,6 +132,8 @@ def _help():
     print('\treset - reset the device')
     print('\tw|wait [count] - wait for [count=-1] output messages (count<0 ' +\
         'waits indefinitely)')
+    if 'edit' in globals():
+        print('\tedit [path] - open a file in the file editor')
 
 outq = deque([], 2)
 output = lambda res: outq.append(res)
@@ -137,9 +147,9 @@ async def wait(c = 1):
         if await ainput('', True) is not None:
             break
 
-def filter(msg, patterns):
-    matched = len(patterns) == 0
-    for p in patterns:
+def filter(msg, greps):
+    matched = len(greps) == 0
+    for p in greps:
         if type(msg) is str and p in msg:
             matched = True
         elif type(msg) in (list, tuple):
@@ -154,25 +164,25 @@ def filter(msg, patterns):
                     matched = True
     return matched
 
-async def monitor(patterns: tuple[str]|list[str] = []):
+async def monitor(greps: tuple[str]|list[str] = []):
     print("Hit Enter to stop monitoring")
     while True:
         if len(debug_q):
             msg = debug_q.popleft()
-            if filter(msg, patterns):
+            if filter(msg, greps):
                 if type(msg) in (tuple, list):
                     print(*msg)
                 else:
                     print(msg)
         if len(outq):
             msg = outq.popleft()
-            if filter(msg, patterns):
+            if filter(msg, greps):
                 print(msg)
         else:
             if await ainput('', True) is not None:
                 break
 
-async def console(add_debug_hooks = False, pub_routes = True, sub_routes = False):
+async def console(add_debug_hooks = True, pub_routes = True, sub_routes = False):
     if add_debug_hooks:
         add_hooks()
     SpanningTree.params['pub'] = pub_routes
@@ -263,6 +273,7 @@ async def console(add_debug_hooks = False, pub_routes = True, sub_routes = False
                     'node_id': nid,
                     'addr': addr,
                     'callback': ping_cb,
+                    'timeout': 2,
                 }
                 if len(cmd) > 2:
                     kwargs['count'] = int(cmd[2])
@@ -284,6 +295,7 @@ async def console(add_debug_hooks = False, pub_routes = True, sub_routes = False
                     kwargs = {
                         'node_id': nid,
                         'callback': ping_cb,
+                        'timeout': 2,
                     }
                     if len(cmd) > 3:
                         kwargs['count'] = int(cmd[3])
@@ -346,6 +358,14 @@ async def console(add_debug_hooks = False, pub_routes = True, sub_routes = False
                     await wait(-1)
                 else:
                     await wait(int(cmd[1]))
+            elif cmd[0] == 'edit':
+                if 'edit' not in globals():
+                    print('edit function unavailable')
+                    continue
+                if len(cmd) < 2:
+                    print('edit - missing required arg')
+                    continue
+                edit(cmd[1])
             else:
                 print(f'Unknown command: {cmd[0]}')
                 _help()

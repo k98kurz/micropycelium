@@ -5,12 +5,6 @@ from mpnode import (
 )
 import machine
 
-Packager.add_hook('add_peer', debug_name('Packager.add_peer'))
-Packager.add_hook('add_route', debug_name('Packager.add_route'))
-Packager.add_hook('set_addr', debug_name('Packager.set_addr'))
-Packager.add_hook('deliver:checksum_failed', debug_name('Packager.deliver:checksum_failed'))
-Packager.add_hook('deliver:receive_failed', debug_name('Packager.deliver:receive_failed'))
-
 # default start
 start()
 
