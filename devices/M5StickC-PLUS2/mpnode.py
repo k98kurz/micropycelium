@@ -82,17 +82,17 @@ SpanningTree.add_hook(
     action_hook('SpanningTree.request_address_assignment', led19q)
 )
 
-def ping_respond_hook(*args, **kwargs):
-    debug('Ping.respond', *args)
-    led26q.append(1)
-    led26q.append(1)
-    led26q.append(1)
+def blink_hook(name: str, q: deque):
+    def inner(*args, **kwargs):
+        debug(name, *args)
+        q.append(1)
+    return inner
 
 Ping.add_hook('request', debug_name('Ping.request'))
-Ping.add_hook('respond', ping_respond_hook)
+Ping.add_hook('respond', blink_hook('Ping.respond', led26q))
 Ping.add_hook('response_received', debug_name('Ping.response_received'))
 Ping.add_hook('gossip_request', debug_name('Ping.gossip_request'))
-Ping.add_hook('gossip_respond', debug_name('Ping.gossip_respond'))
+Ping.add_hook('gossip_respond', blink_hook('Ping.gossip_respond', led26q))
 Ping.add_hook('gossip_response_received', debug_name('Ping.gossip_response_received'))
 
 DebugApp.add_hook('output', debug_name('DebugApp.output'))
