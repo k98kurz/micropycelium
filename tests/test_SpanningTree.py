@@ -279,7 +279,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
         packet = Packet.unpack(mock_interface1.castbox.popleft().data)
         p = Package.unpack(packet.body)
         assert p.app_id == Gossip.id
-        gm = Gossip.invoke('deserialize_gm', p.blob)
+        gm = Gossip.invoke('deserialize', p.blob)
         assert gm.op == GossipOp.PUBLISH, gm.op
         assert gm.topic_id == SpanningTree.id, gm.topic_id
         tm = SpanningTree.invoke('deserialize', gm.data)
@@ -299,7 +299,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
         assert len(mock_interface1.castbox) == 1
         packet = Packet.unpack(mock_interface1.castbox.popleft().data)
         p = Package.unpack(packet.body)
-        gm = Gossip.invoke('deserialize_gm', p.blob)
+        gm = Gossip.invoke('deserialize', p.blob)
         assert gm.op == GossipOp.PUBLISH, gm.op
         assert gm.topic_id == SpanningTree.id, gm.topic_id
 
@@ -319,7 +319,7 @@ class TestSpanningTreeApplication(unittest.TestCase):
         blob = SpanningTree.invoke('serialize', tm)
         gm = GossipMessage(GossipOp.PUBLISH, SpanningTree.id, blob)
         package = Package.from_blob(
-            Gossip.id, Gossip.invoke('serialize_gm', gm)
+            Gossip.id, Gossip.invoke('serialize', gm)
         )
         assert len(Packager.routes) == 0, Packager.routes
         Packager.deliver(package, mock_interface1, b'mac0')

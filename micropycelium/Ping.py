@@ -307,15 +307,15 @@ def run_ping_test(
     """
     if callback is not None:
         callback('ping test started')
-    topic_id = sha256(Ping.id + (node_id or addr.address)).digest()[:16]
-    topic_id += PingOp.REQUEST.to_bytes(1, 'big')
+    eid = sha256(Ping.id + (node_id or addr.address)).digest()[:16]
+    eid += PingOp.REQUEST.to_bytes(1, 'big')
     nonce = randint(0, 255)
     now = time_ms()
     addr = addr if addr is not None else Packager.inverse_routes.get(node_id, [None])[-1]
     for i in range(count):
         Packager.new_events.append(Event(
             now + i * 1000,
-            topic_id + i.to_bytes(1, 'big'),
+            eid + i.to_bytes(1, 'big'),
             ping_request,
             node_id or addr,
             metric,
@@ -324,7 +324,7 @@ def run_ping_test(
         ))
     Packager.new_events.append(Event(
         now + (timeout + count) * 1000,
-        topic_id + count.to_bytes(1, 'big'),
+        eid + count.to_bytes(1, 'big'),
         report_ping_test,
         nonce,
         'routed dTree' if metric == dTree else 'routed dCPL' if metric == dCPL else 'unknown metric',
@@ -397,8 +397,8 @@ Ping = Application(
         'gossip_request': lambda _, node_id: ping_gossip_request(node_id),
         'gossip_respond': lambda _, pm: ping_gossip_respond(pm),
         'gossip_response_received': lambda _, pm: ping_gossip_response_received(pm),
-        'serialize_pm': lambda _, pm: serialize_pm(pm),
-        'deserialize_pm': lambda _, blob: deserialize_pm(blob),
+        'serialize': lambda _, pm: serialize_pm(pm),
+        'deserialize': lambda _, blob: deserialize_pm(blob),
         'start': lambda _: start(),
         'stop': lambda _: stop(),
         'list_routes': lambda _: ping_list_routes(),

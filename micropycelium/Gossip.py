@@ -256,8 +256,8 @@ Gossip = Application(
         'get_subscriptions': lambda _: subscriptions,
         'get_cache': lambda _: message_cache,
         'get_messages': lambda _, topic_id: get_messages(topic_id),
-        'serialize_gm': lambda _, gm: serialize_gm(gm),
-        'deserialize_gm': lambda _, blob: deserialize_gm(blob),
+        'serialize': lambda _, gm: serialize_gm(gm),
+        'deserialize': lambda _, blob: deserialize_gm(blob),
     },
     params={
         'start_delay': 10,

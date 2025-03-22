@@ -46,7 +46,7 @@ class TestPingApplication(unittest.TestCase):
         assert len(mock_interface1.outbox) == 1
         packet = Packet.unpack(mock_interface1.outbox.popleft().data)
         p = Package.unpack(packet.body)
-        pm = Ping.invoke('deserialize_pm', p.blob)
+        pm = Ping.invoke('deserialize', p.blob)
         assert pm.op == PingOp.REQUEST, pm.op
         assert pm.node_id == Packager.node_id, (pm.node_id.hex(), Packager.node_id.hex())
         assert pm.address == local_addr.address, (pm.address.hex(), local_addr.address.hex())
@@ -80,7 +80,7 @@ class TestPingApplication(unittest.TestCase):
         assert len(mock_interface1.outbox) == 1
         packet = Packet.unpack(mock_interface1.outbox.popleft().data)
         p = Package.unpack(packet.body)
-        pm = Ping.invoke('deserialize_pm', p.blob)
+        pm = Ping.invoke('deserialize', p.blob)
         assert pm.op == PingOp.RESPOND, pm.op
         assert pm.metric == dTree
         assert pm.ts1 > 0
@@ -116,13 +116,13 @@ class TestPingApplication(unittest.TestCase):
         )
         assert len(mock_interface1.outbox) == 0
         package = Package.from_blob(
-            Ping.id, Ping.invoke('serialize_pm', pm)
+            Ping.id, Ping.invoke('serialize', pm)
         )
         Packager.deliver(package, mock_interface1, b'mac0')
         assert len(mock_interface1.outbox) == 1
         packet = Packet.unpack(mock_interface1.outbox.popleft().data)
         p = Package.unpack(packet.body)
-        pm = Ping.invoke('deserialize_pm', p.blob)
+        pm = Ping.invoke('deserialize', p.blob)
         assert pm.op == PingOp.RESPOND, pm.op
         assert pm.metric == dCPL
         assert pm.ts1 == ts1
@@ -157,7 +157,7 @@ class TestPingApplication(unittest.TestCase):
             local_addr.address,
             Packager.node_id
         )
-        blob = Ping.invoke('serialize_pm', pm)
+        blob = Ping.invoke('serialize', pm)
         package = Package.from_blob(
             Ping.id, blob
         )
@@ -190,10 +190,10 @@ class TestPingApplication(unittest.TestCase):
         assert len(mock_interface1.castbox) == 1
         packet = Packet.unpack(mock_interface1.castbox.popleft().data)
         p = Package.unpack(packet.body)
-        gm = Gossip.invoke('deserialize_gm', p.blob)
+        gm = Gossip.invoke('deserialize', p.blob)
         assert gm.op == GossipOp.PUBLISH, gm.op
         assert gm.topic_id == topic_id, (gm.topic_id.hex(), topic_id.hex())
-        pm = Ping.invoke('deserialize_pm', gm.data)
+        pm = Ping.invoke('deserialize', gm.data)
         assert pm.op == PingOp.GOSSIP_REQUEST, pm.op
         assert pm.node_id == Packager.node_id, (pm.node_id.hex(), Packager.node_id.hex())
         assert pm.address == local_addr.address, (pm.address.hex(), local_addr.address.hex())
@@ -232,10 +232,10 @@ class TestPingApplication(unittest.TestCase):
         assert len(mock_interface1.castbox) == 1
         packet = Packet.unpack(mock_interface1.castbox.popleft().data)
         p = Package.unpack(packet.body)
-        gm = Gossip.invoke('deserialize_gm', p.blob)
+        gm = Gossip.invoke('deserialize', p.blob)
         assert gm.op == GossipOp.PUBLISH, gm.op
         assert gm.topic_id == topic_id, (gm.topic_id.hex(), topic_id.hex())
-        pm = Ping.invoke('deserialize_pm', gm.data)
+        pm = Ping.invoke('deserialize', gm.data)
         assert pm.op == PingOp.GOSSIP_RESPOND, pm.op
         assert pm.node_id == remote_id, (pm.node_id.hex(), remote_id.hex())
         assert pm.address == remote_addr.address, (pm.address.hex(), remote_addr.address.hex())
