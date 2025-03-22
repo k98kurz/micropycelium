@@ -49,6 +49,8 @@ MODEM_INTERSECT_RTX_TIMES = micropython.const(
     int((MODEM_SLEEP_MS+MODEM_WAKE_MS)/MODEM_INTERSECT_INTERVAL) + 1
 )
 SEQ_SYNC_DELAY_MS = micropython.const(10_000)
+SEND_RETRY_DELAY_MS = micropython.const(2_000)
+SEND_RETRY_COUNT = micropython.const(3)
 dTree = micropython.const(0)
 dCPL = micropython.const(1)
 
@@ -1367,7 +1369,7 @@ class InSequence:
         self.seq = seq
         self.src = src
         self.intrfc = intrfc
-        self.retry = 2
+        self.retry = 3
 
 
 # @micropython.native
@@ -1381,7 +1383,7 @@ class Cache:
         self.items = {}
         self.lowest_expiry = -1
 
-    def add(self, key: bytes, value: object, ttl: int = 60):
+    def add(self, key: bytes|str|int, value: object, ttl: int = 60):
         self.items.pop(key, None)
         # if we hit the limit, remove the item that has the lowest expiry
         if len(self.items) >= self.limit:
@@ -1427,7 +1429,8 @@ class Packager:
     interfaces: list[Interface] = []
     seq_id: int = 0
     packet_id: int = 0
-    seq_cache: dict[int, Sequence] = {} # to-do
+    seq_cache: Cache = Cache(10)
+    packet_cache: Cache = Cache(10)
     in_seqs: dict[int, InSequence] = {}
     peers: dict[bytes, Peer] = {}
     inverse_peers: dict[tuple[bytes, bytes], bytes] = {} # map (mac, intrfc.id): peer_id
@@ -1450,11 +1453,13 @@ class Packager:
         cls.seq_id = 0
         cls.packet_id = 0
         cls.seq_cache.clear()
+        cls.packet_cache.clear()
         cls.in_seqs.clear()
         cls.peers.clear()
         cls.inverse_peers.clear()
         cls.routes.clear()
         cls.inverse_routes.clear()
+        cls.banned.clear()
         clear(cls.node_addrs)
         cls.apps.clear()
         cls.schedule.clear()
@@ -1616,9 +1621,12 @@ class Packager:
         cls.sleepskip.append(True)
         # cls.sleepskip.extend([True for _ in range(MODEM_INTERSECT_RTX_TIMES)])
         cls.call_hook('broadcast', app_id, blob, interface)
+        sids: set[int] = set()
+        schemas: list[Schema] = []
         schema: Schema
         chosen_intrfcs: list[Interface]
         if interface:
+            sids = set(interface.supported_schemas)
             schemas = [
                 s for s in get_schemas(interface.supported_schemas)
                 if s.max_blob >= len(blob) + 32
@@ -1627,10 +1635,10 @@ class Packager:
             chosen_intrfcs = [interface]
         else:
             # use only a schema supported by all interfaces
-            schemas = set(cls.interfaces[0].supported_schemas)
+            sids = set(cls.interfaces[0].supported_schemas)
             for interface in cls.interfaces:
-                schemas.intersection_update(set(interface.supported_schemas))
-            schemas = [s for s in get_schemas(list(schemas)) if s.max_blob >= len(blob) + 32]
+                sids.intersection_update(set(interface.supported_schemas))
+            schemas = [s for s in get_schemas(list(sids)) if s.max_blob >= len(blob) + 32]
             if len(schemas) == 0:
                 return False
             # choose the schema with the largest body size
@@ -1643,16 +1651,21 @@ class Packager:
         fields = {'body':p, 'packet_id': cls.packet_id, 'seq_id': cls.seq_id, 'seq_size': 1}
         p1 = Packet(schema, fl, fields)
         # try to send as a single packet if possible
-        try:
-            if len(p) <= schema.max_body:
-                packets = [p1]
-            else:
-                raise ValueError()
-        except:
+        if len(p) <= schema.max_body:
+            packets = [p1]
+        else:
+            sids.intersection_update(SCHEMA_IDS_SUPPORT_SEQUENCE)
+            if len(sids) == 0:
+                return False
+            schemas = [s for s in get_schemas(list(sids)) if s.max_blob >= len(p)]
+            if len(schemas) == 0:
+                return False
+            schemas.sort(key=lambda s: s.max_body, reverse=True)
+            schema = schemas[0]
             s = Sequence(schema, cls.seq_id, len(p))
             s.set_data(p)
             packets = [s.get_packet(i, fl, fields) for i in range(s.seq_size)]
-            cls.seq_cache[cls.seq_id] = s
+            cls.seq_cache.add(cls.seq_id, s)
             cls.seq_id = (cls.seq_id + 1) % 256
 
         for intrfc in chosen_intrfcs:
@@ -1696,7 +1709,8 @@ class Packager:
     @classmethod
     def send(
         cls, app_id: bytes, blob: bytes, node_id: bytes|None = None,
-        to_addr: Address|None = None, schema: int = None, metric: int = dTree
+        to_addr: Address|None = None, schema: int = None, metric: int = dTree,
+        retry_count: int = SEND_RETRY_COUNT
     ) -> bool:
         """Attempts to send a Package containing the app_id and blob to
             the specified node. Returns True if it can be sent and False
@@ -1763,14 +1777,40 @@ class Packager:
                 ), peer)
         else:
             fields['body'] = p
-            cls._send_datagram(Datagram(
-                Packet(schema, Flags(0), fields).pack(),
-                intrfc[1].id,
-                intrfc[0]
-            ), peer)
+            flags = Flags(0)
+            flags.ask = True
+            p = Packet(schema, flags, fields)
+            cls._send_datagram(Datagram(p.pack(), intrfc[1].id, intrfc[0]), peer)
+            cls.packet_cache.add(cls.packet_id, p)
             cls.packet_id = (cls.packet_id + 1) % 256
+            eid = b'RP' + p.id.to_bytes(1, 'big')
+            cls.new_events.append(Event(
+                time_ms() + SEND_RETRY_DELAY_MS,
+                eid,
+                cls.retry_send,
+                p.fields['packet_id'],
+                retry_count,
+                to_addr,
+                node_id,
+                metric,
+            ))
 
         return True
+
+    @classmethod
+    def retry_send(
+        cls, pid: int, count: int, to_addr: Address|None = None,
+        node_id: bytes|None = None, metric: int = dTree
+    ):
+        p: Packet|None = cls.packet_cache.get(pid)
+
+        if count <= 0 or p is None:
+            return
+
+        if to_addr is None and node_id is None:
+            return
+        p2 = Package.unpack(p.body)
+        cls.send(p2.app_id, p2.blob, node_id, to_addr, p.schema, metric, count-1)
 
     @classmethod
     def get_interface(
@@ -2040,7 +2080,7 @@ class Packager:
                 src = nid
                 break
 
-        if 'seq_id' in p.fields:
+        if 'seq_id' in p.fields and not p.flags.rtx:
             # try to reconstitute the sequence
             # first cancel pending sequence synchronization event
             seq_id = p.fields['seq_id']
@@ -2067,6 +2107,43 @@ class Packager:
                     cls.sync_sequence,
                     seq_id
                 ))
+                if p.flags.ask:
+                    # send ack
+                    flags = Flags(p.flags.state)
+                    flags.ask = False
+                    flags.ack = True
+                    fields = {
+                        'packet_id': p.id,
+                        'body': b'',
+                    }
+                    if 'seq_id' in p.fields:
+                        fields['seq_size'] = p.fields['seq_size']
+                        fields['seq_id'] = p.fields['seq_id']
+                    cls.send_packet(Packet(
+                        p.schema,
+                        flags,
+                        fields
+                    ), src)
+            return
+        elif 'seq_id' in p.fields and p.flags.rtx:
+            # request for retransmission: send packet if the sequence is still in the cache
+            seq_id = p.fields['seq_id']
+            seq: Sequence|None = cls.seq_cache.get(seq_id)
+            if seq is None:
+                return
+            p = seq.get_packet(p.id, Flags(0))
+            if p is None:
+                return
+            cls.send_packet(p)
+            return
+        elif p.flags.rtx:
+            # request retransmission of a non-sequence packet
+            pid = p.fields['packet_id']
+            packet = cls.packet_cache.get(pid)
+            if packet is None:
+                return
+            cls.send_packet(packet)
+            return
         elif p.flags.nia and len(src):
             # peer responded to RNS: cancel event, update peer.last_rx
             cls.call_hook('receive:nia', p, intrfc, mac)
@@ -2091,9 +2168,9 @@ class Packager:
             ))
             cls.packet_id = (cls.packet_id + 1) % 256
             return
-        else:
-            # parse and deliver the Package
-            cls.deliver(Package.unpack(p.body), intrfc, mac)
+        elif p.flags.ack:
+            cls.cancel_events.append(b'RP' + p.id.to_bytes(1, 'big'))
+            return
 
         if p.flags.ask:
             # send ack
@@ -2112,6 +2189,9 @@ class Packager:
                 flags,
                 fields
             ), src)
+
+        # parse and deliver the Package
+        cls.deliver(Package.unpack(p.body), intrfc, mac)
 
     @classmethod
     def deliver(cls, p: Package, i: Interface, mac: bytes) -> bool:

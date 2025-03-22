@@ -354,6 +354,7 @@ class TestPackager(unittest.TestCase):
         peer.last_rx = int(time()-1) * 1000
 
         # try to send a Package, but it should queue the packet and send RNS
+        assert len(Packager.new_events) == 0, len(Packager.new_events)
         assert len(peer.queue) == 0
         assert len(mock_interface1.outbox) == 0
         assert Packager.send(test_app.id, b'test', b'peer0')
@@ -364,7 +365,8 @@ class TestPackager(unittest.TestCase):
         assert len(peer.queue) == 1
 
         # event to resend RNS should be queued with retry of MODEM_INTERSECT_RTX_TIMES-1
-        assert len(Packager.new_events) == 1
+        # send retry event should also be queued
+        assert len(Packager.new_events) == 2, len(Packager.new_events)
         asyncio.run(Packager.process())
         assert len(Packager.new_events) == 0
         eid = b'rnspeer0' + mock_interface1.id
@@ -909,7 +911,7 @@ class TestPackager(unittest.TestCase):
         assert len(Packager.new_events) == 1
         assert len(Packager.schedule.keys()) == 0
         assert len(Packager.in_seqs.keys()) == 1
-        assert len(mock_interface1.outbox) == 1
+        assert len(mock_interface1.outbox) == 1, len(mock_interface1.outbox)
         assert len(outbox) == 0
 
         # mock_interface1 should send the ack datagram, and the event should be scheduled
