@@ -63,16 +63,6 @@ def debug_name(name: str):
         debug(name, *args)
     return inner
 
-def ping_cb(report):
-    if type(report) is str:
-        output(report)
-        return
-    report = hexify(report)
-    r = 'Ping report:\n'
-    for k, v in report.items():
-        r += f'  {k}: {v}\n'
-    output(r)
-
 hooks_added = False
 def add_hooks():
     global hooks_added
@@ -140,14 +130,6 @@ def _help(cmd = []):
     for _, v in commands.items():
         if len(v[1]):
             print(_indent(v[1]))
-    print('\tping [node_id|addr] [count] [timeout] - ping the node_id/address')
-    print('\t\tcount should be <60 (memory constraint); default value is 4')
-    print('\t\ttimeout default value is 2 (seconds)')
-    print('\t\tIf node_id is provided, the address will be found from the ' +\
-        'known routes')
-    print('\tgossip ping [node_id] [count] [timeout] - ping the node via gossip')
-    print('\t\tcount should be <60 (memory constraint); default value is 4')
-    print('\t\ttimeout default value is 2 (seconds)')
     print('\tdebug [node_id] [info|peers|routes|next_hop addr metric] - get ' +\
         'debug info from a node')
     print('\tadmin [node_id] [password] [reset] - restart a remote node')
@@ -302,6 +284,8 @@ add_command(
     'unban', _unban, 'unban [node_id] - unban a node from being a peer or known route'
 )
 
+Ping.invoke('register_commands', add_command, add_cmd_alias, wait, output)
+
 add_command('version', _version, 'version - show version information')
 
 async def console(add_debug_hooks = True, pub_routes = True, sub_routes = False):
@@ -327,54 +311,6 @@ async def console(add_debug_hooks = True, pub_routes = True, sub_routes = False)
                 raise Exception('quit')
             elif cmd[0] == 'reset':
                 reset()
-            elif cmd[0] == 'ping':
-                if len(cmd) < 2:
-                    print('ping - missing required node_id|addr')
-                    continue
-                try:
-                    nid = bytes.fromhex(cmd[1])
-                    addr = None
-                except:
-                    nid = None
-                    addr = Address.from_str(cmd[1])
-                kwargs = {
-                    'node_id': nid,
-                    'addr': addr,
-                    'callback': ping_cb,
-                    'timeout': 2,
-                }
-                if len(cmd) > 2:
-                    kwargs['count'] = int(cmd[2])
-                if len(cmd) > 3:
-                    kwargs['timeout'] = int(cmd[3])
-                c = len(outq)
-                Ping.invoke('ping', **kwargs)
-                c += kwargs.get('count', 4)
-                await wait(c + 2)
-            elif cmd[0] == 'gossip':
-                if len(cmd) < 2:
-                    print('gossip - missing required subcommand')
-                    continue
-                if cmd[1].lower() == 'ping':
-                    if len(cmd) < 3:
-                        print('gossip ping - missing required addr')
-                        continue
-                    nid = bytes.fromhex(cmd[2])
-                    kwargs = {
-                        'node_id': nid,
-                        'callback': ping_cb,
-                        'timeout': 2,
-                    }
-                    if len(cmd) > 3:
-                        kwargs['count'] = int(cmd[3])
-                    if len(cmd) > 4:
-                        kwargs['timeout'] = int(cmd[4])
-                    c = len(outq)
-                    Ping.invoke('gossip_ping', **kwargs)
-                    await wait(kwargs.get('count', 4) + 2 + c)
-                else:
-                    print('unknown subcommand')
-                    continue
             elif cmd[0] == 'debug':
                 if len(cmd) < 3:
                     print('debug - missing a required arg')

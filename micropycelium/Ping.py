@@ -385,6 +385,93 @@ def stop():
     topic_id = sha256(Ping.id + Packager.node_id).digest()[:16]
     Gossip.invoke('unsubscribe', topic_id, Ping.id)
 
+def hexify(thing):
+    if type(thing) is list:
+        return [hexify(i) for i in thing]
+    elif type(thing) is tuple:
+        return tuple(hexify(i) for i in thing)
+    elif type(thing) is bytes:
+        return thing.hex()
+    elif type(thing) is dict:
+        return {hexify(k): hexify(v) for k, v in thing.items()}
+    elif type(thing) in (int, float):
+        return thing
+    else:
+        return thing if type(thing) is str else repr(thing)
+
+def ping_cb(report):
+    if type(report) is str:
+        Ping.params['console_output'](report)
+        return
+    report = hexify(report)
+    r = 'Ping report:\n'
+    for k, v in report.items():
+        r += f'  {k}: {v}\n'
+    Ping.params['console_output'](r)
+
+async def _ping_command(cmd: list[str]):
+    """Ping a node."""
+    if len(cmd) < 1:
+        print('ping - missing required node_id|addr')
+        return
+    try:
+        nid = bytes.fromhex(cmd[0])
+        addr = None
+    except:
+        nid = None
+        addr = Address.from_str(cmd[0])
+    kwargs = {
+        'node_id': nid,
+        'addr': addr,
+        'callback': ping_cb,
+        'timeout': 2,
+    }
+    if len(cmd) > 1:
+        kwargs['count'] = int(cmd[1])
+    if len(cmd) > 2:
+        kwargs['timeout'] = int(cmd[2])
+    Ping.invoke('ping', **kwargs)
+    await Ping.params['console_wait'](kwargs.get('count', 4) + 2)
+
+async def _gossip_ping_command(cmd: list[str]):
+    """Ping a node via gossip."""
+    if len(cmd) < 1:
+        print('gossip_ping - missing required subcommand')
+        return
+    nid = bytes.fromhex(cmd[0])
+    kwargs = {
+        'node_id': nid,
+        'callback': ping_cb,
+        'timeout': 2,
+    }
+    if len(cmd) > 1:
+        kwargs['count'] = int(cmd[1])
+    if len(cmd) > 2:
+        kwargs['timeout'] = int(cmd[2])
+    Ping.invoke('gossip_ping', **kwargs)
+    await Ping.params['console_wait'](kwargs.get('count', 4) + 2)
+
+def register_commands(add_command: Callable, add_alias: Callable, wait: Callable, output: Callable):
+    """Register console commands."""
+    Ping.params['console_wait'] = wait
+    Ping.params['console_output'] = output
+    add_command(
+        'ping',
+        _ping_command,
+        'ping [node_id|addr] [count] [timeout] - ping the node_id/address\n' +
+            '\tcount should be <60 (memory constraint); default value is 4\n' +
+            '\ttimeout default value is 2 (seconds)\n' +
+            '\tIf node_id is provided, it will attempt to find the address ' +
+            'from the known routes'
+    )
+    add_command(
+        'gossip_ping',
+        _gossip_ping_command,
+        'gossip_ping [node_id] [count] [timeout] - ping the node via gossip\n' +
+            '\tcount should be <60 (memory constraint); default value is 4\n' +
+            '\ttimeout default value is 2 (seconds)'
+    )
+
 Ping = Application(
     name='Ping',
     description='Dev Ping App',
@@ -406,6 +493,7 @@ Ping = Application(
         'gossip_ping': lambda _, *args, **kwargs: run_gossip_ping_test(*args, **kwargs),
         'report_ping_test': lambda _, *args, **kwargs: report_ping_test(*args, **kwargs),
         'get_ping_responses': lambda _: ping_responses,
+        'register_commands': lambda _, *args, **kwargs: register_commands(*args, **kwargs),
     }
 )
 
