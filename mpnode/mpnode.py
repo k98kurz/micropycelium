@@ -15,11 +15,6 @@ try:
 except:
     pass
 
-try:
-    from editor import edit # type: ignore
-except:
-    pass
-
 
 MPNODE_VERSION = const('0.1.0-dev')
 
@@ -132,8 +127,6 @@ def _help(cmd = []):
             print(_indent(v[1]))
     print('\tq|quit - quit the program')
     print('\treset - reset the device')
-    if 'edit' in globals():
-        print('\tedit [path] - open a file in the file editor')
 
 outq = deque([], 2)
 output = lambda res: outq.append(res)
@@ -304,14 +297,6 @@ async def console(add_debug_hooks = True, pub_routes = True, sub_routes = False)
                 raise Exception('quit')
             elif cmd[0] == 'reset':
                 reset()
-            elif cmd[0] == 'edit':
-                if 'edit' not in globals():
-                    print('edit function unavailable')
-                    continue
-                if len(cmd) < 2:
-                    print('edit - missing required arg')
-                    continue
-                edit(cmd[1])
             else:
                 print(f'Unknown command: {cmd[0]}')
                 _help()
