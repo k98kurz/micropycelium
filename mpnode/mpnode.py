@@ -1,5 +1,5 @@
 from asyncio import sleep_ms
-from collections import deque
+from collections import deque, OrderedDict
 from machine import reset, Pin
 from micropycelium import (
     Packager, Address, dCPL, dTree, PROTOCOL_VERSION,
@@ -109,7 +109,8 @@ async def memrloop():
         )
 
 
-commands: dict[str, tuple[Callable, str]] = {}
+commands: OrderedDict[str, tuple[Callable, str]] = OrderedDict()
+cmd_aliases: dict[str, str] = {}
 
 def add_command(name: str, func: Callable, help_text: str = ''):
     """Add a command to the console. If help_text is empty, it will not
@@ -117,19 +118,28 @@ def add_command(name: str, func: Callable, help_text: str = ''):
     """
     commands[name] = (func, help_text)
 
-def _help(*args):
-    if len(args):
-        if args[0] in commands:
-            print(commands[args[0]][1])
+def add_cmd_alias(cmd: str, alias: str):
+    """Add an alias for a command."""
+    cmd_aliases[alias] = cmd
+
+def _indent(txt: str) -> str:
+    txt = txt.split('\n')
+    for i in range(len(txt)):
+        txt[i] = '\t' + txt[i]
+    return '\n'.join(txt)
+
+def _help(cmd = []):
+    if len(cmd):
+        cmd = cmd[0]
+        if cmd in cmd_aliases:
+            cmd = cmd_aliases[cmd]
+        if cmd in commands:
+            print(commands[cmd][1])
             return
     print('Commands:')
     for _, v in commands.items():
         if len(v[1]):
-            print(f'\t{v[1]}')
-    print('\tget [node_id|addrs|peers|routes|banned|next_hop addr metric] - ' +\
-        'get info from the local node')
-    print('\tban [node_id] - ban a node from being a peer or known route')
-    print('\tunban [node_id] - unban a node from being a peer or known route')
+            print(_indent(v[1]))
     print('\tping [node_id|addr] [count] [timeout] - ping the node_id/address')
     print('\t\tcount should be <60 (memory constraint); default value is 4')
     print('\t\ttimeout default value is 2 (seconds)')
@@ -145,11 +155,8 @@ def _help(*args):
         'ban a peer')
     print('\tadmin [node_id] [password] [unban] [peer_id] - make the remote node ' +\
         'unban a peer')
-    print('\tversion - show version information')
     print('\tq|quit - quit the program')
     print('\treset - reset the device')
-    print('\tw|wait [count] - wait for [count=-1] output messages (count<0 ' +\
-        'waits indefinitely)')
     if 'edit' in globals():
         print('\tedit [path] - open a file in the file editor')
 
@@ -200,16 +207,102 @@ async def monitor(greps: tuple[str]|list[str] = []):
             if await ainput('', True) is not None:
                 break
 
+def _get(cmd):
+    if len(cmd) < 1:
+        print('get - missing a required arg')
+        return
+    if cmd[0].lower() == 'node_id':
+        print(f'Node ID: {Packager.node_id.hex()}')
+    elif cmd[0].lower() == 'addrs':
+        addrs = [a for a in Packager.node_addrs]
+        print(f'Addresses: {addrs}')
+    elif cmd[0].lower() == 'peers':
+        peers = [pid.hex() for pid in Packager.peers]
+        print(f'Peers:')
+        for peer in peers:
+            print(f'  {peer}')
+    elif cmd[0].lower() == 'routes':
+        print(f'Routes:')
+        for addr, pid in Packager.routes.items():
+            print(f'  {addr} -> {pid.hex()}')
+    elif cmd[0].lower() == 'banned':
+        print(f'Banned:')
+        for nid in Packager.banned:
+            print(f'  {nid.hex()}')
+    elif cmd[0].lower() == 'next_hop':
+        if len(cmd) < 3:
+            print('get next_hop - missing a required arg')
+            return
+        nh_addr = Address.from_str(cmd[1])
+        metric = dCPL if 'cpl' in cmd[2].lower() else dTree
+        nh = Packager.next_hop(nh_addr, metric)
+        if nh is None:
+            print(f'No next hop found for {nh_addr}')
+        else:
+            print(f'Next Hop: {nh[0].id.hex()} {nh[1]}')
+
+def _ban(cmd):
+    if len(cmd) < 1:
+        print('ban - missing a required arg')
+        return
+    try:
+        nid = bytes.fromhex(cmd[0])
+    except:
+        print(f'ban - invalid node_id: {cmd[0]}')
+        return
+    Packager.ban(nid)
+
+def _unban(cmd):
+    if len(cmd) < 1:
+        print('unban - missing a required arg')
+        return
+    try:
+        nid = bytes.fromhex(cmd[0])
+    except:
+        print(f'unban - invalid node_id: {cmd[0]}')
+        return
+    Packager.unban(nid)
+
+def _version(_):
+    print(f'MPNode version: {MPNODE_VERSION}')
+    print(f'Packager version: {Packager.version}')
+    print(f'Protocol version: {PROTOCOL_VERSION}')
+
+# register default console commands
+add_command('help', _help, '')
+add_cmd_alias('help', '?')
+add_cmd_alias('help', 'h')
+
 add_command(
     'monitor', monitor,
     'm|monitor [grep1] [grep2] ... - monitors debug messages\n' +
-    '\t\tgreps are optional; if supplied, only messages containing a grep ' +
-    'will be displayed'
+        '\tgreps are optional; if supplied, only messages containing a ' +
+        'grep will be displayed'
 )
-add_command('m', monitor, '')
-add_command('help', _help, '')
-add_command('?', _help, '')
-add_command('h', _help, '')
+add_cmd_alias('monitor', 'm')
+
+add_command(
+    'wait', lambda cmd: wait(int(cmd[0])) if cmd else wait(-1),
+    'w|wait [count] - wait for [count=-1] output messages (count<0 ' +
+        'waits indefinitely)'
+)
+add_cmd_alias('wait', 'w')
+
+add_command(
+    'get', _get,
+    'get [node_id|addrs|peers|routes|banned|next_hop addr metric] - ' +
+        'get info from the local node'
+)
+
+add_command(
+    'ban', _ban, 'ban [node_id] - ban a node from being a peer or known route'
+)
+
+add_command(
+    'unban', _unban, 'unban [node_id] - unban a node from being a peer or known route'
+)
+
+add_command('version', _version, 'version - show version information')
 
 async def console(add_debug_hooks = True, pub_routes = True, sub_routes = False):
     if add_debug_hooks:
@@ -224,67 +317,12 @@ async def console(add_debug_hooks = True, pub_routes = True, sub_routes = False)
             continue
         cmd[0] = cmd[0].lower()
         try:
+            if cmd[0] in cmd_aliases:
+                cmd[0] = cmd_aliases[cmd[0]]
             if cmd[0] in commands:
                 co = commands[cmd[0]][0](cmd[1:])
                 if co is not None and iscoroutine(co):
                     await co
-            elif cmd[0] == 'get':
-                if len(cmd) < 2:
-                    print('get - missing a required arg')
-                    continue
-                if cmd[1].lower() == 'node_id':
-                    print(f'Node ID: {Packager.node_id.hex()}')
-                elif cmd[1].lower() == 'addrs':
-                    addrs = [a for a in Packager.node_addrs]
-                    print(f'Addresses: {addrs}')
-                elif cmd[1].lower() == 'peers':
-                    peers = [pid.hex() for pid in Packager.peers]
-                    print(f'Peers:')
-                    for peer in peers:
-                        print(f'  {peer}')
-                elif cmd[1].lower() == 'routes':
-                    print(f'Routes:')
-                    for addr, pid in Packager.routes.items():
-                        print(f'  {addr} -> {pid.hex()}')
-                elif cmd[1].lower() == 'banned':
-                    print(f'Banned:')
-                    for nid in Packager.banned:
-                        print(f'  {nid.hex()}')
-                elif cmd[1].lower() == 'next_hop':
-                    if len(cmd) < 4:
-                        print('get next_hop - missing a required arg')
-                        continue
-                    nh_addr = Address.from_str(cmd[2])
-                    metric = dCPL if 'cpl' in cmd[3].lower() else dTree
-                    nh = Packager.next_hop(nh_addr, metric)
-                    if nh is None:
-                        print(f'No next hop found for {nh_addr}')
-                    else:
-                        print(f'Next Hop: {nh[0].id.hex()} {nh[1]}')
-            elif cmd[0] == 'ban':
-                if len(cmd) < 2:
-                    print('ban - missing a required arg')
-                    continue
-                try:
-                    nid = bytes.fromhex(cmd[1])
-                except:
-                    print(f'ban - invalid node_id: {cmd[1]}')
-                    continue
-                Packager.ban(nid)
-            elif cmd[0] == 'unban':
-                if len(cmd) < 2:
-                    print('unban - missing a required arg')
-                    continue
-                try:
-                    nid = bytes.fromhex(cmd[1])
-                except:
-                    print(f'unban - invalid node_id: {cmd[1]}')
-                    continue
-                Packager.unban(nid)
-            elif cmd[0] == 'version':
-                print(f'MPNode version: {MPNODE_VERSION}')
-                print(f'Packager version: {Packager.version}')
-                print(f'Protocol version: {PROTOCOL_VERSION}')
             elif cmd[0] in ('quit', 'q'):
                 raise Exception('quit')
             elif cmd[0] == 'reset':
@@ -396,11 +434,6 @@ async def console(add_debug_hooks = True, pub_routes = True, sub_routes = False)
                 else:
                     print(f'admin - unknown subcommand {cmd[3]}')
                     continue
-            elif cmd[0] in ('wait', 'w'):
-                if len(cmd) < 2:
-                    await wait(-1)
-                else:
-                    await wait(int(cmd[1]))
             elif cmd[0] == 'edit':
                 if 'edit' not in globals():
                     print('edit function unavailable')
