@@ -4,11 +4,16 @@ from machine import reset, Pin
 from micropycelium import (
     Packager, Address, dCPL, dTree, PROTOCOL_VERSION,
     ESPNowInterface, Beacon, Gossip, SpanningTree, Ping, DebugApp, DebugOp,
-    ainput, debug,
+    ainput, debug, iscoroutine,
 )
 from micropython import const
 from struct import pack
 import gc
+
+try:
+    from typing import Callable
+except:
+    pass
 
 try:
     from editor import edit # type: ignore
@@ -103,11 +108,24 @@ async def memrloop():
             f'\t{al} ({al/(fr+al)*100:.2f}%) allocated'
         )
 
-def _help():
+
+commands: dict[str, tuple[Callable, str]] = {}
+
+def add_command(name: str, func: Callable, help_text: str = ''):
+    """Add a command to the console. If help_text is empty, it will not
+        be mentioned when the "help" command is run.
+    """
+    commands[name] = (func, help_text)
+
+def _help(*args):
+    if len(args):
+        if args[0] in commands:
+            print(commands[args[0]][1])
+            return
     print('Commands:')
-    print('\tm|monitor [grep1] [grep2] ... - monitors debug messages')
-    print('\t\tgreps are optional; if supplied, only messages containing a ' +\
-        'grep will be displayed')
+    for _, v in commands.items():
+        if len(v[1]):
+            print(f'\t{v[1]}')
     print('\tget [node_id|addrs|peers|routes|banned|next_hop addr metric] - ' +\
         'get info from the local node')
     print('\tban [node_id] - ban a node from being a peer or known route')
@@ -182,6 +200,17 @@ async def monitor(greps: tuple[str]|list[str] = []):
             if await ainput('', True) is not None:
                 break
 
+add_command(
+    'monitor', monitor,
+    'm|monitor [grep1] [grep2] ... - monitors debug messages\n' +
+    '\t\tgreps are optional; if supplied, only messages containing a grep ' +
+    'will be displayed'
+)
+add_command('m', monitor, '')
+add_command('help', _help, '')
+add_command('?', _help, '')
+add_command('h', _help, '')
+
 async def console(add_debug_hooks = True, pub_routes = True, sub_routes = False):
     if add_debug_hooks:
         add_hooks()
@@ -195,10 +224,10 @@ async def console(add_debug_hooks = True, pub_routes = True, sub_routes = False)
             continue
         cmd[0] = cmd[0].lower()
         try:
-            if cmd[0] in ('?', 'h', 'help'):
-                _help()
-            elif cmd[0] in ('monitor', 'm'):
-                await monitor(cmd[1:])
+            if cmd[0] in commands:
+                co = commands[cmd[0]][0](cmd[1:])
+                if co is not None and iscoroutine(co):
+                    await co
             elif cmd[0] == 'get':
                 if len(cmd) < 2:
                     print('get - missing a required arg')
