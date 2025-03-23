@@ -123,6 +123,10 @@ def _help():
     print('\tdebug [node_id] [info|peers|routes|next_hop addr metric] - get ' +\
         'debug info from a node')
     print('\tadmin [node_id] [password] [reset] - restart a remote node')
+    print('\tadmin [node_id] [password] [ban] [peer_id] - make the remote node ' +\
+        'ban a peer')
+    print('\tadmin [node_id] [password] [unban] [peer_id] - make the remote node ' +\
+        'unban a peer')
     print('\tversion - show version information')
     print('\tq|quit - quit the program')
     print('\treset - reset the device')
@@ -183,6 +187,7 @@ async def console(add_debug_hooks = True, pub_routes = True, sub_routes = False)
         add_hooks()
     SpanningTree.params['pub'] = pub_routes
     SpanningTree.params['sub'] = sub_routes
+    DebugApp.add_hook('output', lambda *args: output(args[1]))
     await monitor()
     while True:
         cmd = (await ainput("μpycelium> ")).split()
@@ -340,11 +345,24 @@ async def console(add_debug_hooks = True, pub_routes = True, sub_routes = False)
                     print('admin - missing a required arg')
                     continue
                 nid = bytes.fromhex(cmd[1])
+                pasw = cmd[2].encode()
                 cmd[3] = cmd[3].lower()
                 if cmd[3] == 'reset':
                     op = DebugOp.REQUIRE_RESET
                     c = len(outq)
-                    DebugApp.invoke('require', op, nid, cmd[2].encode())
+                    DebugApp.invoke('require', op, nid, pasw)
+                    await wait(c + 1)
+                elif cmd[3] in ('ban', 'unban'):
+                    if len(cmd) < 5:
+                        print('admin - missing a required arg')
+                        continue
+                    op = DebugOp.REQUIRE_BAN if cmd[3] == 'ban' else DebugOp.REQUIRE_UNBAN
+                    pid = bytes.fromhex(cmd[4])
+                    if len(pid) != 32:
+                        print('admin - invalid peer_id')
+                        continue
+                    c = len(outq)
+                    DebugApp.invoke('require', op, nid, pasw, pid)
                     await wait(c + 1)
                 else:
                     print(f'admin - unknown subcommand {cmd[3]}')

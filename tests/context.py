@@ -51,6 +51,9 @@ from micropycelium import (
     Ping,
     PingMessage,
     PingOp,
+    DebugApp,
+    DebugOp,
+    DebugMessage,
 )
 
 

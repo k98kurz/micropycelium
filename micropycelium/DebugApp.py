@@ -47,6 +47,8 @@ DebugOp = enum(
     RESPOND_ROUTES = 102,
     RESPOND_NEXT_HOP = 103,
     OK = 200,
+    REQUIRE_BAN = 252,
+    REQUIRE_UNBAN = 253,
     REQUIRE_REFLECT = 254,
     REQUIRE_RESET = 255,
 )
@@ -60,6 +62,8 @@ _inverse_op = {
     DebugOp.RESPOND_ROUTES: 'RESPOND_ROUTES',
     DebugOp.RESPOND_NEXT_HOP: 'RESPOND_NEXT_HOP',
     DebugOp.OK: 'OK',
+    DebugOp.REQUIRE_BAN: 'REQUIRE_BAN',
+    DebugOp.REQUIRE_UNBAN: 'REQUIRE_UNBAN',
     DebugOp.REQUIRE_REFLECT: 'REQUIRE_REFLECT',
     DebugOp.REQUIRE_RESET: 'REQUIRE_RESET',
 }
@@ -69,8 +73,9 @@ gossip_app_id = bytes.fromhex('849969c1f22797d66f5a94db2afe634a')
 seen_results: deque[dict] = deque([], 10)
 def debug_auth_check(data: bytes):
     auth_hash1 = sha256(data).digest()[:16]
-    auth_hash2 = sha256(data[1:]).digest()[:16]
-    expected = bytes.fromhex('32549bff6d8404c4d121b589f4d24ac6')
+    l = data[0]
+    auth_hash2 = sha256(data[l+1:]).digest()[:16]
+    expected = DebugApp.params['admin_pass_hash']
     return auth_hash1 == expected or auth_hash2 == expected
 
 def serialize_dm(dm: DebugMessage):
@@ -169,14 +174,14 @@ def handle_request_next_hop(dm: DebugMessage):
 
 def handle_require(dm: DebugMessage):
     if not debug_auth_check(dm.data):
-        print('DebugApp: REQUIRE_* received with invalid auth data; ignoring')
+        DebugApp.invoke('output', 'DebugApp: REQUIRE_* received with invalid auth data; ignoring')
         return
     Gossip = Packager.apps.get(gossip_app_id, None)
     if Gossip is None:
         return
     topic_id = sha256(DebugApp.id + dm.from_id).digest()[:16]
     if dm.op == DebugOp.REQUIRE_RESET:
-        print('DebugApp: REQUIRE_RESET received; scheduling reset')
+        DebugApp.invoke('output', 'DebugApp: REQUIRE_RESET received; scheduling reset')
         Packager.queue_event(Event(
             time_ms() + 200,
             b'reset',
@@ -187,13 +192,29 @@ def handle_require(dm: DebugMessage):
             json.dumps({'op': 'REQUIRE_RESET'}).encode()
         )))
     elif dm.op == DebugOp.REQUIRE_REFLECT:
-        print('DebugApp: REQUIRE_REFLECT received')
-        op = dm.data[0]
+        DebugApp.invoke('output', 'DebugApp: REQUIRE_REFLECT received')
+        op = dm.data[1]
         Gossip.invoke('publish', topic_id, serialize_dm(DebugMessage(
-            op, int(time()), dm.nonce, Packager.node_id, dm.data[1:]
+            op, int(time()), dm.nonce, Packager.node_id, dm.data[2:]
+        )))
+    elif dm.op == DebugOp.REQUIRE_BAN:
+        DebugApp.invoke('output', 'DebugApp: REQUIRE_BAN received')
+        node_id = dm.data[1:33]
+        Packager.ban(node_id)
+        Gossip.invoke('publish', topic_id, serialize_dm(DebugMessage(
+            DebugOp.OK, int(time()), dm.nonce, Packager.node_id,
+            json.dumps({'op': 'REQUIRE_BAN', 'node_id': node_id.hex()}).encode()
+        )))
+    elif dm.op == DebugOp.REQUIRE_UNBAN:
+        DebugApp.invoke('output', 'DebugApp: REQUIRE_UNBAN received')
+        node_id = dm.data[1:33]
+        Packager.unban(node_id)
+        Gossip.invoke('publish', topic_id, serialize_dm(DebugMessage(
+            DebugOp.OK, int(time()), dm.nonce, Packager.node_id,
+            json.dumps({'op': 'REQUIRE_UNBAN', 'node_id': node_id.hex()}).encode()
         )))
     else:
-        print('DebugApp: REQUIRE_* received with unknown op; ignoring')
+        DebugApp.invoke('output', 'DebugApp: REQUIRE_* received with unknown op; ignoring')
 
 def handle_response(dm: DebugMessage):
     if len(dm.data):
@@ -221,13 +242,14 @@ def request_debug_info(op: int, peer_id: bytes, data: bytes = b''):
     dm = DebugMessage(op, int(time()), nonce, Packager.node_id, data)
     Gossip.invoke('publish', topic_id, serialize_dm(dm))
 
-def require_action(op: int, peer_id: bytes, data: bytes):
+def require_action(op: int, peer_id: bytes, pasw: bytes, more: bytes = b''):
     Gossip = Packager.apps.get(gossip_app_id, None)
     if Gossip is None:
         return
     peer_id = peer_id if type(peer_id) is bytes else bytes.fromhex(peer_id)
     topic_id = sha256(DebugApp.id + peer_id).digest()[:16]
     nonce = randint(0, 2**16 - 1)
+    data = len(more).to_bytes(1, 'big') + more + pasw
     dm = DebugMessage(op, int(time()), nonce, Packager.node_id, data)
     Gossip.invoke('publish', topic_id, serialize_dm(dm))
 
@@ -256,13 +278,16 @@ DebugApp = Application(
         'handle_response': lambda _, dm: handle_response(dm),
         'handle_require': lambda _, dm: handle_require(dm),
         'request': lambda _, op, peer_id, *args: request_debug_info(op, peer_id, *args),
-        'require': lambda _, op, peer_id, data: require_action(op, peer_id, data),
+        'require': lambda _, op, peer_id, pasw, *args: require_action(op, peer_id, pasw, *args),
         'deserialize': lambda _, blob: deserialize_dm(blob),
         'serialize': lambda _, dm: serialize_dm(dm),
         'start': lambda _: start_debug_app(),
         'stop': lambda _: stop_debug_app(),
         'get_seen': lambda _: seen_results,
         'auth_check': lambda _, data: debug_auth_check(data),
+    },
+    params={
+        'admin_pass_hash': bytes.fromhex('32549bff6d8404c4d121b589f4d24ac6'),
     }
 )
 
