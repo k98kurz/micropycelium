@@ -1593,7 +1593,8 @@ class Packager:
     def unban(cls, node_id: bytes):
         """Unbans a node from being a peer or known route."""
         cls.call_hook('unban', node_id)
-        cls.banned.remove(node_id)
+        if node_id in cls.banned:
+            cls.banned.remove(node_id)
 
     @classmethod
     def set_addr(cls, addr: Address):
