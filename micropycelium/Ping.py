@@ -369,7 +369,7 @@ def run_gossip_ping_test(
         callback,
     ))
 
-def start():
+def start_ping_app():
     """Subscribe to the gossip topic."""
     Gossip = Packager.apps.get(gossip_app_id, None)
     if Gossip is None:
@@ -377,7 +377,7 @@ def start():
     topic_id = sha256(Ping.id + Packager.node_id).digest()[:16]
     Gossip.invoke('subscribe', topic_id, Ping.id)
 
-def stop():
+def stop_ping_app():
     """Unsubscribe from the gossip topic."""
     Gossip = Packager.apps.get(gossip_app_id, None)
     if Gossip is None:
@@ -451,7 +451,10 @@ async def _gossip_ping_command(cmd: list[str]):
     Ping.invoke('gossip_ping', **kwargs)
     await Ping.params['console_wait'](kwargs.get('count', 4) + 2)
 
-def register_commands(add_command: Callable, add_alias: Callable, wait: Callable, output: Callable):
+def register_commands(
+        add_command: Callable, add_alias: Callable, wait: Callable,
+        output: Callable
+    ):
     """Register console commands."""
     Ping.params['console_wait'] = wait
     Ping.params['console_output'] = output
@@ -486,8 +489,8 @@ Ping = Application(
         'gossip_response_received': lambda _, pm: ping_gossip_response_received(pm),
         'serialize': lambda _, pm: serialize_pm(pm),
         'deserialize': lambda _, blob: deserialize_pm(blob),
-        'start': lambda _: start(),
-        'stop': lambda _: stop(),
+        'start': lambda _: start_ping_app(),
+        'stop': lambda _: stop_ping_app(),
         'list_routes': lambda _: ping_list_routes(),
         'ping': lambda _, *args, **kwargs: run_ping_test(*args, **kwargs),
         'gossip_ping': lambda _, *args, **kwargs: run_gossip_ping_test(*args, **kwargs),
