@@ -11,6 +11,8 @@ try:
         # MODEM_INTERSECT_INTERVAL,
         # MODEM_INTERSECT_RTX_TIMES,
         time_ms,
+        dCPL,
+        dTree,
     )
 except ImportError:
     from .Packager import (
@@ -25,6 +27,8 @@ except ImportError:
         # MODEM_INTERSECT_INTERVAL,
         # MODEM_INTERSECT_RTX_TIMES,
         time_ms,
+        dCPL,
+        dTree,
     )
 from collections import deque, namedtuple
 from hashlib import sha256
@@ -32,6 +36,7 @@ from machine import reset
 from random import randint
 from struct import pack, unpack
 from time import time
+from typing import Callable
 
 # save_imports
 import json
@@ -265,6 +270,101 @@ def stop_debug_app():
         topic_id = sha256(DebugApp.id + Packager.node_id).digest()[:16]
         Gossip.invoke('unsubscribe', topic_id, DebugApp.id)
 
+def hexify(thing):
+    if type(thing) is list:
+        return [hexify(i) for i in thing]
+    elif type(thing) is tuple:
+        return tuple(hexify(i) for i in thing)
+    elif type(thing) is bytes:
+        return thing.hex()
+    elif type(thing) is dict:
+        return {hexify(k): hexify(v) for k, v in thing.items()}
+    elif type(thing) in (int, float):
+        return thing
+    else:
+        return thing if type(thing) is str else repr(thing)
+
+async def _debug_command(cmd: list[str]):
+    """Debug a node."""
+    if len(cmd) < 2:
+        print('debug - missing a required arg')
+        return
+    nid = bytes.fromhex(cmd[0])
+    cmd[1] = cmd[1].lower()
+    nh_addr = b''
+    if cmd[1] not in ('info', 'peers', 'routes', 'next_hop'):
+        print(f'debug - unknown mode {cmd[1]}')
+        return
+    if cmd[1] == 'info':
+        op = DebugOp.REQUEST_NODE_INFO
+    elif cmd[1] == 'peers':
+        op = DebugOp.REQUEST_PEER_LIST
+    elif cmd[1] == 'routes':
+        op = DebugOp.REQUEST_ROUTES
+    elif cmd[1] == 'next_hop':
+        if len(cmd) < 4:
+            print('debug next_hop - missing a required arg')
+            return
+        nh_addr = Address.from_str(cmd[2])
+        metric = dCPL if 'cpl' in cmd[3].lower() else dTree
+        nh_addr = pack('!BB16s', metric, nh_addr.tree_state, nh_addr.address)
+        op = DebugOp.REQUEST_NEXT_HOP
+    output = DebugApp.params['console_output']
+    DebugApp.add_hook('output', lambda *args: output(args[1]))
+    DebugApp.add_hook(
+        'request',
+        lambda *args: output(f'DebugApp.request sent: {hexify(args[1:])}')
+    )
+    DebugApp.invoke('request', op, nid, nh_addr)
+    await DebugApp.params['console_wait'](2)
+
+async def _admin_command(cmd: list[str]):
+    """Execute admin command on a node."""
+    if len(cmd) < 3:
+        print('admin - missing a required arg')
+        return
+    nid = bytes.fromhex(cmd[0])
+    pasw = cmd[1].encode()
+    cmd[2] = cmd[2].lower()
+    if cmd[2] == 'reset':
+        op = DebugOp.REQUIRE_RESET
+        DebugApp.invoke('require', op, nid, pasw)
+        await DebugApp.params['console_wait'](1)
+    elif cmd[2] in ('ban', 'unban'):
+        if len(cmd) < 4:
+            print('admin - missing a required arg')
+            return
+        op = DebugOp.REQUIRE_BAN if cmd[2] == 'ban' else DebugOp.REQUIRE_UNBAN
+        pid = bytes.fromhex(cmd[3])
+        if len(pid) != 32:
+            print('admin - invalid peer_id')
+            return
+        DebugApp.invoke('require', op, nid, pasw, pid)
+        await DebugApp.params['console_wait'](1)
+    else:
+        print(f'admin - unknown subcommand {cmd[2]}')
+        return
+
+def register_commands(
+        add_command: Callable, add_alias: Callable, wait: Callable,
+        output: Callable
+    ):
+    """Register console commands."""
+    DebugApp.params['console_wait'] = wait
+    DebugApp.params['console_output'] = output
+    add_command(
+        'debug',
+        _debug_command,
+        'debug [node_id] [info|peers|routes|next_hop addr metric] - get ' +
+            'debug info from a node'
+    )
+    add_command(
+        'admin',
+        _admin_command,
+        'admin [node_id] [password] [reset|ban peer_id|unban peer_id] - execute an ' +
+            'admin command on a node'
+    )
+
 DebugApp = Application(
     name='DebugApp',
     description='Debug App',
@@ -285,6 +385,7 @@ DebugApp = Application(
         'stop': lambda _: stop_debug_app(),
         'get_seen': lambda _: seen_results,
         'auth_check': lambda _, data: debug_auth_check(data),
+        'register_commands': lambda _, *args, **kwargs: register_commands(*args, **kwargs),
     },
     params={
         'admin_pass_hash': bytes.fromhex('32549bff6d8404c4d121b589f4d24ac6'),

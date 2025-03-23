@@ -130,13 +130,6 @@ def _help(cmd = []):
     for _, v in commands.items():
         if len(v[1]):
             print(_indent(v[1]))
-    print('\tdebug [node_id] [info|peers|routes|next_hop addr metric] - get ' +\
-        'debug info from a node')
-    print('\tadmin [node_id] [password] [reset] - restart a remote node')
-    print('\tadmin [node_id] [password] [ban] [peer_id] - make the remote node ' +\
-        'ban a peer')
-    print('\tadmin [node_id] [password] [unban] [peer_id] - make the remote node ' +\
-        'unban a peer')
     print('\tq|quit - quit the program')
     print('\treset - reset the device')
     if 'edit' in globals():
@@ -311,65 +304,6 @@ async def console(add_debug_hooks = True, pub_routes = True, sub_routes = False)
                 raise Exception('quit')
             elif cmd[0] == 'reset':
                 reset()
-            elif cmd[0] == 'debug':
-                if len(cmd) < 3:
-                    print('debug - missing a required arg')
-                    continue
-                nid = bytes.fromhex(cmd[1])
-                cmd[2] = cmd[2].lower()
-                nh_addr = b''
-                if cmd[2] not in ('info', 'peers', 'routes', 'next_hop'):
-                    print(f'debug - unknown mode {cmd[2]}')
-                    continue
-                if cmd[2] == 'info':
-                    op = DebugOp.REQUEST_NODE_INFO
-                elif cmd[2] == 'peers':
-                    op = DebugOp.REQUEST_PEER_LIST
-                elif cmd[2] == 'routes':
-                    op = DebugOp.REQUEST_ROUTES
-                elif cmd[2] == 'next_hop':
-                    if len(cmd) < 5:
-                        print('debug next_hop - missing a required arg')
-                        continue
-                    nh_addr = Address.from_str(cmd[3])
-                    metric = dCPL if 'cpl' in cmd[4].lower() else dTree
-                    nh_addr = pack('!BB16s', metric, nh_addr.tree_state, nh_addr.address)
-                    op = DebugOp.REQUEST_NEXT_HOP
-                DebugApp.add_hook('output', lambda *args: output(args[1]))
-                DebugApp.add_hook(
-                    'request',
-                    lambda *args: output(f'DebugApp.request sent: {hexify(args[1:])}')
-                )
-                c = len(outq)
-                DebugApp.invoke('request', op, nid, nh_addr)
-                await wait(c + 2)
-            elif cmd[0] == 'admin':
-                if len(cmd) < 4:
-                    print('admin - missing a required arg')
-                    continue
-                nid = bytes.fromhex(cmd[1])
-                pasw = cmd[2].encode()
-                cmd[3] = cmd[3].lower()
-                if cmd[3] == 'reset':
-                    op = DebugOp.REQUIRE_RESET
-                    c = len(outq)
-                    DebugApp.invoke('require', op, nid, pasw)
-                    await wait(c + 1)
-                elif cmd[3] in ('ban', 'unban'):
-                    if len(cmd) < 5:
-                        print('admin - missing a required arg')
-                        continue
-                    op = DebugOp.REQUIRE_BAN if cmd[3] == 'ban' else DebugOp.REQUIRE_UNBAN
-                    pid = bytes.fromhex(cmd[4])
-                    if len(pid) != 32:
-                        print('admin - invalid peer_id')
-                        continue
-                    c = len(outq)
-                    DebugApp.invoke('require', op, nid, pasw, pid)
-                    await wait(c + 1)
-                else:
-                    print(f'admin - unknown subcommand {cmd[3]}')
-                    continue
             elif cmd[0] == 'edit':
                 if 'edit' not in globals():
                     print('edit function unavailable')
