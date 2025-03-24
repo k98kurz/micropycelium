@@ -51,7 +51,10 @@ DebugOp = enum(
     RESPOND_PEER_LIST = 101,
     RESPOND_ROUTES = 102,
     RESPOND_NEXT_HOP = 103,
+    # ERROR = 199,
     OK = 200,
+    AUTH_ERROR = 201,
+    REQUIRE_SET_PW = 251,
     REQUIRE_BAN = 252,
     REQUIRE_UNBAN = 253,
     REQUIRE_REFLECT = 254,
@@ -66,7 +69,10 @@ _inverse_op = {
     DebugOp.RESPOND_PEER_LIST: 'RESPOND_PEER_LIST',
     DebugOp.RESPOND_ROUTES: 'RESPOND_ROUTES',
     DebugOp.RESPOND_NEXT_HOP: 'RESPOND_NEXT_HOP',
+    # DebugOp.ERROR: 'ERROR',
     DebugOp.OK: 'OK',
+    DebugOp.AUTH_ERROR: 'AUTH_ERROR',
+    DebugOp.REQUIRE_SET_PW: 'REQUIRE_SET_PW',
     DebugOp.REQUIRE_BAN: 'REQUIRE_BAN',
     DebugOp.REQUIRE_UNBAN: 'REQUIRE_UNBAN',
     DebugOp.REQUIRE_REFLECT: 'REQUIRE_REFLECT',
@@ -76,6 +82,7 @@ DebugMessage = namedtuple('DebugMessage', ['op', 'ts', 'nonce', 'from_id', 'data
 
 gossip_app_id = bytes.fromhex('849969c1f22797d66f5a94db2afe634a')
 seen_results: deque[dict] = deque([], 10)
+
 def debug_auth_check(data: bytes):
     auth_hash1 = sha256(data).digest()[:16]
     l = data[0]
@@ -108,6 +115,8 @@ def receive_debug(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
     elif dm.op == DebugOp.RESPOND_NEXT_HOP:
         DebugApp.invoke('handle_response', dm)
     elif dm.op == DebugOp.OK:
+        DebugApp.invoke('handle_response', dm)
+    elif dm.op == DebugOp.AUTH_ERROR:
         DebugApp.invoke('handle_response', dm)
     else:
         DebugApp.invoke('handle_require', dm)
@@ -178,13 +187,17 @@ def handle_request_next_hop(dm: DebugMessage):
     )))
 
 def handle_require(dm: DebugMessage):
-    if not debug_auth_check(dm.data):
-        DebugApp.invoke('output', 'DebugApp: REQUIRE_* received with invalid auth data; ignoring')
-        return
     Gossip = Packager.apps.get(gossip_app_id, None)
     if Gossip is None:
         return
     topic_id = sha256(DebugApp.id + dm.from_id).digest()[:16]
+    if not debug_auth_check(dm.data):
+        DebugApp.invoke('output', 'DebugApp: REQUIRE_* received with invalid auth data; ignoring')
+        Gossip.invoke('publish', topic_id, serialize_dm(DebugMessage(
+            DebugOp.AUTH_ERROR, int(time()), dm.nonce, Packager.node_id,
+            json.dumps({'op': _inverse_op[dm.op], 'error': 'AUTH_ERROR'}).encode()
+        )))
+        return
     if dm.op == DebugOp.REQUIRE_RESET:
         DebugApp.invoke('output', 'DebugApp: REQUIRE_RESET received; scheduling reset')
         Packager.queue_event(Event(
@@ -217,6 +230,15 @@ def handle_require(dm: DebugMessage):
         Gossip.invoke('publish', topic_id, serialize_dm(DebugMessage(
             DebugOp.OK, int(time()), dm.nonce, Packager.node_id,
             json.dumps({'op': 'REQUIRE_UNBAN', 'node_id': node_id.hex()}).encode()
+        )))
+    elif dm.op == DebugOp.REQUIRE_SET_PW:
+        DebugApp.invoke('output', 'DebugApp: REQUIRE_SET_PW received')
+        l = dm.data[0]
+        new_pasw = dm.data[1:1+l]
+        DebugApp.params['admin_pass_hash'] = sha256(new_pasw).digest()[:16]
+        Gossip.invoke('publish', topic_id, serialize_dm(DebugMessage(
+            DebugOp.OK, int(time()), dm.nonce, Packager.node_id,
+            json.dumps({'op': 'REQUIRE_SET_PW'}).encode()
         )))
     else:
         DebugApp.invoke('output', 'DebugApp: REQUIRE_* received with unknown op; ignoring')
@@ -341,11 +363,28 @@ async def _admin_command(cmd: list[str]):
             return
         DebugApp.invoke('require', op, nid, pasw, pid)
         await DebugApp.params['console_wait'](1)
+    elif cmd[2] == 'set_pw':
+        if len(cmd) < 3:
+            print('admin - missing a required arg')
+            return
+        new_pasw = cmd[3].encode()
+        op = DebugOp.REQUIRE_SET_PW
+        DebugApp.invoke('require', op, nid, pasw, new_pasw)
+        await DebugApp.params['console_wait'](1)
     else:
         print(f'admin - unknown subcommand {cmd[2]}')
         return
 
-def register_commands(
+async def _local_admin_command(cmd: list[str]):
+    """Execute admin command on the local node."""
+    if len(cmd) < 2:
+        print('local_admin - missing a required arg')
+        return
+    pasw = cmd[1].encode()
+    DebugApp.params['admin_pass_hash'] = sha256(pasw).digest()[:16]
+    print('local_admin - admin password set')
+
+def register_debug_cmds(
         add_command: Callable, add_alias: Callable, wait: Callable,
         output: Callable
     ):
@@ -361,8 +400,13 @@ def register_commands(
     add_command(
         'admin',
         _admin_command,
-        'admin [node_id] [password] [reset|ban peer_id|unban peer_id] - execute an ' +
-            'admin command on a node'
+        'admin [node_id] [passwd] [set_pw passwd|reset|ban peer_id|unban peer_id] ' +
+            '- execute an admin command on a node'
+    )
+    add_command(
+        'local_admin',
+        _local_admin_command,
+        'local_admin [set_pw passwd] - set the local admin password'
     )
 
 DebugApp = Application(
@@ -385,7 +429,7 @@ DebugApp = Application(
         'stop': lambda _: stop_debug_app(),
         'get_seen': lambda _: seen_results,
         'auth_check': lambda _, data: debug_auth_check(data),
-        'register_commands': lambda _, *args, **kwargs: register_commands(*args, **kwargs),
+        'register_commands': lambda _, *args, **kwargs: register_debug_cmds(*args, **kwargs),
     },
     params={
         'admin_pass_hash': bytes.fromhex('32549bff6d8404c4d121b589f4d24ac6'),
