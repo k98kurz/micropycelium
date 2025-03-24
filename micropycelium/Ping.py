@@ -451,7 +451,7 @@ async def _gossip_ping_command(cmd: list[str]):
     Ping.invoke('gossip_ping', **kwargs)
     await Ping.params['console_wait'](kwargs.get('count', 4) + 2)
 
-def register_commands(
+def register_ping_cmds(
         add_command: Callable, add_alias: Callable, wait: Callable,
         output: Callable
     ):
@@ -496,7 +496,7 @@ Ping = Application(
         'gossip_ping': lambda _, *args, **kwargs: run_gossip_ping_test(*args, **kwargs),
         'report_ping_test': lambda _, *args, **kwargs: report_ping_test(*args, **kwargs),
         'get_ping_responses': lambda _: ping_responses,
-        'register_commands': lambda _, *args, **kwargs: register_commands(*args, **kwargs),
+        'register_commands': lambda _, *args, **kwargs: register_ping_cmds(*args, **kwargs),
     }
 )
 
