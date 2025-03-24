@@ -271,6 +271,7 @@ add_command(
 )
 
 Ping.invoke('register_commands', add_command, add_cmd_alias, wait, output)
+DebugApp.invoke('register_commands', add_command, add_cmd_alias, wait, output)
 
 add_command('version', _version, 'version - show version information')
 
