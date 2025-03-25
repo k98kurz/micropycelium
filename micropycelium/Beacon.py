@@ -129,6 +129,10 @@ def schedule_beacon():
         Beacon.params['beacon_count']
     ))
 
+def stop_beacon():
+    Packager.cancel_events.append(beacon_app_id)
+    Packager.cancel_events.append(beacon_app_id+b's')
+
 Beacon = Application(
     name='Beacon',
     description='Dev Beacon App',
@@ -143,6 +147,7 @@ Beacon = Application(
         'deserialize': lambda _, blob: deserialize_bm(blob),
         # 'start': lambda _: periodic_beacon(MODEM_INTERSECT_RTX_TIMES),
         'start': lambda _: periodic_beacon(2),
+        'stop': lambda _: stop_beacon(),
         'get_seen': lambda _: seen_bm,
         'get_sent': lambda _: sent_bm,
     },

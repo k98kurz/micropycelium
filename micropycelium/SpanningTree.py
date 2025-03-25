@@ -334,7 +334,7 @@ def schedule_start(pub = None, sub = None):
         if SpanningTree.params.get('sub'):
             Gossip.invoke('subscribe', tree_app_id, tree_app_id)
 
-def stop():
+def stop_tree_app():
     """Cancels all events and removes all hooks."""
     Packager.remove_hook('remove_peer', remove_peer)
     Packager.remove_hook('set_addr', set_addr_gossip_callback)
@@ -361,7 +361,7 @@ SpanningTree = Application(
         'serialize': lambda _, tm: serialize_tm(tm),
         'deserialize': lambda _, blob: deserialize_tm(blob),
         'start': lambda _, **kwargs: schedule_start(**kwargs),
-        'stop': lambda _: stop(),
+        'stop': lambda _: stop_tree_app(),
         'claim_score': lambda _, claim: claim_score(claim),
         'get_known_claims': lambda _: known_claims,
         'get_current_children': lambda _: current_children,

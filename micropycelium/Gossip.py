@@ -213,7 +213,7 @@ def sync_all_peers():
         sync_all_peers,
     ))
 
-def start():
+def start_gossip_app():
     Packager.add_hook('add_peer', add_peer_callback)
     if Gossip.id in Packager.schedule:
         return
@@ -223,8 +223,9 @@ def start():
         sync_all_peers,
     ))
 
-def stop():
+def stop_gossip_app():
     Packager.remove_hook('add_peer', add_peer_callback)
+    Packager.cancel_events.append(Gossip.id)
 
 def get_messages(topic_id: bytes):
     res = []
@@ -250,8 +251,8 @@ Gossip = Application(
         'unsubscribe': lambda _, topic_id, app_id: unsubscribe_gossip(topic_id, app_id),
         'deliver_gossip': lambda _, gm: deliver_gossip(gm),
         'sync': lambda _: sync_all_peers(),
-        'start': lambda _: start(),
-        'stop': lambda _: stop(),
+        'start': lambda _: start_gossip_app(),
+        'stop': lambda _: stop_gossip_app(),
         'get_seen': lambda _: seen_gm,
         'get_subscriptions': lambda _: subscriptions,
         'get_cache': lambda _: message_cache,
