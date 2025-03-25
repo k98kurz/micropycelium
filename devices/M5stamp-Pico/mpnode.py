@@ -49,6 +49,7 @@ def action_hook(name: str, c: tuple, q: deque):
         q.append(c)
     return inner
 
+# add some hooks
 Beacon.add_hook('receive', action_hook('Beacon.receive', blue, rq))
 Beacon.add_hook('broadcast', action_hook('Beacon.broadcast', red, rq))
 Beacon.add_hook('respond', action_hook('Beacon.respond', green, rq))

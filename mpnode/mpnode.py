@@ -208,6 +208,51 @@ def _get(cmd):
             print(f'No next hop found for {nh_addr}')
         else:
             print(f'Next Hop: {nh[0].id.hex()} {nh[1]}')
+    elif cmd[0].lower() == 'apps':
+        print(f'Apps:')
+        for _, app in Packager.apps.items():
+            print(f'  {app.id.hex()} - {app.name} - version {app.version}')
+    elif cmd[0].lower() in ('sched', 'schedule'):
+        print(f'Schedule:')
+        for _, event in Packager.schedule.items():
+            print(f'  {event.id.hex()} - {event.handler.__name__} - {event.args} - {event.kwargs}')
+
+def _set(cmd):
+    if len(cmd) < 2:
+        print('set - missing a required arg')
+        return
+    if cmd[0].lower() == 'node_id':
+        if len(cmd[1]) != 64:
+            print('set node_id - invalid node_id')
+            return
+        Packager.set_node_id(bytes.fromhex(cmd[1]))
+    elif cmd[0].lower() == 'addr':
+        addr = Address.from_str(cmd[1])
+        Packager.set_addr(addr)
+    elif cmd[0].lower() == 'route':
+        if len(cmd) < 3:
+            print('set route - missing a required arg')
+            return
+        nid = bytes.fromhex(cmd[1])
+        addr = Address.from_str(cmd[2])
+        Packager.add_route(nid, addr)
+    else:
+        print(f'Unknown set option: {cmd[0]}')
+
+def _app(cmd):
+    if len(cmd) < 2:
+        print('app - missing a required arg')
+        return
+    app_id = bytes.fromhex(cmd[0])
+    if app_id not in Packager.apps:
+        print(f'Unknown app: {app_id.hex()}')
+        return
+    if cmd[1].lower() == 'start':
+        Packager.apps[app_id].invoke('start')
+    elif cmd[1].lower() == 'stop':
+        Packager.apps[app_id].invoke('stop')
+    else:
+        print(f'Unknown app command: {cmd[1]}')
 
 def _ban(cmd):
     if len(cmd) < 1:
@@ -258,8 +303,19 @@ add_cmd_alias('wait', 'w')
 
 add_command(
     'get', _get,
-    'get [node_id|addrs|peers|routes|banned|next_hop addr metric] - ' +
+    'get [node_id|addrs|apps|sched|schedule|peers|routes|banned|next_hop addr metric] - ' +
         'get info from the local node'
+)
+
+add_command(
+    'set', _set,
+    'set [node_id hex|addr str|route peer_id addr] - ' +
+        'set or add a config value for the local node'
+)
+
+add_command(
+    'app', _app,
+    'app [app_id] [start|stop] - start or stop an app'
 )
 
 add_command(
