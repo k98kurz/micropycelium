@@ -40,11 +40,14 @@ class TestPingApplication(unittest.TestCase):
         Packager.add_peer(peer_id, [(b'mac0', mock_interface1)])
         Packager.set_addr(local_addr)
         Packager.add_route(peer_id, peer_addr)
-        Packager.add_route(remote_id, remote_addr)
         assert len(mock_interface1.outbox) == 0
-        Ping.invoke('request', remote_id)
+        Ping.invoke('request', remote_addr)
         assert len(mock_interface1.outbox) == 1
-        packet = Packet.unpack(mock_interface1.outbox.popleft().data)
+        dgram = mock_interface1.outbox.popleft()
+        assert dgram.addr == b'mac0', dgram.addr
+        packet = Packet.unpack(dgram.data)
+        assert 'to_addr' in packet.fields, packet.fields
+        assert packet.fields['to_addr'] == remote_addr.address
         p = Package.unpack(packet.body)
         pm = Ping.invoke('deserialize', p.blob)
         assert pm.op == PingOp.REQUEST, pm.op
