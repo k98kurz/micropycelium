@@ -490,7 +490,7 @@ def get_schema(id: int) -> Schema:
             Field('body', 0, bytes, 203),
         ])
     if id == 11:
-        # ESP-NOW; one-hop routable; 216 max Package size.
+        # ESP-NOW; one-hop relayable; 216 max Package size.
         return Schema(0, 11, [
             Field('packet_id', 1, int, 0),
             Field('tree_state', 1, int, 0),
@@ -499,7 +499,7 @@ def get_schema(id: int) -> Schema:
             Field('body', 0, bytes, 216),
         ])
     if id == 12:
-        # ESP-NOW; one-hop routable; 256 max sequence size; 53.5 KiB max Package size.
+        # ESP-NOW; one-hop relayable; 256 max sequence size; 53.5 KiB max Package size.
         return Schema(0, 12, [
             Field('packet_id', 1, int, 0),
             Field('seq_id', 1, int, 0),
@@ -510,7 +510,7 @@ def get_schema(id: int) -> Schema:
             Field('body', 0, bytes, 214),
         ])
     if id == 13:
-        # ESP-NOW; one-hop routable; 65536 max sequence size; 13.25 MiB max Package size.
+        # ESP-NOW; one-hop relayable; 65536 max sequence size; 13.25 MiB max Package size.
         return Schema(0, 13, [
             Field('packet_id', 2, int, 0),
             Field('seq_id', 1, int, 0),
@@ -631,7 +631,7 @@ def get_schema(id: int) -> Schema:
             Field('body', 0, bytes, 193),
         ])
     if id == 31:
-        # LYLR-998; one-hop routable; 206 max Package size.
+        # LYLR-998; one-hop relayable; 206 max Package size.
         return Schema(0, 31, [
             Field('packet_id', 1, int, 0),
             Field('tree_state', 1, int, 0),
@@ -640,7 +640,7 @@ def get_schema(id: int) -> Schema:
             Field('body', 0, bytes, 206),
         ])
     if id == 32:
-        # LYLR-998; one-hop routable; 256 max sequence size; 51 KiB max Package size.
+        # LYLR-998; one-hop relayable; 256 max sequence size; 51 KiB max Package size.
         return Schema(0, 32, [
             Field('packet_id', 1, int, 0),
             Field('seq_id', 1, int, 0),
@@ -651,7 +651,7 @@ def get_schema(id: int) -> Schema:
             Field('body', 0, bytes, 204),
         ])
     if id == 33:
-        # LYLR-998; one-hop routable; 65536 max sequence size; 12.625 MiB max Package size.
+        # LYLR-998; one-hop relayable; 65536 max sequence size; 12.625 MiB max Package size.
         return Schema(0, 33, [
             Field('packet_id', 2, int, 0),
             Field('seq_id', 1, int, 0),
@@ -1967,12 +1967,12 @@ class Packager:
                 )
 
             if 'ttl' in packet.fields:
-                packet.fields['ttl'] += -1 if packet.flags.error else 1
+                packet.fields['ttl'] += 1 if packet.flags.error else -1
 
             if packet.fields.get('ttl', 1) <= 0 and not packet.flags.error:
                 # drop the packet
                 return False
-            if packet.fields.get('ttl', 1) > 255 and packet.flags.error:
+            if packet.fields.get('ttl', 1) >= 255 and packet.flags.error:
                 # drop the packet
                 return False
         else:
@@ -2035,6 +2035,30 @@ class Packager:
         ))
 
     @classmethod
+    def _send_ack(cls, p: Packet, src: bytes|None = None):
+        flags = Flags(p.flags.state)
+        flags.ask = False
+        flags.ack = True
+        fields = {
+            'packet_id': p.id,
+            'body': b'',
+        }
+        if 'to_addr' in p.fields:
+            fields['to_addr'] = p.fields['from_addr']
+            fields['from_addr'] = p.fields['to_addr']
+            fields['tree_state'] = p.fields['tree_state']
+        if 'ttl' in p.fields:
+            fields['ttl'] = 255
+        if 'seq_id' in p.fields:
+            fields['seq_size'] = p.fields['seq_size']
+            fields['seq_id'] = p.fields['seq_id']
+        cls.send_packet(Packet(
+            p.schema,
+            flags,
+            fields
+        ), src)
+
+    @classmethod
     def receive(cls, p: Packet, intrfc: Interface, mac: bytes) -> None:
         """Receives a Packet and determines what to do with it. If it is
             a routable packet, forward to the next hop using send_packet;
@@ -2054,28 +2078,6 @@ class Packager:
                 # forward
                 cls.send_packet(p)
                 return
-            else:
-                # this is the intended delivery point
-                if p.flags.ask:
-                    # send ack
-                    flags = Flags(p.flags.state)
-                    flags.ask = False
-                    flags.ack = True
-                    fields = {
-                        'packet_id': p.id,
-                        'to_addr': p.fields['from_addr'],
-                        'from_addr': p.fields['to_addr'],
-                        'tree_state': p.fields['tree_state'],
-                        'body': b'',
-                    }
-                    if 'seq_id' in p.fields:
-                        fields['seq_size'] = p.fields['seq_size']
-                        fields['seq_id'] = p.fields['seq_id']
-                    cls.send_packet(Packet(
-                        p.schema,
-                        flags,
-                        fields
-                    ))
         for nid, peer in cls.peers.items():
             if mac in (i[0] for i in peer.interfaces if i[1] is intrfc):
                 src = nid
@@ -2108,23 +2110,9 @@ class Packager:
                     cls.sync_sequence,
                     seq_id
                 ))
-                if p.flags.ask:
-                    # send ack
-                    flags = Flags(p.flags.state)
-                    flags.ask = False
-                    flags.ack = True
-                    fields = {
-                        'packet_id': p.id,
-                        'body': b'',
-                    }
-                    if 'seq_id' in p.fields:
-                        fields['seq_size'] = p.fields['seq_size']
-                        fields['seq_id'] = p.fields['seq_id']
-                    cls.send_packet(Packet(
-                        p.schema,
-                        flags,
-                        fields
-                    ), src)
+            if p.flags.ask:
+                # send ack
+                cls._send_ack(p, src)
             return
         elif 'seq_id' in p.fields and p.flags.rtx:
             # request for retransmission: send packet if the sequence is still in the cache
@@ -2175,21 +2163,7 @@ class Packager:
 
         if p.flags.ask:
             # send ack
-            flags = Flags(p.flags.state)
-            flags.ask = False
-            flags.ack = True
-            fields = {
-                'packet_id': p.id,
-                'body': b'',
-            }
-            if 'seq_id' in p.fields:
-                fields['seq_size'] = p.fields['seq_size']
-                fields['seq_id'] = p.fields['seq_id']
-            cls.send_packet(Packet(
-                p.schema,
-                flags,
-                fields
-            ), src)
+            cls._send_ack(p, src)
 
         # parse and deliver the Package
         cls.deliver(Package.unpack(p.body), intrfc, mac)

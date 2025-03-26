@@ -600,6 +600,8 @@ class TestPackager(unittest.TestCase):
         dgram = mock_interface1.outbox.popleft()
         # routes through r
         assert dgram.addr == peer1.interfaces[0][0]
+        p = Packet.unpack(dgram.data)
+        assert p.fields['ttl'] == 249
 
         # now test dCPL, the second mode
         packet.flags.mode = 1
