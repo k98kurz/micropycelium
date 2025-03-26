@@ -587,7 +587,7 @@ class TestPackager(unittest.TestCase):
                 'ttl': 250,
                 'tree_state': tree_state,
                 'to_addr': to_addr.address,
-                'from_addr': local_addr.address,
+                'from_addr': peer3_addr.address,
                 'body': blob,
             }
         )
@@ -598,7 +598,7 @@ class TestPackager(unittest.TestCase):
         asyncio.run(Packager.process())
         assert len(mock_interface1.outbox) == 1
         dgram = mock_interface1.outbox.popleft()
-        # routes through e
+        # routes through r
         assert dgram.addr == peer1.interfaces[0][0]
 
         # now test dCPL, the second mode
@@ -629,6 +629,16 @@ class TestPackager(unittest.TestCase):
         # routes through v now
         assert dgram.addr == peer4.interfaces[0][0]
 
+        # route to r
+        packet.fields['to_addr'] = peer1_addr.address
+        assert len(mock_interface1.outbox) == 0
+        inbox.append(Datagram(packet.pack(), mock_interface1.id, peer3.interfaces[0][0]))
+        asyncio.run(Packager.process())
+        assert len(mock_interface1.outbox) == 1
+        dgram = mock_interface1.outbox.popleft()
+        # should send directly to r
+        assert dgram.addr == peer1.interfaces[0][0]
+
     def test_send_routes_properly_e2e(self):
         # add application and network interface
         Packager.add_interface(mock_interface1)
@@ -650,11 +660,11 @@ class TestPackager(unittest.TestCase):
         Packager.add_route(peer1.id, peer1_addr)
 
         # u
-        peer2 = Peer(
+        node2 = Peer(
             b'2' * 32,
             [(b'mac_peer_u', mock_interface1)]
         )
-        peer2_addr = Address(tree_state, coords=[2])
+        node2_addr = Address(tree_state, coords=[2])
 
         # add more nodes that should be ignored
         peer3 = Peer(
@@ -674,7 +684,7 @@ class TestPackager(unittest.TestCase):
         Packager.add_route(peer4.id, peer4_addr)
 
         # a sends to u; test dTree first
-        to_addr = Address(tree_state, coords=[2])
+        to_addr = node2_addr
         assert Packager.send(test_app.id, b'hello world', to_addr=to_addr)
         assert len(mock_interface1.outbox) == 1
         # should route through r
@@ -1063,6 +1073,56 @@ class TestPackager(unittest.TestCase):
         assert len(Packager.in_seqs.keys()) == 1
         asyncio.run(Packager.process())
         assert len(Packager.in_seqs.keys()) == 0
+
+    def test_receive_routed_packet_delivers_package(self):
+        # add application, network interface, and peer
+        Packager.add_application(test_app)
+        Packager.add_interface(mock_interface1)
+        peer_id = b'1' * 32
+        Packager.add_peer(peer_id, [(b'mac0', mock_interface1)])
+
+        # set addr
+        local_addr = Address(118, coords=[1])
+        Packager.set_addr(local_addr)
+
+        # add route
+        Packager.add_route(peer_id, Address(118, coords=[2, 1]))
+
+        # create a packet containing a package for the app
+        package = Package.from_blob(test_app.id, b'hello world')
+        schemas = set(SCHEMA_IDS_SUPPORT_ROUTING)
+        schemas.difference_update(SCHEMA_IDS_SUPPORT_SEQUENCE)
+        schemas.difference_update(SCHEMA_IDS_SUPPORT_CHECKSUM)
+        schemas = get_schemas(list(schemas))
+        schemas.sort(key=lambda s: s.max_body, reverse=True)
+        schema = schemas[0]
+        packet = Packet(
+            schema,
+            Flags(0),
+            {
+                'tree_state': local_addr.tree_state,
+                'to_addr': local_addr.address,
+                'from_addr': Address(118, coords=[]).address,
+                'body': package.pack(),
+                'ttl': 250,
+                'packet_id': 0,
+            }
+        )
+        packet.flags.ask = True
+
+        # receiving the packet should deliver the package
+        assert len(app_blobs) == 0
+        Packager.receive(packet, mock_interface1, b'mac0')
+        assert len(app_blobs) == 1
+        assert app_blobs[0] == package.blob
+        app_blobs.pop()
+
+        # receiving as datagram should also deliver the package
+        assert len(app_blobs) == 0
+        inbox.append(Datagram(packet.pack(), mock_interface1.id, b'mac0'))
+        asyncio.run(Packager.process())
+        assert len(app_blobs) == 1
+        assert app_blobs[0] == package.blob
 
 
 if __name__ == '__main__':
