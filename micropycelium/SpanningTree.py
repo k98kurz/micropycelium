@@ -277,7 +277,7 @@ def maintain_tree():
         )
         # get the best known claim (and shortest distance from root)
         claims = list(known_claims)
-        claims.sort(key=lambda t: claim_score(t[0]) + t[1])
+        claims.sort(key=lambda t: claim_score(t[0]) + t[2])
         best_claim, _, dTree, peer_id = claims[0]
         if claim_score(best_claim) < claim_score(current_best_root_id) or (
             claim_score(best_claim) == claim_score(current_best_root_id) and
