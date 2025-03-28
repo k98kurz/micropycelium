@@ -54,13 +54,12 @@ path within the micropython fork and deploy to connected device:
 ```bash
 python make.py > build/micropycelium.py
 python make.py mpnode $MPNODE > build/mpnode.py
-pushd $MICROPYTHON_PATH/ports/esp32
-cp "$MICROPYCELIUM_PATH/build/micropycelium.py" modules/
-cp "$MICROPYCELIUM_PATH/build/mpnode.py" modules/
-make submodules
-cd ../..
+pushd $MICROPYTHON_PATH
+cp "$MICROPYCELIUM_PATH/build/micropycelium.py" ports/esp32/modules/
+cp "$MICROPYCELIUM_PATH/build/mpnode.py" ports/esp32/modules/
+make -j -C ports/esp32 BOARD=$BOARD submodules
 make -j -C ports/esp32 BOARD=$BOARD
-make PORT=$DEVICE deploy
+make -j -C ports/esp32 BOARD=$BOARD PORT=$DEVICE deploy
 popd
 ```
 
