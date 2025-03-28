@@ -23,8 +23,8 @@ from time import time
 
 
 BeaconMessage = namedtuple("BeaconMessage", ['op', 'peer_id', 'apps'])
-seen_bm: deque[BeaconMessage] = deque([], 10)
-sent_bm: deque[BeaconMessage] = deque([], 10)
+seen_bm: deque[BeaconMessage] = deque([], 4)
+sent_bm: deque[BeaconMessage] = deque([], 4)
 beacon_app_id = b''
 
 

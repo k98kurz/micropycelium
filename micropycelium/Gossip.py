@@ -42,9 +42,9 @@ GossipMessage = namedtuple("GossipMessage", ['op', 'topic_id', 'data'])
 # map of topic_id to list of application_ids
 subscriptions: dict[bytes, list[bytes]] = {}
 # buffer of seen message ids (half_sha256)
-seen_gm: deque[bytes] = deque([], 100)
+seen_gm: deque[bytes] = deque([], 10)
 # cache of GossipMessages
-message_cache: Cache = Cache(limit=100)
+message_cache: Cache = Cache(limit=10)
 # id of this gossip application
 gossip_app_id: bytes = b''
 

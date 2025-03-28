@@ -81,7 +81,7 @@ _inverse_op = {
 DebugMessage = namedtuple('DebugMessage', ['op', 'ts', 'nonce', 'from_id', 'data'])
 
 gossip_app_id = bytes.fromhex('849969c1f22797d66f5a94db2afe634a')
-seen_results: deque[dict] = deque([], 10)
+seen_results: deque[dict] = deque([], 4)
 
 def debug_auth_check(data: bytes):
     auth_hash1 = sha256(data).digest()[:16]
