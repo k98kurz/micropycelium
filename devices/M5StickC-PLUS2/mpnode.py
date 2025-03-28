@@ -1,12 +1,11 @@
 from mpnode import console, hexify, debug, debug_name, memrloop, bloop
 from asyncio import sleep_ms
 from collections import deque
-from machine import reset
+from machine import reset, Pin
 from micropycelium import Packager, Beacon, Gossip, SpanningTree, Ping, DebugApp, ESPNowInterface
 
 # save_imports
 from asyncio import run, gather, create_task
-from machine import Pin
 
 
 # set G4 to 1 to stay on
@@ -152,7 +151,8 @@ async def _start(
             except Exception as e:
                 if str(e) == 'quit':
                     break
-    except OSError:
+                raise e
+    except OSError as e:
         print('OSError encountered; resetting device')
         reset()
 

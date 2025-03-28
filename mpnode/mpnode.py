@@ -251,6 +251,8 @@ def _app(cmd):
         Packager.apps[app_id].invoke('start')
     elif cmd[1].lower() == 'stop':
         Packager.apps[app_id].invoke('stop')
+    elif cmd[1].lower() == 'invoke':
+        Packager.apps[app_id].invoke(*cmd[2:])
     else:
         print(f'Unknown app command: {cmd[1]}')
 
@@ -315,7 +317,8 @@ add_command(
 
 add_command(
     'app', _app,
-    'app [app_id] [start|stop] - start or stop an app'
+    'app [app_id] [start|stop|invoke name ...args] - start or stop an app, or ' +
+        'invoke an app command'
 )
 
 add_command(

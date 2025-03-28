@@ -6,9 +6,7 @@ from micropycelium import Packager, Beacon, Gossip, SpanningTree, Ping, DebugApp
 
 # save_imports
 from asyncio import run, gather, create_task
-from machine import Pin
 from neopixel import NeoPixel
-
 
 # RGB LED of the M5stamp-Pico
 rgb = NeoPixel(Pin(27, Pin.OUT), 1)
@@ -136,7 +134,8 @@ async def _start(
             except Exception as e:
                 if str(e) == 'quit':
                     break
-    except OSError:
+                raise e
+    except OSError as e:
         print('OSError encountered; resetting device')
         reset()
 
