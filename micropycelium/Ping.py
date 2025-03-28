@@ -462,7 +462,7 @@ def register_ping_cmds(
         'ping',
         _ping_command,
         'ping [node_id|addr] [count] [timeout] - ping the node_id/address\n' +
-            '\tcount should be <60 (memory constraint); default value is 4\n' +
+            '\tcount should be <=10 (memory constraint); default value is 4\n' +
             '\ttimeout default value is 2 (seconds)\n' +
             '\tIf node_id is provided, it will attempt to find the address ' +
             'from the known routes'
@@ -471,7 +471,7 @@ def register_ping_cmds(
         'gossip_ping',
         _gossip_ping_command,
         'gossip_ping [node_id] [count] [timeout] - ping the node via gossip\n' +
-            '\tcount should be <60 (memory constraint); default value is 4\n' +
+            '\tcount should be <=10 (memory constraint); default value is 4\n' +
             '\ttimeout default value is 2 (seconds)'
     )
 
