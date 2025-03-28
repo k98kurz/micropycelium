@@ -73,8 +73,11 @@ requirements for use in this project. Pairing down the libsodium library will be
 the next step in trying to build a fast and reliable PKI.
 
 ```bash
-make clean && make USER_C_MODULES=$MICROPYTHON_PATH/examples/tweetnacl/micropython.cmake
-make PORT=$DEVICE deploy
+pushd $MICROPYTHON_PATH
+make -j -C ports/esp32 BOARD=$BOARD clean
+make -j -C ports/esp32 BOARD=$BOARD USER_C_MODULES=$MICROPYTHON_PATH/examples/tweetnacl/micropython.cmake
+make -j -C ports/esp32 BOARD=$BOARD PORT=$DEVICE deploy
+popd
 ```
 
 ## Erase Flash
@@ -82,8 +85,8 @@ make PORT=$DEVICE deploy
 In case of file system errors, erase the flash then reflash the firmware:
 
 ```bash
-pushd $MICROPYTHON_PATH/ports/esp32
+pushd $MICROPYTHON_PATH
 esptool.py --chip esp32 -p $DEVICE erase_flash
-make PORT=$DEVICE deploy
+make -j -C ports/esp32 BOARD=$BOARD PORT=$DEVICE deploy
 popd
 ```
