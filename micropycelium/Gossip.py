@@ -65,7 +65,7 @@ def receive_gm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
         if message_cache.get(gm.data) is None and peer_id is not None:
             request_gossip_message(gm.data, peer_id)
     elif gm.op in (GossipOp.PUBLISH, GossipOp.RESPOND):
-        deliver_gossip(gm)
+        deliver_gossip(memoryview(blob), gm)
     elif gm.op == GossipOp.RESPOND_IDS:
         if len(gm.data) % 16 or peer_id is None:
             # malformed or cannot contact originating node
@@ -79,16 +79,16 @@ def receive_gm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
 
 def publish_gossip(topic_id: bytes, data: bytes):
     gm = GossipMessage(GossipOp.PUBLISH, topic_id, data)
-    deliver_gossip(gm)
+    deliver_gossip(memoryview(serialize_gm(gm)), gm)
 
-def deliver_gossip(gm: GossipMessage):
-    gm_id = sha256(serialize_gm(gm)).digest()[:16]
+def deliver_gossip(blob: memoryview, gm: GossipMessage):
+    gm_id = sha256(blob).digest()[:16]
     if gm_id in seen_gm:
         return
     # add to cache if it is a PUBLISH or RESPOND
     if gm.op in (GossipOp.PUBLISH, GossipOp.RESPOND):
         seen_gm.append(gm_id)
-        message_cache.add(gm_id, gm, ttl=300)
+        message_cache.add(gm_id, blob, ttl=300)
     # deliver to subscribed applications
     for app_id in subscriptions.get(gm.topic_id, []):
         app = Packager.apps.get(app_id, None)
@@ -146,9 +146,10 @@ def request_gossip_message(message_id: bytes, peer_id: bytes, count: int = 1):
     ))
 
 def respond_gossip_request(peer_id: bytes, gm_id: bytes, count: int = 1):
-    gm: GossipMessage|None = message_cache.get(gm_id)
-    if gm is None:
+    blob: bytes|bytearray|None = message_cache.get(gm_id)
+    if blob is None:
         return
+    gm = deserialize_gm(blob)
     if len(gm.data) > 235 - 17 - 32:
         # was a request from a notification; do not modify the op
         Packager.send(gossip_app_id, serialize_gm(gm), peer_id)
@@ -249,7 +250,7 @@ Gossip = Application(
         'request_ids': lambda _, topic_id, peer_id: request_gossip_ids(topic_id, peer_id),
         'subscribe': lambda _, topic_id, app_id: subscribe_gossip(topic_id, app_id),
         'unsubscribe': lambda _, topic_id, app_id: unsubscribe_gossip(topic_id, app_id),
-        'deliver_gossip': lambda _, gm: deliver_gossip(gm),
+        'deliver_gossip': lambda _, blob, gm: deliver_gossip(blob, gm),
         'sync': lambda _: sync_all_peers(),
         'start': lambda _: start_gossip_app(),
         'stop': lambda _: stop_gossip_app(),

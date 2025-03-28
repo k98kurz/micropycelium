@@ -78,8 +78,9 @@ class TestGossipApplication(unittest.TestCase):
         topic_id = sha256(b'topic').digest()[:16]
         data = b'data'
         gm = GossipMessage(GossipOp.PUBLISH, topic_id, data)
+        blob = Gossip.invoke('serialize', gm)
         assert len(mock_interface1.castbox) == 0
-        Gossip.invoke('deliver_gossip', gm)
+        Gossip.invoke('deliver_gossip', memoryview(blob), gm)
         assert len(mock_interface1.castbox) == 1
         packet = Packet.unpack(mock_interface1.castbox.popleft().data)
         p = Package.unpack(packet.body)
@@ -95,7 +96,8 @@ class TestGossipApplication(unittest.TestCase):
         data = b'data'
         gm = GossipMessage(GossipOp.RESPOND, topic_id, data)
         assert len(mock_interface1.castbox) == 0
-        Gossip.invoke('deliver_gossip', gm)
+        blob = Gossip.invoke('serialize', gm)
+        Gossip.invoke('deliver_gossip', memoryview(blob), gm)
         assert len(mock_interface1.castbox) == 0
 
     def test_deliver_gossip_broadcasts_notification_for_large_messages(self):
@@ -105,7 +107,8 @@ class TestGossipApplication(unittest.TestCase):
         data = b'data' * 100
         gm = GossipMessage(GossipOp.PUBLISH, topic_id, data)
         message_id = sha256(Gossip.invoke('serialize', gm)).digest()[:16]
-        Gossip.invoke('deliver_gossip', gm)
+        blob = Gossip.invoke('serialize', gm)
+        Gossip.invoke('deliver_gossip', memoryview(blob), gm)
         assert len(mock_interface1.castbox) == 1
         packet = Packet.unpack(mock_interface1.castbox.popleft().data)
         p = Package.unpack(packet.body)
@@ -125,7 +128,8 @@ class TestGossipApplication(unittest.TestCase):
         Gossip.invoke('subscribe', topic_id, test_app.id)
         assert len(Gossip.invoke('get_subscriptions')) == 1
         assert len(app_blobs) == 0
-        Gossip.invoke('deliver_gossip', gm)
+        blob = Gossip.invoke('serialize', gm)
+        Gossip.invoke('deliver_gossip', memoryview(blob), gm)
         assert len(app_blobs) == 1
 
     def test_receive_seen_message_skips_it(self):
@@ -154,7 +158,8 @@ class TestGossipApplication(unittest.TestCase):
 
         topic_id = sha256(b'topic').digest()[:16]
         og_gm = GossipMessage(GossipOp.RESPOND, topic_id, b'test data')
-        message_id = sha256(Gossip.invoke('serialize', og_gm)).digest()[:16]
+        og_gm_blob = Gossip.invoke('serialize', og_gm)
+        message_id = sha256(og_gm_blob).digest()[:16]
         gm = GossipMessage(GossipOp.NOTIFY, topic_id, message_id)
         blob = Gossip.invoke('serialize', gm)
 
@@ -176,8 +181,9 @@ class TestGossipApplication(unittest.TestCase):
 
         topic_id = sha256(b'topic').digest()[:16]
         og_gm = GossipMessage(GossipOp.RESPOND, topic_id, b'test data')
-        message_id = sha256(Gossip.invoke('serialize', og_gm)).digest()[:16]
-        Gossip.invoke('get_cache').add(message_id, og_gm)
+        og_gm_blob = Gossip.invoke('serialize', og_gm)
+        message_id = sha256(og_gm_blob).digest()[:16]
+        Gossip.invoke('get_cache').add(message_id, memoryview(og_gm_blob))
         gm = GossipMessage(GossipOp.NOTIFY, topic_id, message_id)
         blob = Gossip.invoke('serialize', gm)
 
@@ -193,8 +199,9 @@ class TestGossipApplication(unittest.TestCase):
 
         topic_id = sha256(b'topic').digest()[:16]
         og_gm = GossipMessage(GossipOp.RESPOND, topic_id, b'test data')
-        message_id = sha256(Gossip.invoke('serialize', og_gm)).digest()[:16]
-        Gossip.invoke('get_cache').add(message_id, og_gm)
+        og_gm_blob = Gossip.invoke('serialize', og_gm)
+        message_id = sha256(og_gm_blob).digest()[:16]
+        Gossip.invoke('get_cache').add(message_id, memoryview(og_gm_blob))
         gm = GossipMessage(GossipOp.REQUEST, message_id, b'some node id')
         blob = Gossip.invoke('serialize', gm)
 
