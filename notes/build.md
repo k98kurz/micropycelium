@@ -18,7 +18,7 @@ somewhere and configured:
 
 ```bash
 pushd ~/Documents/repos
-git clone --recursive https://github.com/espressif/esp-idf.git
+git clone -b v5.2.2 --recursive https://github.com/espressif/esp-idf.git
 cd esp-idf
 ./install.sh
 popd
@@ -35,12 +35,15 @@ MICROPYTHON_PATH=$HOME/Documents/repos/micropython
 MICROPYCELIUM_PATH=$HOME/Documents/repos/micropycelium
 DEVICE=/dev/ttyACM0
 MPNODE=M5stamp-Pico
+BOARD=M5STACK_Stamp_PICO
 # or
 DEVICE=/dev/ttyACM1
 MPNODE=M5StickC-PLUS2
+BOARD=ESP32_GENERIC
 # or
 DEVICE=/dev/ttyUSB0
 MPNODE=generic_esp32
+BOARD=ESP32_GENERIC
 ```
 
 ## Build and Deploy Firmware
@@ -54,7 +57,9 @@ python make.py mpnode $MPNODE > build/mpnode.py
 pushd $MICROPYTHON_PATH/ports/esp32
 cp "$MICROPYCELIUM_PATH/build/micropycelium.py" modules/
 cp "$MICROPYCELIUM_PATH/build/mpnode.py" modules/
-make submodules && make
+make submodules
+cd ../..
+make -j -C ports/esp32 BOARD=$BOARD
 make PORT=$DEVICE deploy
 popd
 ```
