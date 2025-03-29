@@ -48,7 +48,7 @@ def hexify(thing):
     else:
         return thing if type(thing) is str else repr(thing)
 
-debug_q = deque([], 25)
+debug_q = deque([], 12)
 def debug(*args):
     debug_q.append(args)
 
