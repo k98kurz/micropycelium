@@ -81,6 +81,16 @@ def add_hooks():
     Packager.add_hook('modemsleep', debug_name('modemsleep'))
     Packager.add_hook('sleepskip', debug_name('sleepskip'))
 
+def memory(*_):
+    gc.collect()
+    fr = gc.mem_free()
+    al = gc.mem_alloc()
+    print(
+        '**Memory Report**\n' +
+        f'\t{fr} ({fr/(fr+al)*100:.2f}%) free\n' +
+        f'\t{al} ({al/(fr+al)*100:.2f}%) allocated'
+    )
+
 async def memrloop():
     while True:
         await sleep_ms(10_000)
@@ -295,6 +305,12 @@ add_command(
         'grep will be displayed'
 )
 add_cmd_alias('monitor', 'm')
+
+add_command(
+    'memory', memory,
+    'mem|memory - show memory usage'
+)
+add_cmd_alias('memory', 'mem')
 
 add_command(
     'wait', lambda cmd: wait(int(cmd[0])) if cmd else wait(-1),
