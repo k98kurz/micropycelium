@@ -2,7 +2,7 @@ from asyncio import sleep_ms
 from collections import deque, OrderedDict
 from machine import reset, Pin
 from micropycelium import (
-    Packager, Address, dCPL, dTree, PROTOCOL_VERSION,
+    Packager, Address, Application, dCPL, dTree, PROTOCOL_VERSION,
     ESPNowInterface, Beacon, Gossip, SpanningTree, Ping, DebugApp, DebugOp,
     ainput, debug, iscoroutine,
 )
@@ -226,6 +226,9 @@ def _get(cmd):
         print(f'Schedule:')
         for _, event in Packager.schedule.items():
             print(f'  {event.id.hex()} - {event.handler.__name__} - {event.args} - {event.kwargs}')
+    elif cmd[0].lower() == 'globals':
+        print(f'Globals:')
+        print(globals())
 
 def _set(cmd):
     if len(cmd) < 2:
@@ -249,20 +252,99 @@ def _set(cmd):
     else:
         print(f'Unknown set option: {cmd[0]}')
 
+def _load(cmd):
+    if len(cmd) < 1:
+        print('load - missing a required arg')
+        return
+    mod_name = cmd[0]
+    part_name = None
+    if '.' in mod_name:
+        if len(mod_name.split('.')) > 2:
+            print('load - invalid module import statement')
+            return
+        mod_name, part_name = mod_name.split('.')
+        try:
+            mod = __import__(mod_name)
+            globals()[part_name] = getattr(mod, part_name)
+        except:
+            print(f'load - unknown module: {mod_name}')
+            return
+    else:
+        try:
+            globals()[mod_name] = __import__(mod_name)
+        except:
+            print(f'load - unknown module: {mod_name}')
+            return
+
+def _exec(cmd):
+    if len(cmd) < 1:
+        print('exec - missing a required arg')
+        return
+    exec(' '.join(cmd))
+
 def _app(cmd):
     if len(cmd) < 2:
         print('app - missing a required arg')
         return
-    app_id = bytes.fromhex(cmd[0])
-    if app_id not in Packager.apps:
-        print(f'Unknown app: {app_id.hex()}')
+    subcmd = cmd[1].lower()
+    if subcmd == 'add':
+        app_arg = cmd[0]
+    elif cmd[0].lower() == 'all':
+        app_arg = 'all'
+    else:
+        app_arg = bytes.fromhex(cmd[0])
+
+    if type(app_arg) is bytes and app_arg not in Packager.apps:
+        print(f'Unknown app: {app_arg.hex()}')
         return
-    if cmd[1].lower() == 'start':
-        Packager.apps[app_id].invoke('start')
-    elif cmd[1].lower() == 'stop':
-        Packager.apps[app_id].invoke('stop')
-    elif cmd[1].lower() == 'invoke':
-        Packager.apps[app_id].invoke(*cmd[2:])
+
+    if subcmd == 'show':
+        if type(app_arg) is bytes:
+            app = Packager.apps[app_arg]
+            print(f'{app_arg.hex()} - {app.name} - version {app.version}')
+            print(app.description)
+            print('Params:')
+            for k, v in app.params.items():
+                print(f'\t{k} - {v}')
+            print('Callbacks: ' + ', '.join([k for k in app.callbacks]))
+            print('Hooks: ' + ', '.join([k for k in app._hooks]))
+        elif app_arg == 'all':
+            for app in Packager.apps.values():
+                print(f'{app.id.hex()} - {app.name} - version {app.version}')
+                print(app.description)
+                print('Params:')
+                for k, v in app.params.items():
+                    print(f'\t{k} - {v}')
+                print('Callbacks: ' + ', '.join([k for k in app.callbacks]))
+                print('Hooks: ' + ', '.join([k for k in app._hooks]))
+                print('')
+    elif subcmd == 'start':
+        if type(app_arg) is bytes:
+            Packager.apps[app_arg].invoke('start')
+        elif app_arg == 'all':
+            for app in Packager.apps.values():
+                app.invoke('start')
+    elif subcmd == 'stop':
+        if type(app_arg) is bytes:
+            Packager.apps[app_arg].invoke('stop')
+        elif app_arg == 'all':
+            for app in Packager.apps.values():
+                app.invoke('stop')
+    elif subcmd == 'invoke':
+        if type(app_arg) is bytes:
+            Packager.apps[app_arg].invoke(*cmd[2:])
+        elif app_arg == 'all':
+            for app in Packager.apps.values():
+                app.invoke(*cmd[2:])
+    elif subcmd == 'add':
+        if app_arg not in globals():
+            print(f'Unknown app: {app_arg}')
+            return
+        app = globals()[app_arg]
+        if type(app) is not Application:
+            print(f'Error: {app_arg} is not an Application')
+            return
+        Packager.add_application(app)
     else:
         print(f'Unknown app command: {cmd[1]}')
 
@@ -321,7 +403,7 @@ add_cmd_alias('wait', 'w')
 
 add_command(
     'get', _get,
-    'get [node_id|addrs|apps|sched|schedule|peers|routes|banned|next_hop addr metric] - ' +
+    'get [node_id|addrs|apps|globals|sched|schedule|peers|routes|banned|next_hop addr metric] - ' +
         'get info from the local node'
 )
 
@@ -332,9 +414,22 @@ add_command(
 )
 
 add_command(
+    'load', _load,
+    'load [module] - load a module\n' +
+        '\tmodule can be in the form module.part or just module'
+)
+
+add_command(
+    'exec', _exec,
+    'exec [python code] - execute python code'
+)
+
+add_command(
     'app', _app,
-    'app [app_id] [start|stop|invoke name ...args] - start or stop an app, or ' +
-        'invoke an app command'
+    'app [app_id|all] [show|start|stop|invoke] [name ...args] - show, start, ' +
+        'or stop an app, or invoke an app command\n' +
+        '\tif invoke is called, the name and args must be supplied\n' +
+    'app [name] add - add an app with the given name that is loaded in memory'
 )
 
 add_command(
