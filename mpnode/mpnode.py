@@ -16,7 +16,7 @@ except:
     pass
 
 
-MPNODE_VERSION = const('0.1.0-dev')
+MPNODE_VERSION = const('0.1.0-prerelease1')
 
 
 async def blink(p: Pin, ms: int):

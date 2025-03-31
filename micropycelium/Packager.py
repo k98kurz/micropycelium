@@ -39,7 +39,7 @@ else:
     sleep_ms = lambda ms: asyncio.sleep(ms/1000)
 
 
-VERSION = micropython.const('0.1.0-dev')
+VERSION = micropython.const('0.1.0-prerelease1')
 PROTOCOL_VERSION = micropython.const(0)
 DEBUG = False
 MODEM_SLEEP_MS = micropython.const(90)
