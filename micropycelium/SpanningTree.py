@@ -311,8 +311,10 @@ def set_addr_gossip_callback(_, addr: Address):
     send_gossip_tree_message(addr)
 
 def schedule_start(pub = None, sub = None):
-    """Schedules the app to start broadcasting with a random delay up to
-        params['max_start_delay'] ms.
+    """Schedules the app to start broadcasting with a pseudo-random
+        delay of a minimum of params['tree_maintenance_delay'] ms and
+        a maximum of params['tree_maintenance_delay'] +
+        params['max_start_delay_add'] ms.
     """
     if type(pub) is bool:
         SpanningTree.params['pub'] = pub
@@ -323,7 +325,8 @@ def schedule_start(pub = None, sub = None):
     current_best_root_id = Packager.node_id
     Packager.set_addr(Address(tree_state(Packager.node_id), coords=[]))
     Packager.new_events.append(Event(
-        now() + randint(0, SpanningTree.params['max_start_delay']),
+        now() + SpanningTree.params['tree_maintenance_delay'] +
+            randint(0, SpanningTree.params['max_start_delay_add']),
         tree_app_id + b's',
         maintain_tree,
     ))
@@ -371,7 +374,7 @@ SpanningTree = Application(
         'get_seen': lambda _: seen_tm,
     },
     params={
-        'max_start_delay': 10_000,
+        'max_start_delay_add': 10_000,
         'tree_maintenance_delay': 20_000,
         'max_tree_age': 60,
         # 'broadcast_count': MODEM_INTERSECT_RTX_TIMES,
