@@ -26,9 +26,9 @@ pushd $REPOSDIR
 git clone https://github.com/micropython/micropython.git
 git clone -b v0.1.0-prerelease1 https://github.com/k98kurz/micropycelium.git
 # or
-wget https://github.com/k98kurz/micropycelium/archive/refs/tag/v0.1.0-prerelease1.zip
+wget -O micropycelium-v0.1.0-prerelease1.zip https://github.com/k98kurz/micropycelium/archive/refs/tags/v0.1.0-prerelease1.zip
 unzip micropycelium-v0.1.0-prerelease1.zip
-mv micropycelium-v0.1.0-prerelease1 micropycelium
+mv micropycelium-0.1.0-prerelease1 micropycelium
 popd
 ```
 
@@ -81,6 +81,7 @@ Then build the single file module of micropycelium and copy it to the correct
 path within the micropython fork and deploy to connected device:
 
 ```bash
+cd $MICROPYCELIUM_PATH
 python make.py > build/micropycelium.py
 python make.py mpnode $MPNODE > build/mpnode.py
 pushd $MICROPYTHON_PATH
