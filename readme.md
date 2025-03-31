@@ -1,19 +1,23 @@
 # Micropycelium
 
 This repo is designed to implement a wireless mesh network and a few services
-that run over it using micropython-compatible code. A goal is to minimize memory
-use and provide an asynchronous control flow. It includes the following:
+that run over it using micropython-compatible code. The goals include to
+minimizing memory use, and providing an asynchronous control flow. It includes
+the following:
 
 - Packet formats to fit into ESP-NOW and RYLR-998 LoRa datagrams
 - A packet sequencer to break blobs into smaller packets with reliable tx
 mechanism
 - A Packager system to automatically send and receive Packages
-- Interface plugins for the Packager to enable ESP-NOW and RYLR-998; in the
-future, UDP/IP, BTLE, and a custom WLAN similar to ESP-NOW for non-ESP devices
-(e.g. Raspberry Pi, Linux laptop, etc)
+- Interface plugin for ESP-NOW; in the future, RYLR-998 (LoRa), UDP/IP, BTLE,
+and a custom WLAN similar to ESP-NOW for non-ESP devices (e.g. Raspberry Pi,
+Linux laptop, etc)
 - An Application plugin system to generate and ingest Packages
 - A connectionless gossip system for promulgating network information
 - A PIE/VOUTE-based spanning tree system for greedy routing
+- An mpnode console to monitor, configure, debug, and experiment
+- 2 mpnode device-specific implementations: M5stamp and M5StickC-PLUS2
+- 1 mpnode generic esp32 implementation
 
 This project is the result of a fairly lengthy process of discovery: first, I
 tried using gradient descent to determine 2d/3d/4d spcial coordinates using
@@ -23,9 +27,9 @@ alternatives, which resulted in an incomplete spec for the Mycelium network
 system; then, I got some ESP32 devices and decided to start experimenting, and I
 realized that it had to be paired down and more focused to have a chance of
 actually working. Since the main goal of the Pycelium/Mycelium concept has been
-inexpensive routers automagically creating a mesh network, it made sense to
-start with some actual hardware running micropython, hence micropycelium as the
-home of the first serious attempt at implementation.
+inexpensive routers automagically creating a routed mesh network, it made sense
+to start with some actual hardware running micropython, hence micropycelium as
+the home of the first serious attempt at implementation.
 
 ## Status/Roadmap
 
@@ -52,12 +56,10 @@ changelog file.
 This is a highly experimental project. To use this, the following steps need to
 be completed:
 
-1. Clone the micropycelium repo
-2. Clone the micropython repo
-3. Follow the instructions from [notes/build.md](https://github.com/k98kurz/micropycelium/blob/master/notes/build.md)
-4. Connect via tty serial to your device to get to a REPL or file management
-5. Copy the main.py file from the devices directory to your device
-6. Reset device, then hit "Enter" to get to the console prompt
+1. Follow the instructions from [notes/build.md](https://github.com/k98kurz/micropycelium/blob/master/notes/build.md)
+2. Connect via tty serial to your device to get to a REPL or file management
+3. Copy the main.py file from the devices directory to your device
+4. Reset device, then hit "Enter" to get to the console prompt
 
 This has not been tested on non-ESP32 devices, though expansion of support to
 more hardware platforms is an eventual goal of this project.
@@ -68,10 +70,21 @@ my test devices.
 It can be added after flashing the firmware or built into the firmware as a
 module in the same way as micropycelium (much better experience imo).
 
+## Notes
+
+- The system design spec is in
+[Packager_spec.md](https://github.com/k98kurz/micropycelium/blob/master/Packager_spec.md).
+- The PKI has not been implemented because micropython currently does not
+include support for elliptic curve or ed25519.
+- Due to the lack of security primitives and incomplete state of several
+important planned features, many implementation details have not been evaluated
+for security. I expect DoS attacks can be performed without much difficulty.
+- This is highly experimental, and the system is not yet tuned for performance.
+
 ## Testing
 
-There are currently 93 unit tests that rely on a bunch of mocks: 57 tests for
-the core components and 36 for bundled apps (Beacon, Gossip, Ping, SpanningTree,
+There are currently 101 unit tests that rely on a bunch of mocks: 60 tests for
+the core components and 41 for bundled apps (Beacon, Gossip, Ping, SpanningTree,
 DebugApp). E2e testing is done with hardware and is a bit more involved.
 
 To run the unit tests, clone the repo and then run the following:
