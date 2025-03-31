@@ -47,10 +47,12 @@ DebugOp = enum(
     REQUEST_PEER_LIST = 1,
     REQUEST_ROUTES = 2,
     REQUEST_NEXT_HOP = 3,
+    REQUEST_BANNED = 4,
     RESPOND_NODE_INFO = 100,
     RESPOND_PEER_LIST = 101,
     RESPOND_ROUTES = 102,
     RESPOND_NEXT_HOP = 103,
+    RESPOND_BANNED = 104,
     # ERROR = 199,
     OK = 200,
     AUTH_ERROR = 201,
@@ -65,10 +67,12 @@ _inverse_op = {
     DebugOp.REQUEST_PEER_LIST: 'REQUEST_PEER_LIST',
     DebugOp.REQUEST_ROUTES: 'REQUEST_ROUTES',
     DebugOp.REQUEST_NEXT_HOP: 'REQUEST_NEXT_HOP',
+    DebugOp.REQUEST_BANNED: 'REQUEST_BANNED',
     DebugOp.RESPOND_NODE_INFO: 'RESPOND_NODE_INFO',
     DebugOp.RESPOND_PEER_LIST: 'RESPOND_PEER_LIST',
     DebugOp.RESPOND_ROUTES: 'RESPOND_ROUTES',
     DebugOp.RESPOND_NEXT_HOP: 'RESPOND_NEXT_HOP',
+    DebugOp.RESPOND_BANNED: 'RESPOND_BANNED',
     # DebugOp.ERROR: 'ERROR',
     DebugOp.OK: 'OK',
     DebugOp.AUTH_ERROR: 'AUTH_ERROR',
@@ -106,6 +110,8 @@ def receive_debug(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
         DebugApp.invoke('handle_request_routes', dm)
     elif dm.op == DebugOp.REQUEST_NEXT_HOP:
         DebugApp.invoke('handle_request_next_hop', dm)
+    elif dm.op == DebugOp.REQUEST_BANNED:
+        DebugApp.invoke('handle_request_banned', dm)
     elif dm.op == DebugOp.RESPOND_NODE_INFO:
         DebugApp.invoke('handle_response', dm)
     elif dm.op == DebugOp.RESPOND_PEER_LIST:
@@ -113,6 +119,8 @@ def receive_debug(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
     elif dm.op == DebugOp.RESPOND_ROUTES:
         DebugApp.invoke('handle_response', dm)
     elif dm.op == DebugOp.RESPOND_NEXT_HOP:
+        DebugApp.invoke('handle_response', dm)
+    elif dm.op == DebugOp.RESPOND_BANNED:
         DebugApp.invoke('handle_response', dm)
     elif dm.op == DebugOp.OK:
         DebugApp.invoke('handle_response', dm)
@@ -149,7 +157,8 @@ def handle_request_peer_list(dm: DebugMessage):
     }
     topic_id = sha256(DebugApp.id + dm.from_id).digest()[:16]
     new_dm = DebugMessage(
-        DebugOp.RESPOND_PEER_LIST, int(time()), dm.nonce, Packager.node_id, json.dumps(info).encode()
+        DebugOp.RESPOND_PEER_LIST, int(time()), dm.nonce, Packager.node_id,
+        json.dumps(info).encode()
     )
     Gossip.invoke('publish', topic_id, serialize_dm(new_dm))
 
@@ -183,6 +192,19 @@ def handle_request_next_hop(dm: DebugMessage):
     topic_id = sha256(DebugApp.id + dm.from_id).digest()[:16]
     Gossip.invoke('publish', topic_id, serialize_dm(DebugMessage(
         DebugOp.RESPOND_NEXT_HOP, int(time()), dm.nonce, Packager.node_id,
+        json.dumps(info).encode()
+    )))
+
+def handle_request_banned(dm: DebugMessage):
+    Gossip = Packager.apps.get(gossip_app_id, None)
+    if Gossip is None:
+        return
+    info = {
+        'banned': [node_id.hex() for node_id in Packager.banned],
+    }
+    topic_id = sha256(DebugApp.id + dm.from_id).digest()[:16]
+    Gossip.invoke('publish', topic_id, serialize_dm(DebugMessage(
+        DebugOp.RESPOND_BANNED, int(time()), dm.nonce, Packager.node_id,
         json.dumps(info).encode()
     )))
 
@@ -314,7 +336,7 @@ async def _debug_command(cmd: list[str]):
     nid = bytes.fromhex(cmd[0])
     cmd[1] = cmd[1].lower()
     nh_addr = b''
-    if cmd[1] not in ('info', 'peers', 'routes', 'next_hop'):
+    if cmd[1] not in ('info', 'peers', 'routes', 'next_hop', 'banned'):
         print(f'debug - unknown mode {cmd[1]}')
         return
     if cmd[1] == 'info':
@@ -331,6 +353,8 @@ async def _debug_command(cmd: list[str]):
         metric = dCPL if 'cpl' in cmd[3].lower() else dTree
         nh_addr = pack('!BB16s', metric, nh_addr.tree_state, nh_addr.address)
         op = DebugOp.REQUEST_NEXT_HOP
+    elif cmd[1] == 'banned':
+        op = DebugOp.REQUEST_BANNED
     output = DebugApp.params['console_output']
     DebugApp.add_hook('output', lambda *args: output(args[1]))
     DebugApp.add_hook(
@@ -394,7 +418,7 @@ def register_debug_cmds(
     add_command(
         'debug',
         _debug_command,
-        'debug [node_id] [info|peers|routes|next_hop addr metric] - get ' +
+        'debug [node_id] [info|peers|banned|routes|next_hop addr metric] - get ' +
             'debug info from a node'
     )
     add_command(
@@ -419,6 +443,7 @@ DebugApp = Application(
         'handle_request_peer_list': lambda _, dm: handle_request_peer_list(dm),
         'handle_request_routes': lambda _, dm: handle_request_routes(dm),
         'handle_request_next_hop': lambda _, dm: handle_request_next_hop(dm),
+        'handle_request_banned': lambda _, dm: handle_request_banned(dm),
         'handle_response': lambda _, dm: handle_response(dm),
         'handle_require': lambda _, dm: handle_require(dm),
         'request': lambda _, op, peer_id, *args: request_debug_info(op, peer_id, *args),
