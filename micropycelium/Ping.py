@@ -228,6 +228,14 @@ def report_ping_test(
             relevant_pms.append(pm)
         else:
             ping_responses.append(pm)
+    # deduplicate relevant pms by ts1
+    ts1s = set()
+    final_pms = []
+    for pm in relevant_pms:
+        if pm.ts1 not in ts1s:
+            ts1s.add(pm.ts1)
+            final_pms.append(pm)
+    relevant_pms = final_pms
     # generate report
     if type(remote_id_or_addr) is bytes:
         remote = remote_id_or_addr.hex()
