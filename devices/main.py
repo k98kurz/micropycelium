@@ -11,11 +11,14 @@ try:
         if len(cmd) < 1:
             print('edit - missing required arg')
             return
-        edit(cmd[0])
+        args = []
+        if len(cmd) > 1:
+            args.append(int(cmd[1]))
+        edit(cmd[0], *args)
     add_command(
         'edit',
         _edit,
-        'edit [path] - open a file in the file editor'
+        'edit [path] [page_size=42] - open a file in the file editor'
     )
 except:
     pass
