@@ -1223,11 +1223,11 @@ class Address:
     @staticmethod
     def dCPL(x1: 'Address', x2: 'Address') -> int:
         """Calculate the CPL distance between two addresses."""
-        x1 = x1.dCPL_coords()
-        x2 = x2.dCPL_coords()
+        x1l, x2l = len(x1.coords), len(x2.coords)
+        x1, x2 = x1.dCPL_coords(), x2.dCPL_coords()
         if x1 == x2:
             return 0
-        return 33 - Address.cpl(x1, x2) - 1 / (len(x1) + len(x2) + 1)
+        return 33 - Address.cpl(x1, x2) - 1 / (x1l + x2l + 1)
 
 
 # @micropython.native
