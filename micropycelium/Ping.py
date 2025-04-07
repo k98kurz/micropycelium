@@ -438,6 +438,8 @@ async def _ping_command(cmd: list[str]):
         kwargs['count'] = int(cmd[1])
     if len(cmd) > 2:
         kwargs['timeout'] = int(cmd[2])
+    if len(cmd) > 3:
+        kwargs['metric'] = dCPL if 'cpl' in cmd[3].lower() else dTree
     Ping.invoke('ping', **kwargs)
     await Ping.params['console_wait'](kwargs.get('count', 4) + 2)
 
@@ -469,11 +471,12 @@ def register_ping_cmds(
     add_command(
         'ping',
         _ping_command,
-        'ping [node_id|addr] [count] [timeout] - ping the node_id/address\n' +
+        'ping [node_id|addr] [count] [timeout] [metric] - ping the node_id/address\n' +
             '\tcount should be <=10 (memory constraint); default value is 4\n' +
             '\ttimeout default value is 2 (seconds)\n' +
             '\tIf node_id is provided, it will attempt to find the address ' +
-            'from the known routes'
+            'from the known routes\n' +
+            '\tmetric should be dTree or dCPL; default value is dTree'
     )
     add_command(
         'gossip_ping',
