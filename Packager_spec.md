@@ -807,9 +807,9 @@ state to select one of two simultaneous trees.
 
 Addresses will encode up to 32 coordinates, each representing the index of a
 child at the parent. This will allow for a network of between 16 tree levels at
-up to 134 (6+128) children per parent and 32 tree levels at up to 6 children per
-parent. This alone allows for tree membership in the range between 8.0x10^24 and
-1.1x10^34 nodes.
+up to 135 (7+128) children per parent and 32 tree levels at up to 7 children per
+parent. This allows for tree membership in the range between 1.1x10^27 and
+1.2x10^34 nodes.
 
 A zero value represents a lack of that coordinate. The root will have no
 coordinates, i.e. an address of all zeros. Each child will take its parent's
