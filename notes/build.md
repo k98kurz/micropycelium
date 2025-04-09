@@ -66,9 +66,15 @@ DEVICE=/dev/ttyUSB0
 MPNODE=generic_esp32
 BOARD=ESP32_GENERIC
 # or
+MPNODE=M5Stamp-C3
+BOARD=ESP32_GENERIC_C3
+# or
 MPNODE=M5StampS3
 BOARD=ESP32_GENERIC_S3
 ```
+
+NB: currently, the M5Stamp-C3/C3U freezes without any error message after a few
+hundred milliseconds and becomes unresponsive. I have not diagnosed why.
 
 ## Build and Deploy Firmware
 
