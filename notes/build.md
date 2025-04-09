@@ -65,6 +65,9 @@ BOARD=ESP32_GENERIC
 DEVICE=/dev/ttyUSB0
 MPNODE=generic_esp32
 BOARD=ESP32_GENERIC
+# or
+MPNODE=M5StampS3
+BOARD=ESP32_GENERIC_S3
 ```
 
 ## Build and Deploy Firmware
