@@ -139,6 +139,9 @@ def receive_tm(app: Application, blob: bytes, intrfc: Interface, mac: bytes):
                 coords = list(Packager.node_addrs[-1].coords) + [current_children[peer_id]]
                 SpanningTree.invoke('assign_address', peer_id, coords)
                 return
+            # ignore requests from the parent; tree is timing out
+            if tmsg.node_id == current_parent:
+                return
             # respond with the address assignment
             coords = list(Packager.node_addrs[-1].coords)
             coord = lwst_avlbl_coord()
