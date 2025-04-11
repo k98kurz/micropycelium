@@ -49,42 +49,34 @@ def action_hook(name: str, c: tuple, q: deque):
 
 # add some hooks
 Beacon.add_hook('receive', action_hook('Beacon.receive', blue, rq))
-Beacon.add_hook('broadcast', action_hook('Beacon.broadcast', red, rq))
-Beacon.add_hook('respond', action_hook('Beacon.respond', green, rq))
-Beacon.add_hook('send', debug_name('Beacon.send'))
+Beacon.add_hook('broadcast', action_hook('Beacon.broadcast', blue, rq))
+Beacon.add_hook('respond', action_hook('Beacon.respond', blue, rq))
+Beacon.add_hook('send', action_hook('Beacon.send', blue, rq))
 
 Gossip.add_hook('receive', action_hook('Gossip.receive', purple, rq))
-Gossip.add_hook('publish', debug_name('Gossip.publish'))
+Gossip.add_hook('publish', action_hook('Gossip.publish', purple, rq))
 Gossip.add_hook('respond', action_hook('Gossip.respond', purple, rq))
 
 SpanningTree.add_hook('receive', action_hook('SpanningTree.receive', white, rq))
-SpanningTree.add_hook('broadcast', action_hook('SpanningTree.broadcast', pink, rq))
-SpanningTree.add_hook('send', action_hook('SpanningTree.send', orange, rq))
-SpanningTree.add_hook('respond', debug_name('SpanningTree.respond'))
-SpanningTree.add_hook('assign_address', debug_name('SpanningTree.assign_address'))
+SpanningTree.add_hook('broadcast', action_hook('SpanningTree.broadcast', white, rq))
+SpanningTree.add_hook('send', action_hook('SpanningTree.send', white, rq))
+SpanningTree.add_hook('respond', action_hook('SpanningTree.respond', white, rq))
+SpanningTree.add_hook('assign_address', action_hook('SpanningTree.assign_address', pink, rq))
 SpanningTree.add_hook(
     'request_address_assignment',
-    debug_name('SpanningTree.request_address_assignment')
+    action_hook('SpanningTree.request_address_assignment', orange, rq)
 )
 
-def ping_respond_hook(*args, **kwargs):
-    debug('Ping.respond', *args)
-    rq.append(red)
-    rq.append(white)
-    rq.append(blue)
-    rq.append(red)
-    rq.append(white)
-    rq.append(blue)
-
 Ping.add_hook('request', debug_name('Ping.request'))
-Ping.add_hook('respond', ping_respond_hook)
+Ping.add_hook('respond', action_hook('Ping.respond', green, rq))
 Ping.add_hook('response_received', debug_name('Ping.response_received'))
 Ping.add_hook('gossip_request', debug_name('Ping.gossip_request'))
-Ping.add_hook('gossip_respond', debug_name('Ping.gossip_respond'))
+Ping.add_hook('gossip_respond', action_hook('Ping.gossip_respond', green, rq))
 Ping.add_hook('gossip_response_received', debug_name('Ping.gossip_response_received'))
 
 DebugApp.add_hook('output', debug_name('DebugApp.output'))
-DebugApp.add_hook('receive', debug_name('DebugApp.receive'))
+DebugApp.add_hook('receive', action_hook('DebugApp.receive', yellow, rq))
+
 
 tasks = None
 
