@@ -24,11 +24,11 @@ unpack a release:
 REPOSDIR=$HOME/Documents/repos
 pushd $REPOSDIR
 git clone https://github.com/micropython/micropython.git
-git clone -b v0.1.0-prerelease3 https://github.com/k98kurz/micropycelium.git
+git clone -b v0.1.0-prerelease4 https://github.com/k98kurz/micropycelium.git
 # or
-wget -O micropycelium-v0.1.0-prerelease3.zip https://github.com/k98kurz/micropycelium/archive/refs/tags/v0.1.0-prerelease3.zip
-unzip micropycelium-v0.1.0-prerelease3.zip
-mv micropycelium-0.1.0-prerelease3 micropycelium
+wget -O micropycelium-v0.1.0-prerelease4.zip https://github.com/k98kurz/micropycelium/archive/refs/tags/v0.1.0-prerelease4.zip
+unzip micropycelium-v0.1.0-prerelease4.zip
+mv micropycelium-0.1.0-prerelease4 micropycelium
 popd
 ```
 
