@@ -151,21 +151,22 @@ async def wait(c = 1):
             break
 
 def filter(msg, greps):
-    matched = len(greps) == 0
+    if len(greps) == 0:
+        return True
     for p in greps:
         if type(msg) is str and p in msg:
-            matched = True
+            return True
         elif type(msg) in (list, tuple):
             for m in msg:
                 if type(m) is str and p in m:
-                    matched = True
+                    return True
         elif type(msg) is dict:
             for k, v in msg.values():
                 if (type(k) is str and p in k) or (
                     type(v) is str and p in v
                 ):
-                    matched = True
-    return matched
+                    return True
+    return False
 
 async def monitor(greps: tuple[str]|list[str] = []):
     print("Hit Enter to stop monitoring")
