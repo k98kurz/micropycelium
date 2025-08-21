@@ -90,7 +90,7 @@ Then build the single file module of micropycelium and copy it to the correct
 path within the micropython fork and deploy to connected device:
 
 ```bash
-cd $MICROPYCELIUM_PATH
+pushd $MICROPYCELIUM_PATH
 mkdir build
 python make.py > build/micropycelium.py
 python make.py mpnode $MPNODE > build/mpnode.py
@@ -100,6 +100,7 @@ cp "$MICROPYCELIUM_PATH/build/mpnode.py" ports/esp32/modules/
 make -j -C ports/esp32 BOARD=$BOARD submodules
 make -j -C ports/esp32 BOARD=$BOARD
 make -j -C ports/esp32 BOARD=$BOARD PORT=$DEVICE deploy
+popd
 popd
 ```
 
