@@ -91,6 +91,7 @@ path within the micropython fork and deploy to connected device:
 
 ```bash
 cd $MICROPYCELIUM_PATH
+mkdir build
 python make.py > build/micropycelium.py
 python make.py mpnode $MPNODE > build/mpnode.py
 pushd $MICROPYTHON_PATH
