@@ -17,13 +17,23 @@ useful for experimentation).
 
 ## Environment Setup
 
-First, clone the micropython repo, and either clone the micropycelium repo or
-unpack a release:
+First, clone the micropython repo, either my fork or the original (requires an
+additional `git checkout` step):
 
 ```bash
 REPOSDIR=$HOME/Documents/repos
+mkdir -p $REPOSDIR
 pushd $REPOSDIR
+git clone https://github.com/k98kurz/micropython.git
+# or
 git clone https://github.com/micropython/micropython.git
+cd micropython
+git checkout 1034b17558b108b65aca480d3b5b8f933e128369 # last known compatible revision
+```
+
+Then either clone the micropycelium repo or unpack a release:
+
+```bash
 git clone https://github.com/k98kurz/micropycelium.git
 # or
 wget -O micropycelium-v0.1.0-prerelease4.zip https://github.com/k98kurz/micropycelium/archive/refs/tags/v0.1.0-prerelease4.zip
@@ -100,7 +110,7 @@ path within the micropython fork and deploy to connected device:
 
 ```bash
 pushd $MICROPYCELIUM_PATH
-mkdir build
+mkdir -p build
 python make.py > build/micropycelium.py
 python make.py mpnode $MPNODE > build/mpnode.py
 cd $MICROPYTHON_PATH
