@@ -149,3 +149,20 @@ esptool.py --chip esp32 -p $DEVICE erase_flash
 make -j -C ports/esp32 BOARD=$BOARD PORT=$DEVICE deploy
 popd
 ```
+
+## Add main.py file
+
+As noted above, the main.py file can be as simple as the following:
+
+```py
+from mpnode import start
+start()
+```
+
+For something a bit more useful, I recommend copying the reference found
+[here](https://github.com/k98kurz/micropycelium/blob/master/devices/main.py).
+It imports a lot of useful classes, functions, and modules, and it adds an edit
+command to the micropycelium console if the micropython file editor was bundled
+into the firmware. It also shows how to add extra asynchronous tasks to the
+node startup.
+
