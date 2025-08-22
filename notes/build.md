@@ -55,8 +55,8 @@ source $REPOSDIR/esp-idf/export.sh
 MICROPYTHON_PATH=$REPOSDIR/micropython
 MICROPYCELIUM_PATH=$REPOSDIR/micropycelium
 DEVICE=/dev/ttyACM0
-MPNODE=M5stamp-Pico
-BOARD=M5STACK_Stamp_PICO
+MPNODE=M5StampS3
+BOARD=ESP32_GENERIC_S3
 # or
 DEVICE=/dev/ttyACM1
 MPNODE=M5StickC-PLUS2
@@ -69,8 +69,15 @@ BOARD=ESP32_GENERIC
 MPNODE=M5Stamp-C3
 BOARD=ESP32_GENERIC_C3
 # or
-MPNODE=M5StampS3
-BOARD=ESP32_GENERIC_S3
+MPNODE=M5stamp-Pico
+BOARD=M5STACK_Stamp_PICO
+```
+
+NB: to use the M5Stack Stamp Pico, the board definition must be copied to the
+local micropython repository with the following:
+
+```bash
+cp -r $MICROPYCELIUM_PATH/devices/micropython_boards/M5STACK_Stamp_PICO $MICROPYTHON_PATH/ports/esp32/boards/
 ```
 
 NB: currently, the M5Stamp-C3/C3U freezes without any error message after a few
@@ -80,7 +87,7 @@ hundred milliseconds and becomes unresponsive. I have not diagnosed why.
 
 If you want to include the
 [micropython file editor](https://github.com/k98kurz/micropython-file-editor) in
-the firmware, copy it with the following:
+the firmware, clone the repo then copy it with the following:
 
 ```bash
 cp $REPOSDIR/micropython-file-editor/editor.py $MICROPYTHON_PATH/ports/esp32/modules/
@@ -94,13 +101,12 @@ pushd $MICROPYCELIUM_PATH
 mkdir build
 python make.py > build/micropycelium.py
 python make.py mpnode $MPNODE > build/mpnode.py
-pushd $MICROPYTHON_PATH
+cd $MICROPYTHON_PATH
 cp "$MICROPYCELIUM_PATH/build/micropycelium.py" ports/esp32/modules/
 cp "$MICROPYCELIUM_PATH/build/mpnode.py" ports/esp32/modules/
 make -j -C ports/esp32 BOARD=$BOARD submodules
 make -j -C ports/esp32 BOARD=$BOARD
 make -j -C ports/esp32 BOARD=$BOARD PORT=$DEVICE deploy
-popd
 popd
 ```
 
