@@ -24,7 +24,7 @@ unpack a release:
 REPOSDIR=$HOME/Documents/repos
 pushd $REPOSDIR
 git clone https://github.com/micropython/micropython.git
-git clone -b v0.1.0-prerelease4 https://github.com/k98kurz/micropycelium.git
+git clone https://github.com/k98kurz/micropycelium.git
 # or
 wget -O micropycelium-v0.1.0-prerelease4.zip https://github.com/k98kurz/micropycelium/archive/refs/tags/v0.1.0-prerelease4.zip
 unzip micropycelium-v0.1.0-prerelease4.zip
@@ -79,6 +79,8 @@ local micropython repository with the following:
 ```bash
 cp -r $MICROPYCELIUM_PATH/devices/micropython_boards/M5STACK_Stamp_PICO $MICROPYTHON_PATH/ports/esp32/boards/
 ```
+
+Also note that this will not work with the current prerelease but instead requires cloning the repo.
 
 NB: currently, the M5Stamp-C3/C3U freezes without any error message after a few
 hundred milliseconds and becomes unresponsive. I have not diagnosed why.
