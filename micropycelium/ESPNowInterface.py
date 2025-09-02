@@ -22,7 +22,7 @@ def config_espnwintrfc(intrfc: Interface, data: dict):
     for k,v in data.items():
         _config[k] = v
 
-def recv_espnwintrfc(intrfc: Interface) -> bytes|None:
+def recv_espnwintrfc(intrfc: Interface) -> Datagram|None:
     try:
         res = e.recv(0)
         if res and len(res) == 2 and res[0] and res[1]:
